@@ -38,3 +38,11 @@ update_log.txt
 # Windows reserved names
 nul
 cookies.txt
+
+# Локальные/временные файлы
+.claude/
+docx_extracted/
+*.ps1
+*.bak
+tz_content.txt
+app.log

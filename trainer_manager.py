@@ -189,6 +189,9 @@ class TrainerManager:
         # Миграция: добавляем уровень Hard
         self._migrate_hard_level()
 
+        # Миграция: убеждаемся, что все базовые уровни существуют
+        self._ensure_default_levels()
+
         # Инициализация начальных данных если таблицы пустые
         self._init_default_data()
 
@@ -291,6 +294,37 @@ class TrainerManager:
 
             self.conn.commit()
 
+    def _ensure_default_levels(self):
+        """Миграция: добавляем отсутствующие базовые уровни (basic/medium/advanced/hard)."""
+        cursor = self.conn.cursor()
+        default_levels = [
+            ("Базовый", "basic", "Основы работы с клиентами. Простые ситуации.", "🌱", "#4CAF50", None, 0, 1),
+            ("Средний", "medium", "Сложные ситуации и конфликтные клиенты.", "⚡", "#FF9800", "basic", 80, 2),
+            ("Высокий", "advanced", "Нестандартные случаи и VIP-клиенты.", "🔥", "#F44336", "medium", 80, 3),
+            ("Hard", "hard", "Экстремальные ситуации. Максимальная сложность.", "💀", "#9C27B0", "advanced", 80, 4),
+        ]
+
+        cursor.execute("SELECT code, order_num FROM trainer_levels")
+        existing = {row[0]: row[1] for row in cursor.fetchall()}
+
+        for name, code, description, icon, color, required_level, required_percent, order_num in default_levels:
+            if code not in existing:
+                cursor.execute(
+                    """
+                    INSERT INTO trainer_levels
+                    (name, code, description, icon, color, required_level, required_percent, order_num)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (name, code, description, icon, color, required_level, required_percent, order_num),
+                )
+            elif not existing[code]:
+                cursor.execute(
+                    "UPDATE trainer_levels SET order_num = ? WHERE code = ?",
+                    (order_num, code),
+                )
+
+        self.conn.commit()
+
     def _init_default_data(self):
         """Инициализация начальных данных (уровни, категории)"""
         cursor = self.conn.cursor()
@@ -366,10 +400,16 @@ class TrainerManager:
 
         # Получаем ID базового уровня и категорий
         cursor.execute("SELECT id FROM trainer_levels WHERE code = 'basic'")
-        basic_level_id = cursor.fetchone()[0]
+        row = cursor.fetchone()
+        if not row:
+            # Если базового уровня нет, не создаем тестовые сценарии
+            return
+        basic_level_id = row[0]
 
         cursor.execute("SELECT id, name FROM trainer_categories")
         categories = {row[1]: row[0] for row in cursor.fetchall()}
+        if not categories:
+            return
 
         # Тестовые сценарии
         test_scenarios = [

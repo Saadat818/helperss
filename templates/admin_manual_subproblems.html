@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -62,6 +62,24 @@
         .btn-secondary:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+        }
+
+        .add-subproblem-section {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            border-left: 4px solid #28a745;
         }
 
         .subproblem-list {
@@ -128,6 +146,23 @@
             box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
         }
 
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
+        }
+
+        .subproblem-actions {
+            display: flex;
+            gap: 8px;
+        }
+
         .flash-messages {
             margin-bottom: 20px;
         }
@@ -150,6 +185,186 @@
             color: #721c24;
             border-left: 4px solid #dc3545;
         }
+    
+        /* Admin Dark Theme */
+        :root {
+            --bg: #0c0c0c;
+            --panel: #1a1a1a;
+            --panel-2: #202020;
+            --panel-3: #141414;
+            --text: #e8e8e8;
+            --muted: #b5b5b5;
+            --border: #242424;
+            --accent: #00a651;
+            --accent-2: #009448;
+            --danger: #e94b5a;
+            --warning: #f2b705;
+        }
+
+        body {
+            background: var(--bg) !important;
+            color: var(--text);
+        }
+
+        .container {
+            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
+            border: 1px solid #151515;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .header,
+        .form-actions {
+            border-bottom: 1px solid #2a2a2a !important;
+            border-top: 1px solid #2a2a2a !important;
+        }
+
+        h1, h2, h3, h4 {
+            color: var(--text) !important;
+        }
+
+        .subtitle,
+        .stat-label,
+        .subproblems-count,
+        .helper-text,
+        .help-text,
+        .info-text,
+        .warning-text,
+        .error-text,
+        .role-description,
+        label {
+            color: var(--muted) !important;
+        }
+
+        .stat-card,
+        .manual-card,
+        .form-section,
+        .info-box,
+        .warning-box,
+        .error-card,
+        .subproblem-card,
+        .problem-item,
+        .upload-form,
+        .modal-content,
+        .preview-container,
+        .photo-item,
+        .video-item,
+        .stats-summary,
+        .stat-item {
+            background: var(--panel-3) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 14px;
+            color: var(--text);
+        }
+
+        .warning-box {
+            border-color: rgba(242, 183, 5, 0.4) !important;
+            background: rgba(242, 183, 5, 0.08) !important;
+        }
+
+        .error-card {
+            border-color: rgba(233, 75, 90, 0.4) !important;
+            background: rgba(233, 75, 90, 0.08) !important;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"],
+        input[type="email"],
+        textarea,
+        select {
+            background: #111 !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
+        }
+
+        table {
+            color: var(--text);
+        }
+
+        th {
+            background: #1f1f1f !important;
+            color: var(--text) !important;
+            border-bottom: 1px solid #2a2a2a !important;
+        }
+
+        td {
+            background: #141414 !important;
+            border-bottom: 1px solid #242424 !important;
+        }
+
+        tr:nth-child(even) td {
+            background: #171717 !important;
+        }
+
+        .btn {
+            border-radius: 12px !important;
+        }
+
+        .btn-primary,
+        .btn-success {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
+        }
+
+        .btn-primary:hover,
+        .btn-success:hover {
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
+        }
+
+        .btn-secondary,
+        .btn-logout {
+            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
+        }
+
+        .btn-danger,
+        .btn-delete {
+            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
+            color: #1b1b1b !important;
+            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
+        }
+
+        .alert-success {
+            background-color: rgba(0, 166, 81, 0.12) !important;
+            color: #bfe8d1 !important;
+            border: 1px solid rgba(0, 166, 81, 0.25) !important;
+        }
+
+        .alert-danger,
+        .danger {
+            background-color: rgba(233, 75, 90, 0.12) !important;
+            color: #f3c0c6 !important;
+            border: 1px solid rgba(233, 75, 90, 0.25) !important;
+        }
+
+        .back-link {
+            background: rgba(26, 26, 26, 0.95) !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        .back-link:hover {
+            border-color: var(--accent) !important;
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
+        }
     </style>
 </head>
 <body>
@@ -169,16 +384,29 @@
             {% endif %}
         {% endwith %}
 
+        <div class="add-subproblem-section">
+            <a href="{{ url_for('admin_create_subproblem', manual_id=manual_id) }}" class="btn btn-success">➕ Добавить подпроблему</a>
+        </div>
+
         <div class="subproblem-list">
             {% for subproblem_id, subproblem in manual.subproblems.items() %}
                 <div class="subproblem-card" onclick="window.location.href='{{ url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}'">
                     <div class="subproblem-header">
                         <div class="subproblem-id">{{ subproblem_id }}</div>
-                        <a href="{{ url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}"
-                           class="btn btn-edit"
-                           onclick="event.stopPropagation()">
-                            Редактировать
-                        </a>
+                        <div class="subproblem-actions">
+                            <a href="{{ url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}"
+                               class="btn btn-edit"
+                               onclick="event.stopPropagation()">
+                                Редактировать
+                            </a>
+                            <form method="POST" action="{{ url_for('admin_delete_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}"
+                                  style="display: inline;"
+                                  onsubmit="event.stopPropagation(); return confirm('⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить подпроблему:\n{{ subproblem.title | e }}{%- if subproblem.photos and subproblem.photos | length > 0 %}\n\nБудет удалено {{ subproblem.photos | length }} шаг(ов) с фото и описаниями.{%- endif %}{%- if subproblem.video %}\n\nТакже будет удалено видео.{%- endif %}\n\nВсе данные будут удалены безвозвратно!\n\nПродолжить удаление?');"
+                                  onclick="event.stopPropagation();">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-danger">Удалить</button>
+                            </form>
+                        </div>
                     </div>
                     <div class="subproblem-title">{{ subproblem.title | e }}</div>
                     <div class="subproblem-stats">

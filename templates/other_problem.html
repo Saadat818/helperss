@@ -12,7 +12,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             margin: 0;
             padding: 20px;
@@ -20,11 +20,11 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            color: #333;
+            color: #e8e8e8;
         }
 
         .container {
-            background-color: #ffffff;
+            background: linear-gradient(180deg, #1a1a1a, #202020); border: 1px solid #151515;
             padding: 45px;
             border-radius: 20px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -46,7 +46,7 @@
         }
 
         h2 {
-            color: #007b7e;
+            color: #e8e8e8;
             margin-bottom: 25px;
             font-size: 24px;
             font-weight: 600;
@@ -55,7 +55,7 @@
         textarea {
             width: 100%;
             padding: 15px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #2a2a2a;
             border-radius: 12px;
             box-sizing: border-box;
             font-size: 16px;
@@ -63,12 +63,14 @@
             resize: vertical;
             transition: all 0.3s ease;
             min-height: 120px;
+            background: #1a1a1a;
+            color: #e8e8e8;
         }
 
         textarea:focus {
             outline: none;
-            border-color: #007b7e;
-            box-shadow: 0 0 0 3px rgba(0, 123, 126, 0.1);
+            border-color: #00a651;
+            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.1);
         }
 
         .file-input-wrapper {
@@ -80,7 +82,7 @@
             display: block;
             margin-bottom: 15px;
             font-weight: 600;
-            color: #007b7e;
+            color: #e8e8e8;
             font-size: 16px;
         }
 
@@ -94,9 +96,9 @@
         .screenshot-slot {
             width: 150px;
             height: 150px;
-            border: 2px dashed #007bff;
+            border: 2px dashed #00a651;
             border-radius: 12px;
-            background-color: #f0f8ff;
+            background-color: #1a1a1a;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -195,10 +197,37 @@
             text-align: center;
         }
 
+        .video-slot {
+            width: 100%;
+            border: 2px dashed #00a651;
+            border-radius: 12px;
+            background-color: #1a1a1a;
+            padding: 18px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .video-slot:hover {
+            background-color: #141414;
+            border-color: #009448;
+        }
+
+        .video-slot input[type="file"] {
+            display: none;
+        }
+
+        .video-name {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #b5b5b5;
+            word-break: break-all;
+        }
+
         button[type="submit"] {
             width: 100%;
             padding: 15px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            background: linear-gradient(135deg, #00a651 0%, #009448 100%);
             color: white;
             border: none;
             border-radius: 12px;
@@ -207,11 +236,11 @@
             font-weight: 600;
             transition: all 0.3s ease;
             margin-top: 25px;
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.3);
         }
 
         button[type="submit"]:hover {
-            background: linear-gradient(135deg, #0056b3 0%, #003d82 100%);
+            background: linear-gradient(135deg, #009448 0%, #007a3a 100%);
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
         }
@@ -248,13 +277,11 @@
     </style>
 </head>
 <body>
-<a href="javascript:history.back()" class="back-link">
-    ⬅️ Назад
-</a>
     <div class="container">
         <h2>Пожалуйста, опишите вашу проблему как можно подробнее.</h2>
         <form action="{{ url_for('other_problem') }}" method="POST" enctype="multipart/form-data">
          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="problem_type" value="{{ 'cisco' if is_cisco else 'other' }}">
 
          <textarea name="problem" id="problem" rows="10" placeholder="Опишите вашу проблему..." required></textarea>
 
@@ -292,6 +319,21 @@
              <p class="file-note">Нажмите на область, выберите файл или вставьте из буфера (Ctrl+V)<br>Форматы: JPG, PNG, GIF (максимум 10 МБ)</p>
          </div>
 
+         {% if is_cisco %}
+         <div class="file-input-wrapper">
+             <label class="file-input-label">Прикрепите видео (необязательно, 1 файл):</label>
+             <div class="video-slot" id="video-slot">
+                 <input type="file" name="video" id="video-input" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo">
+                 <div class="placeholder">
+                     <div class="placeholder-icon">🎥</div>
+                     <div class="placeholder-text">Нажмите для выбора видео</div>
+                 </div>
+                 <div class="video-name" id="video-name"></div>
+             </div>
+             <p class="file-note">Форматы: MP4, MOV, WEBM, AVI (максимум 50 МБ)</p>
+         </div>
+         {% endif %}
+
       <button type="submit">Отправить заявку</button>
     </form>
     </div>
@@ -316,7 +358,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Фокус для Ctrl+V
         slot.addEventListener('focus', function() {
             activeSlot = slot;
-            slot.style.boxShadow = '0 0 0 3px rgba(0, 123, 255, 0.3)';
+            slot.style.boxShadow = '0 0 0 3px rgba(0, 166, 81, 0.3)';
         });
 
         slot.addEventListener('blur', function() {
@@ -408,6 +450,37 @@ document.addEventListener('DOMContentLoaded', function() {
         slot.classList.remove('has-image');
         preview.src = '';
         input.value = '';
+    }
+
+    const videoSlot = document.getElementById('video-slot');
+    if (videoSlot) {
+        const videoInput = document.getElementById('video-input');
+        const videoName = document.getElementById('video-name');
+
+        videoSlot.addEventListener('click', function() {
+            videoInput.click();
+        });
+
+        videoInput.addEventListener('change', function() {
+            if (videoInput.files && videoInput.files[0]) {
+                const file = videoInput.files[0];
+                if (!file.type.startsWith('video/')) {
+                    alert('Пожалуйста, выберите видео');
+                    videoInput.value = '';
+                    videoName.textContent = '';
+                    return;
+                }
+                if (file.size > 50 * 1024 * 1024) {
+                    alert('Видео слишком большое. Максимум 50 МБ');
+                    videoInput.value = '';
+                    videoName.textContent = '';
+                    return;
+                }
+                videoName.textContent = file.name;
+            } else {
+                videoName.textContent = '';
+            }
+        });
     }
 });
 </script>

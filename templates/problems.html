@@ -110,6 +110,37 @@
             transform: translateY(-1px);
         }
 
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            color: var(--text);
+            background: rgba(0, 166, 81, 0.15);
+            border: 1px solid rgba(0, 166, 81, 0.3);
+            padding: 10px 16px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .back-link:hover {
+            background: rgba(0, 166, 81, 0.25);
+            border-color: rgba(0, 166, 81, 0.5);
+            transform: translateY(-2px);
+            text-decoration: none;
+        }
+
+        .back-link:active {
+            transform: translateY(0);
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 32px 24px;
@@ -126,6 +157,13 @@
             a {
                 padding: 16px 20px;
                 font-size: 15px;
+            }
+
+            .back-link {
+                top: 16px;
+                left: 16px;
+                font-size: 12px;
+                padding: 8px 14px;
             }
         }
 
@@ -220,6 +258,10 @@
     </style>
 </head>
 <body>
+<a href="{{ url_for('choose_help_type') }}" class="back-link">
+    ⬅️ Назад
+</a>
+
 <button class="admin-btn" onclick="showAdminModal()">⚙️ Админ</button>
 
 <div class="modal-overlay" id="adminModal">
@@ -255,10 +297,14 @@
     }
     async function checkAdminPassword() {
         const password = document.getElementById('adminPassword').value;
+        const csrfToken = '{{ csrf_token() }}';
         try {
             const response = await fetch('/api/admin/check-password', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
                 body: JSON.stringify({ password: password, section: 'manuals' })
             });
             const result = await response.json();

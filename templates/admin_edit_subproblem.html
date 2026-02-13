@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -296,6 +296,186 @@
             color: #155724;
             border-left: 4px solid #28a745;
         }
+    
+        /* Admin Dark Theme */
+        :root {
+            --bg: #0c0c0c;
+            --panel: #1a1a1a;
+            --panel-2: #202020;
+            --panel-3: #141414;
+            --text: #e8e8e8;
+            --muted: #b5b5b5;
+            --border: #242424;
+            --accent: #00a651;
+            --accent-2: #009448;
+            --danger: #e94b5a;
+            --warning: #f2b705;
+        }
+
+        body {
+            background: var(--bg) !important;
+            color: var(--text);
+        }
+
+        .container {
+            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
+            border: 1px solid #151515;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .header,
+        .form-actions {
+            border-bottom: 1px solid #2a2a2a !important;
+            border-top: 1px solid #2a2a2a !important;
+        }
+
+        h1, h2, h3, h4 {
+            color: var(--text) !important;
+        }
+
+        .subtitle,
+        .stat-label,
+        .subproblems-count,
+        .helper-text,
+        .help-text,
+        .info-text,
+        .warning-text,
+        .error-text,
+        .role-description,
+        label {
+            color: var(--muted) !important;
+        }
+
+        .stat-card,
+        .manual-card,
+        .form-section,
+        .info-box,
+        .warning-box,
+        .error-card,
+        .subproblem-card,
+        .problem-item,
+        .upload-form,
+        .modal-content,
+        .preview-container,
+        .photo-item,
+        .video-item,
+        .stats-summary,
+        .stat-item {
+            background: var(--panel-3) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 14px;
+            color: var(--text);
+        }
+
+        .warning-box {
+            border-color: rgba(242, 183, 5, 0.4) !important;
+            background: rgba(242, 183, 5, 0.08) !important;
+        }
+
+        .error-card {
+            border-color: rgba(233, 75, 90, 0.4) !important;
+            background: rgba(233, 75, 90, 0.08) !important;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"],
+        input[type="email"],
+        textarea,
+        select {
+            background: #111 !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
+        }
+
+        table {
+            color: var(--text);
+        }
+
+        th {
+            background: #1f1f1f !important;
+            color: var(--text) !important;
+            border-bottom: 1px solid #2a2a2a !important;
+        }
+
+        td {
+            background: #141414 !important;
+            border-bottom: 1px solid #242424 !important;
+        }
+
+        tr:nth-child(even) td {
+            background: #171717 !important;
+        }
+
+        .btn {
+            border-radius: 12px !important;
+        }
+
+        .btn-primary,
+        .btn-success {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
+        }
+
+        .btn-primary:hover,
+        .btn-success:hover {
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
+        }
+
+        .btn-secondary,
+        .btn-logout {
+            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
+        }
+
+        .btn-danger,
+        .btn-delete {
+            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
+            color: #1b1b1b !important;
+            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
+        }
+
+        .alert-success {
+            background-color: rgba(0, 166, 81, 0.12) !important;
+            color: #bfe8d1 !important;
+            border: 1px solid rgba(0, 166, 81, 0.25) !important;
+        }
+
+        .alert-danger,
+        .danger {
+            background-color: rgba(233, 75, 90, 0.12) !important;
+            color: #f3c0c6 !important;
+            border: 1px solid rgba(233, 75, 90, 0.25) !important;
+        }
+
+        .back-link {
+            background: rgba(26, 26, 26, 0.95) !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        .back-link:hover {
+            border-color: var(--accent) !important;
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
+        }
     </style>
 </head>
 <body>
@@ -308,7 +488,11 @@
 
         <div class="header">
             <h1>✏️ {{ subproblem.title | e }}</h1>
-            <a href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}" class="btn btn-secondary">← Назад</a>
+            {% if is_simple_manual %}
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">← Назад</a>
+            {% else %}
+                <a href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}" class="btn btn-secondary">← Назад</a>
+            {% endif %}
         </div>
 
         {% with messages = get_flashed_messages() %}
@@ -367,6 +551,9 @@
                                 {% endif %}
                                 <button type="button" class="btn btn-upload" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);" onclick="showInsertStepForm({{ loop.index0 }})">
                                     ➕ Добавить шаг после
+                                </button>
+                                <button type="button" class="btn btn-delete" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);" onclick="confirmDeleteStep({{ loop.index0 }}, {{ loop.index }})">
+                                    🗑️ Удалить шаг
                                 </button>
                             </div>
                         </div>
@@ -490,6 +677,24 @@
                 </div>
             </div>
 
+            <!-- Секция для преобразования в мануал с подпроблемами (только для простых мануалов) -->
+            {% if is_simple_manual %}
+            <div class="photo-item" style="border-left-color: #6f42c1; background: #f3ecff; margin-top: 20px;">
+                <div class="photo-header">
+                    <span class="photo-number" style="color: #6f42c1;">🔄 Преобразовать в мануал с подпроблемами</span>
+                    <div>
+                        <a href="{{ url_for('admin_create_subproblem', manual_id=manual_id) }}" class="btn btn-upload" style="background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%); text-decoration: none; color: white;">
+                            Добавить подпроблему
+                        </a>
+                    </div>
+                </div>
+                <div style="padding: 15px; font-size: 13px; color: #666;">
+                    Вы можете преобразовать этот простой мануал в мануал с подпроблемами.<br>
+                    Это полезно, когда существует несколько разных сценариев решения проблемы.
+                </div>
+            </div>
+            {% endif %}
+
             <button type="submit" class="btn btn-save">Сохранить изменения</button>
         </form>
     </div>
@@ -499,11 +704,12 @@
         <div class="modal-content">
             <div class="modal-header">⚠️ Подтверждение удаления</div>
             <div class="modal-body">
-                Вы действительно хотите удалить фото <strong id="photoNumber"></strong>?<br>
-                После подтверждения появится форма для загрузки нового файла.
+                <strong>Вы действительно хотите удалить фото шага <span id="photoNumber"></span>?</strong><br><br>
+                После удаления фото будет удалено навсегда.<br>
+                Появится форма для загрузки нового файла.
             </div>
             <div class="modal-buttons">
-                <button class="btn btn-cancel" onclick="closeDeleteModal()">Нет</button>
+                <button class="btn btn-cancel" onclick="closeDeleteModal()">Отмена</button>
                 <button class="btn btn-confirm" onclick="deletePhoto()">Да, удалить</button>
             </div>
         </div>
@@ -514,12 +720,31 @@
         <div class="modal-content">
             <div class="modal-header">⚠️ Подтверждение удаления видео</div>
             <div class="modal-body">
-                Вы действительно хотите удалить видео-мануал?<br>
+                <strong>Вы действительно хотите удалить видео-мануал?</strong><br><br>
+                Видео будет удалено безвозвратно.<br>
                 Это действие нельзя будет отменить.
             </div>
             <div class="modal-buttons">
-                <button class="btn btn-cancel" onclick="closeDeleteVideoModal()">Нет</button>
+                <button class="btn btn-cancel" onclick="closeDeleteVideoModal()">Отмена</button>
                 <button class="btn btn-confirm" onclick="deleteVideo()">Да, удалить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal подтверждения удаления шага -->
+    <div id="deleteStepModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">⚠️ Удаление шага</div>
+            <div class="modal-body">
+                <strong>Вы действительно хотите удалить шаг <span id="stepNumber"></span>?</strong><br><br>
+                Будут удалены:<br>
+                • Фотография (если есть)<br>
+                • Описание шага<br><br>
+                <strong style="color: #dc3545;">Это действие нельзя отменить!</strong>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-cancel" onclick="closeDeleteStepModal()">Отмена</button>
+                <button class="btn btn-confirm" onclick="deleteStep()">Да, удалить шаг</button>
             </div>
         </div>
     </div>
@@ -595,6 +820,40 @@
         function uploadNewVideo() {
             const url = `/admin/upload-video?manual_id=${manualId}&subproblem_id=${subproblemId}`;
             window.location.href = url;
+        }
+
+        // Функции для удаления целого шага
+        let currentDeleteStepTarget = null;
+
+        function confirmDeleteStep(stepIndex, stepNumber) {
+            currentDeleteStepTarget = stepIndex;
+            document.getElementById('stepNumber').textContent = stepNumber;
+            document.getElementById('deleteStepModal').style.display = 'block';
+        }
+
+        function closeDeleteStepModal() {
+            document.getElementById('deleteStepModal').style.display = 'none';
+            currentDeleteStepTarget = null;
+        }
+
+        function deleteStep() {
+            if (currentDeleteStepTarget === null) return;
+
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/admin/delete-step';
+
+            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+            form.innerHTML = `
+                <input type="hidden" name="csrf_token" value="${csrfToken}">
+                <input type="hidden" name="manual_id" value="${manualId}">
+                <input type="hidden" name="subproblem_id" value="${subproblemId}">
+                <input type="hidden" name="step_index" value="${currentDeleteStepTarget}">
+            `;
+
+            document.body.appendChild(form);
+            form.submit();
         }
 
         // Функции для добавления нового шага в конец

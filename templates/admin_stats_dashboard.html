@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Статистика обращений - Админ-панель</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
     <style>
         * {
             margin: 0;
@@ -14,7 +14,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -144,6 +144,10 @@
 
         .stat-card.info {
             border-left-color: #17a2b8;
+        }
+
+        .stat-card.neutral {
+            border-left-color: #6c757d;
         }
 
         .stat-label {
@@ -288,6 +292,221 @@
                 grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             }
         }
+    
+        /* Admin Dark Theme */
+        :root {
+            --bg: #0c0c0c;
+            --panel: #1a1a1a;
+            --panel-2: #202020;
+            --panel-3: #141414;
+            --text: #e8e8e8;
+            --muted: #b5b5b5;
+            --border: #242424;
+            --accent: #00a651;
+            --accent-2: #009448;
+            --danger: #e94b5a;
+            --warning: #f2b705;
+        }
+
+        body {
+            background: var(--bg) !important;
+            color: var(--text);
+        }
+
+        .container {
+            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
+            background-color: var(--panel) !important;
+            border: 1px solid #151515;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .header,
+        .form-actions {
+            border-bottom: 1px solid #2a2a2a !important;
+            border-top: 1px solid #2a2a2a !important;
+        }
+
+        h1, h2, h3, h4 {
+            color: var(--text) !important;
+        }
+
+        .chart-container,
+        .problems-list,
+        .departments-table {
+            background: linear-gradient(180deg, var(--panel-3), #101010) !important;
+            border: 1px solid var(--border) !important;
+        }
+
+        .chart-container h2,
+        .problems-list h2,
+        .departments-table h2 {
+            color: var(--text) !important;
+        }
+
+        .problem-text {
+            color: var(--text) !important;
+        }
+
+        .loading {
+            color: var(--muted) !important;
+        }
+
+        .period-btn {
+            background: #121212 !important;
+            color: var(--text) !important;
+            border-color: #2a2a2a !important;
+        }
+
+        .period-btn:hover,
+        .period-btn.active {
+            background: var(--accent) !important;
+            color: #fff !important;
+            border-color: rgba(0, 166, 81, 0.6) !important;
+        }
+
+        .subtitle,
+        .stat-label,
+        .subproblems-count,
+        .helper-text,
+        .help-text,
+        .info-text,
+        .warning-text,
+        .error-text,
+        .role-description,
+        label {
+            color: var(--muted) !important;
+        }
+
+        .stat-card,
+        .manual-card,
+        .form-section,
+        .info-box,
+        .warning-box,
+        .error-card,
+        .subproblem-card,
+        .problem-item,
+        .upload-form,
+        .modal-content,
+        .preview-container,
+        .photo-item,
+        .video-item,
+        .stats-summary,
+        .stat-item {
+            background: var(--panel-3) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 14px;
+            color: var(--text);
+        }
+
+        .warning-box {
+            border-color: rgba(242, 183, 5, 0.4) !important;
+            background: rgba(242, 183, 5, 0.08) !important;
+        }
+
+        .error-card {
+            border-color: rgba(233, 75, 90, 0.4) !important;
+            background: rgba(233, 75, 90, 0.08) !important;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"],
+        input[type="email"],
+        textarea,
+        select {
+            background: #111 !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
+        }
+
+        table {
+            color: var(--text);
+        }
+
+        th {
+            background: #1f1f1f !important;
+            color: var(--text) !important;
+            border-bottom: 1px solid #2a2a2a !important;
+        }
+
+        td {
+            background: #141414 !important;
+            border-bottom: 1px solid #242424 !important;
+        }
+
+        tr:nth-child(even) td {
+            background: #171717 !important;
+        }
+
+        .btn {
+            border-radius: 12px !important;
+        }
+
+        .btn-primary,
+        .btn-success {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
+        }
+
+        .btn-primary:hover,
+        .btn-success:hover {
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
+        }
+
+        .btn-secondary,
+        .btn-logout {
+            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
+        }
+
+        .btn-danger,
+        .btn-delete {
+            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
+            color: #1b1b1b !important;
+            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
+        }
+
+        .alert-success {
+            background-color: rgba(0, 166, 81, 0.12) !important;
+            color: #bfe8d1 !important;
+            border: 1px solid rgba(0, 166, 81, 0.25) !important;
+        }
+
+        .alert-danger,
+        .danger {
+            background-color: rgba(233, 75, 90, 0.12) !important;
+            color: #f3c0c6 !important;
+            border: 1px solid rgba(233, 75, 90, 0.25) !important;
+        }
+
+        .back-link {
+            background: rgba(26, 26, 26, 0.95) !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        .back-link:hover {
+            border-color: var(--accent) !important;
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
+        }
     </style>
 </head>
 <body>
@@ -303,11 +522,11 @@
 
         <!-- Фильтр по периоду -->
         <div class="period-selector">
-            <button class="period-btn" onclick="loadStats(7)">7 дней</button>
-            <button class="period-btn" onclick="loadStats(14)">14 дней</button>
-            <button class="period-btn active" onclick="loadStats(30)">30 дней</button>
-            <button class="period-btn" onclick="loadStats(90)">90 дней</button>
-            <button class="period-btn" onclick="loadStats(180)">180 дней</button>
+            <button class="period-btn" onclick="loadStats(7, this)">7 дней</button>
+            <button class="period-btn" onclick="loadStats(14, this)">14 дней</button>
+            <button class="period-btn active" onclick="loadStats(30, this)">30 дней</button>
+            <button class="period-btn" onclick="loadStats(90, this)">90 дней</button>
+            <button class="period-btn" onclick="loadStats(180, this)">180 дней</button>
         </div>
 
         <!-- Общая статистика -->
@@ -317,19 +536,28 @@
                 <div class="stat-value" id="totalRequests">—</div>
             </div>
             <div class="stat-card success">
-                <div class="stat-label">Помогло (видео + помощник)</div>
-                <div class="stat-value" id="helpedRequests">—</div>
-                <div class="stat-percentage" id="helpedPercentage"></div>
+                <div class="stat-label">Видео помогло</div>
+                <div class="stat-value" id="videoHelped">—</div>
             </div>
             <div class="stat-card danger">
-                <div class="stat-label">Не помогло / Заявки</div>
-                <div class="stat-value" id="notHelpedRequests">—</div>
-                <div class="stat-percentage" id="notHelpedPercentage"></div>
+                <div class="stat-label">Видео не помогло</div>
+                <div class="stat-value" id="videoNotHelped">—</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-label">Текстовый мануал помог</div>
+                <div class="stat-value" id="manualHelped">—</div>
+            </div>
+            <div class="stat-card danger">
+                <div class="stat-label">Текстовый мануал не помог</div>
+                <div class="stat-value" id="manualNotHelped">—</div>
             </div>
             <div class="stat-card info">
-                <div class="stat-label">Самостоятельно решено (СПО)</div>
-                <div class="stat-value" id="selfSolvedRequests">—</div>
-                <div class="stat-percentage" id="selfSolvedPercentage"></div>
+                <div class="stat-label">Заявки (создано)</div>
+                <div class="stat-value" id="ticketsCreated">—</div>
+            </div>
+            <div class="stat-card neutral">
+                <div class="stat-label">Cisco заявки</div>
+                <div class="stat-value" id="ciscoTickets">—</div>
             </div>
         </div>
 
@@ -366,18 +594,21 @@
 
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
-            loadStats(30);
+            const activeBtn = document.querySelector('.period-btn.active');
+            loadStats(30, activeBtn);
         });
 
         // Загрузка всей статистики
-        async function loadStats(days) {
+        async function loadStats(days, btnEl) {
             currentPeriod = days;
 
             // Обновляем активную кнопку
             document.querySelectorAll('.period-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-            event.target.classList.add('active');
+            if (btnEl) {
+                btnEl.classList.add('active');
+            }
 
             // Загружаем все данные параллельно
             try {
@@ -413,22 +644,22 @@
         // Обновление общей статистики
         function updateSummary(data) {
             document.getElementById('totalRequests').textContent = data.total;
-            document.getElementById('helpedRequests').textContent = data.helped;
-            document.getElementById('notHelpedRequests').textContent = data.not_helped;
-            document.getElementById('selfSolvedRequests').textContent = data.self_solved;
 
-            // Проценты
-            const total = data.total || 1;
-            document.getElementById('helpedPercentage').textContent =
-                `${((data.helped / total) * 100).toFixed(1)}% от всех обращений`;
-            document.getElementById('notHelpedPercentage').textContent =
-                `${((data.not_helped / total) * 100).toFixed(1)}% от всех обращений`;
-            document.getElementById('selfSolvedPercentage').textContent =
-                `${((data.self_solved / total) * 100).toFixed(1)}% от всех обращений`;
+            const b = (data && data.breakdown) ? data.breakdown : {};
+            document.getElementById('videoHelped').textContent = b.video_helped ?? '0';
+            document.getElementById('videoNotHelped').textContent = b.video_not_helped ?? '0';
+            document.getElementById('manualHelped').textContent = b.manual_helped ?? '0';
+            document.getElementById('manualNotHelped').textContent = b.manual_not_helped ?? '0';
+            document.getElementById('ticketsCreated').textContent = b.tickets_created ?? data.total ?? '0';
+            document.getElementById('ciscoTickets').textContent = b.tickets_created_cisco ?? '0';
         }
 
         // Обновление графика timeline
         function updateTimeline(data) {
+            if (typeof Chart === 'undefined') {
+                showError('График недоступен: Chart.js не загрузился (проверь static/vendor/chart.umd.min.js)');
+                return;
+            }
             const ctx = document.getElementById('timelineChart').getContext('2d');
 
             // Уничтожаем предыдущий график если есть
@@ -485,7 +716,8 @@
                     plugins: {
                         legend: {
                             display: true,
-                            position: 'top'
+                            position: 'top',
+                            labels: { color: '#b5b5b5' }
                         },
                         tooltip: {
                             backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -499,11 +731,17 @@
                         }
                     },
                     scales: {
+                        x: {
+                            ticks: { color: '#b5b5b5' },
+                            grid: { color: '#242424' }
+                        },
                         y: {
                             beginAtZero: true,
                             ticks: {
-                                precision: 0
-                            }
+                                precision: 0,
+                                color: '#b5b5b5'
+                            },
+                            grid: { color: '#242424' }
                         }
                     }
                 }

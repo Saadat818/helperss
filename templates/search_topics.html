@@ -103,6 +103,12 @@
             text-align: left;
         }
 
+        .search-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
         .search-label {
             display: block;
             margin-bottom: 10px;
@@ -124,6 +130,23 @@
             transition: all 0.3s ease;
         }
 
+        .clear-search-btn {
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg);
+            color: var(--muted);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .clear-search-btn:hover {
+            border-color: rgba(0, 166, 81, 0.45);
+            color: var(--text);
+        }
+
         .search-input:focus {
             outline: none;
             border-color: var(--green);
@@ -139,6 +162,14 @@
             font-size: 12px;
             color: var(--muted);
             font-style: italic;
+        }
+
+        .search-meta {
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--muted);
+            text-align: left;
+            min-height: 18px;
         }
 
         .topic-results {
@@ -179,6 +210,12 @@
 
         .topic-item:hover {
             border-color: rgba(0, 166, 81, 0.5);
+            transform: translateX(4px);
+        }
+
+        .topic-item.active-keyboard {
+            border-color: var(--green);
+            box-shadow: 0 0 0 2px rgba(0, 166, 81, 0.2);
             transform: translateX(4px);
         }
 
@@ -307,6 +344,14 @@
             display: inline-block;
             white-space: nowrap;
             margin-top: 6px;
+        }
+
+        .match-highlight {
+            background: rgba(0, 212, 170, 0.18);
+            color: var(--greenLight);
+            border-radius: 4px;
+            padding: 0 3px;
+            font-weight: 700;
         }
 
         .sidebar h3 {
@@ -464,14 +509,18 @@
 
                 <div class="search-box">
                     <label class="search-label">💬 Опишите вашу проблему или вопрос:</label>
-                    <input
-                        type="text"
-                        id="search_query"
-                        class="search-input"
-                        placeholder="Например: не проходит платеж по карте..."
-                        autocomplete="off"
-                        required
-                    >
+                    <div class="search-controls">
+                        <input
+                            type="text"
+                            id="search_query"
+                            class="search-input"
+                            placeholder="Например: не проходит платеж по карте..."
+                            autocomplete="off"
+                            required
+                        >
+                        <button type="button" id="clear_search_btn" class="clear-search-btn">Очистить</button>
+                    </div>
+                    <div id="search_meta" class="search-meta"></div>
                     <p class="search-hint">💡 Введите минимум 3 символа для начала поиска</p>
                 </div>
 
@@ -482,10 +531,15 @@
 
     <script>
         var searchTimeout = null;
+        const csrfToken = '{{ csrf_token() }}';
         const searchInput = document.getElementById('search_query');
+        const clearSearchBtn = document.getElementById('clear_search_btn');
+        const searchMeta = document.getElementById('search_meta');
         const selectedChannelInput = document.getElementById('selected_channel');
         const topicResults = document.getElementById('topic_results');
         const channelButtons = document.querySelectorAll('.channel-btn');
+        let activeRequestController = null;
+        let highlightedIndex = -1;
 
         // Устанавливаем "Физ лица" активным по умолчанию
         const defaultChannel = 'Физ лица';
@@ -505,39 +559,95 @@
         loadChannelTopics(defaultChannel);
 
         // Функция поиска тематик
+        function updateSearchMeta(text) {
+            searchMeta.textContent = text || '';
+        }
+
+        function highlightText(text, query) {
+            if (!query || query.length < 3) {
+                return escapeHtml(text);
+            }
+
+            const escapedText = escapeHtml(text);
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedQuery, 'gi');
+            return escapedText.replace(regex, function(match) {
+                return '<span class="match-highlight">' + match + '</span>';
+            });
+        }
+
+        function applyKeyboardHighlight(items) {
+            items.forEach(function(item, idx) {
+                if (idx === highlightedIndex) {
+                    item.classList.add('active-keyboard');
+                } else {
+                    item.classList.remove('active-keyboard');
+                }
+            });
+        }
+
         async function searchTopics(query) {
+            const selectedChannel = selectedChannelInput.value;
+
+            if (!query) {
+                updateSearchMeta(selectedChannel ? 'Показаны все тематики выбранного канала' : 'Показаны все тематики');
+                if (selectedChannel) {
+                    await loadChannelTopics(selectedChannel);
+                } else {
+                    await loadAllTopics();
+                }
+                return;
+            }
+
             if (query.length < 3) {
+                updateSearchMeta('Введите еще ' + (3 - query.length) + ' симв. для поиска');
                 topicResults.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>Введите минимум 3 символа для начала поиска</p></div>';
                 return;
             }
 
             topicResults.innerHTML = '<div class="loading">🔍 Поиск тематик...</div>';
+            updateSearchMeta('Выполняется поиск...');
 
             try {
-                var selectedChannel = selectedChannelInput.value;
+                if (activeRequestController) {
+                    activeRequestController.abort();
+                }
+                activeRequestController = new AbortController();
+
                 var response = await fetch('/api/search_topic', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({query: query, channel: selectedChannel})
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({query: query, channel: selectedChannel}),
+                    signal: activeRequestController.signal
                 });
 
                 var data = await response.json();
 
                 if (data.success && data.results.length > 0) {
-                    displayTopics(data.results);
+                    updateSearchMeta('Найдено: ' + data.results.length + ' | Запрос: "' + query + '"' + (selectedChannel ? ' | Канал: ' + selectedChannel : ''));
+                    displayTopics(data.results, query);
                 } else {
+                    updateSearchMeta('Совпадений не найдено');
                     topicResults.innerHTML = '<div class="no-results"><p>❌ Тематики не найдены</p><p style="margin-top: 10px; font-size: 13px;">Попробуйте изменить описание или использовать другие ключевые слова</p></div>';
                 }
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                updateSearchMeta('Ошибка поиска');
                 topicResults.innerHTML = '<div class="no-results">❌ Ошибка поиска тематик. Попробуйте еще раз.</div>';
             }
         }
 
         // Отображение найденных тематик
-        function displayTopics(topics) {
+        function displayTopics(topics, query) {
             topicResults.innerHTML = '';
+            highlightedIndex = -1;
 
-            topics.forEach(function(topic) {
+            topics.forEach(function(topic, idx) {
                 var topicDiv = document.createElement('div');
                 topicDiv.className = 'topic-item';
                 topicDiv.setAttribute('data-topic-id', topic.id);
@@ -556,13 +666,18 @@
 
                 var contentHTML = '<div class="topic-header">' +
                     '<div style="flex: 1;">' +
-                        '<div class="topic-name">' + escapeHtml(topicName) + '</div>' +
+                        '<div class="topic-name">' + highlightText(topicName, query) + '</div>' +
                         '<div class="topic-channel-badge">📂 ' + escapeHtml(channelName) + '</div>' +
                     '</div>' +
                     '<span class="topic-similarity">' + topic.similarity + '%</span>' +
                 '</div>';
 
                 topicDiv.innerHTML = contentHTML;
+                topicDiv.addEventListener('click', function() {
+                    const items = Array.from(topicResults.querySelectorAll('.topic-item'));
+                    highlightedIndex = idx;
+                    applyKeyboardHighlight(items);
+                });
 
                 topicResults.appendChild(topicDiv);
             });
@@ -584,6 +699,37 @@
             searchTimeout = setTimeout(() => {
                 searchTopics(query);
             }, 300);
+        });
+
+        clearSearchBtn.addEventListener('click', function() {
+            searchInput.value = '';
+            highlightedIndex = -1;
+            searchInput.focus();
+            searchTopics('');
+        });
+
+        searchInput.addEventListener('keydown', function(event) {
+            const items = Array.from(topicResults.querySelectorAll('.topic-item'));
+            if (!items.length) {
+                return;
+            }
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+                applyKeyboardHighlight(items);
+                items[highlightedIndex].scrollIntoView({ block: 'nearest' });
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                highlightedIndex = Math.max(highlightedIndex - 1, 0);
+                applyKeyboardHighlight(items);
+                items[highlightedIndex].scrollIntoView({ block: 'nearest' });
+            } else if (event.key === 'Enter') {
+                if (highlightedIndex >= 0 && highlightedIndex < items.length) {
+                    event.preventDefault();
+                    items[highlightedIndex].click();
+                }
+            }
         });
 
         // Обработчики кнопок выбора канала
@@ -612,6 +758,7 @@
                         loadAllTopics();
                     }
                 }
+                updateSearchMeta(channel ? ('Канал: ' + channel) : 'Все каналы');
             });
         });
 
@@ -628,12 +775,15 @@
                 const data = await response.json();
 
                 if (data.success && data.results.length > 0) {
-                    displayTopics(data.results);
+                    updateSearchMeta('Показано тематик: ' + data.results.length);
+                    displayTopics(data.results, '');
                 } else {
+                    updateSearchMeta('Тематики не найдены');
                     topicResults.innerHTML = '<div class="no-results">❌ Тематики не найдены</div>';
                 }
             } catch (error) {
                 console.error('Ошибка загрузки тематик:', error);
+                updateSearchMeta('Ошибка загрузки тематик');
                 topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
             }
         }
@@ -647,6 +797,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
                     },
                     body: JSON.stringify({
                         query: '',  // Пустой запрос = все тематики канала
@@ -657,8 +808,10 @@
                 const data = await response.json();
 
                 if (data.success && data.results.length > 0) {
-                    displayTopics(data.results);
+                    updateSearchMeta('Канал: ' + channel + ' | Тематик: ' + data.results.length);
+                    displayTopics(data.results, '');
                 } else {
+                    updateSearchMeta('Для канала нет тематик');
                     topicResults.innerHTML = `
                         <div class="no-results">
                             <p>❌ Тематики для этого канала не найдены</p>
@@ -667,6 +820,7 @@
                 }
             } catch (error) {
                 console.error('Ошибка загрузки тематик:', error);
+                updateSearchMeta('Ошибка загрузки тематик');
                 topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
             }
         }
@@ -686,7 +840,10 @@
             try {
                 const response = await fetch('/api/admin/check-password', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
                     body: JSON.stringify({ password: password, section: 'topics' })
                 });
                 const result = await response.json();

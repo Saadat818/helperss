@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Изменить пароль</title>
+    <title>Создать новый мануал</title>
     <style>
         * {
             margin: 0;
@@ -17,14 +17,11 @@
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
 
         .container {
-            max-width: 500px;
-            width: 100%;
+            max-width: 700px;
+            margin: 0 auto;
             background-color: #ffffff;
             padding: 40px;
             border-radius: 15px;
@@ -32,7 +29,6 @@
         }
 
         .header {
-            text-align: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
             border-bottom: 2px solid #e9ecef;
@@ -40,70 +36,75 @@
 
         h1 {
             color: #007b7e;
-            font-size: 24px;
+            font-size: 26px;
             margin-bottom: 10px;
         }
 
-        .username-display {
-            font-size: 18px;
-            color: #495057;
-            font-weight: 600;
+        .subtitle {
+            color: #666;
+            font-size: 14px;
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
 
         label {
             display: block;
             margin-bottom: 8px;
-            color: #495057;
             font-weight: 600;
+            color: #333;
             font-size: 14px;
         }
 
-        input[type="password"] {
+        input[type="text"],
+        input[type="number"] {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e9ecef;
+            border: 2px solid #e0e0e0;
             border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.3s;
+            font-size: 15px;
+            transition: all 0.3s;
         }
 
-        input[type="password"]:focus {
+        input:focus {
             outline: none;
             border-color: #007b7e;
+            box-shadow: 0 0 0 3px rgba(0, 123, 126, 0.1);
+        }
+
+        .helper-text {
+            font-size: 13px;
+            color: #666;
+            margin-top: 6px;
         }
 
         .btn {
             padding: 12px 24px;
             border: none;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 15px;
             font-weight: 600;
             cursor: pointer;
             text-decoration: none;
             display: inline-block;
             transition: all 0.3s;
-            width: 100%;
-            text-align: center;
         }
 
-        .btn-warning {
-            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
-            color: #212529;
-            margin-bottom: 10px;
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
         }
 
-        .btn-warning:hover {
+        .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
         }
 
         .btn-secondary {
-            background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
             color: white;
+            margin-left: 10px;
         }
 
         .btn-secondary:hover {
@@ -111,8 +112,16 @@
             box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
         }
 
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e9ecef;
+        }
+
         .alert {
-            padding: 15px;
+            padding: 12px 15px;
             margin-bottom: 20px;
             border-radius: 8px;
             font-size: 14px;
@@ -122,12 +131,6 @@
             background-color: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
-        }
-
-        .info-text {
-            font-size: 12px;
-            color: #6c757d;
-            margin-top: 5px;
         }
     
         /* Admin Dark Theme */
@@ -314,8 +317,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔑 Изменить пароль</h1>
-            <div class="username-display">{{ admin.username | e }}</div>
+            <h1>➕ Создать новый мануал</h1>
+            <p class="subtitle">Добавьте новую главную категорию проблемы</p>
         </div>
 
         {% with messages = get_flashed_messages() %}
@@ -326,39 +329,36 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div style="background: #e7f3ff; border-left: 4px solid #007bff; padding: 15px; margin-bottom: 25px; border-radius: 8px;">
+            <p style="color: #004085; font-size: 14px; line-height: 1.5; margin: 0;">
+                <strong>💡 Нумерация автоматическая</strong><br>
+                <span style="font-size: 13px;">Система автоматически добавит номер к названию (например: "8. Ваше название")</span>
+            </p>
+        </div>
+
+        <form method="POST" action="{{ url_for('admin_create_manual') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
             <div class="form-group">
-                <label for="new_password">Новый пароль</label>
-                <input type="password" id="new_password" name="new_password" required
-                       minlength="6" maxlength="128"
-                       placeholder="Введите новый пароль">
-                <div class="info-text">Минимум 6 символов</div>
+                <label for="title">Название мануала *</label>
+                <input type="text" id="title" name="title" required maxlength="200" placeholder="Например: Проблемы с почтой">
+                <p class="helper-text">Краткое описание категории проблемы</p>
             </div>
 
             <div class="form-group">
-                <label for="password_confirm">Подтверждение пароля</label>
-                <input type="password" id="password_confirm" name="password_confirm" required
-                       minlength="6" maxlength="128"
-                       placeholder="Повторите новый пароль">
+                <label for="manual_type">Тип мануала *</label>
+                <select id="manual_type" name="manual_type" required style="width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
+                    <option value="with_subproblems">С подпроблемами (например: Почта → Заполнилась память, Не открывается...)</option>
+                    <option value="simple">Простой (прямо фото и описания, без подпроблем)</option>
+                </select>
+                <p class="helper-text">Выберите структуру мануала</p>
             </div>
 
-            <button type="submit" class="btn btn-warning">✅ Изменить пароль</button>
-            <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">❌ Отмена</a>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Создать мануал</button>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Отмена</a>
+            </div>
         </form>
     </div>
-
-    <script>
-        // Проверка совпадения паролей
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const password = document.getElementById('new_password').value;
-            const passwordConfirm = document.getElementById('password_confirm').value;
-
-            if (password !== passwordConfirm) {
-                e.preventDefault();
-                alert('Пароли не совпадают!');
-            }
-        });
-    </script>
 </body>
 </html>

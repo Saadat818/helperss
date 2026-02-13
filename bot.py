@@ -13,7 +13,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # Загружаем переменные окружения
 load_dotenv()
 
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
+BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
 TECH_SUPPORT_CHAT_ID = int(os.getenv('TECH_SUPPORT_CHAT_ID', '0'))
 NEW_TICKETS_THREAD_ID = int(os.getenv('NEW_TICKETS_THREAD_ID', '0'))
 IN_PROGRESS_THREAD_ID = int(os.getenv('IN_PROGRESS_THREAD_ID', '0'))
@@ -48,19 +49,15 @@ def handle_ticket_done(call):
     """Обработка нажатия кнопки 'Готово'"""
     print(f"🔔 Получен callback 'Готово'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
     try:
-        # Пересылаем оригинальное сообщение в IN_PROGRESS_THREAD_ID
-        bot.copy_message(
-            chat_id=TECH_SUPPORT_CHAT_ID,
-            from_chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            message_thread_id=IN_PROGRESS_THREAD_ID
-        )
+        original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
+        resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
 
-        # Добавляем комментарий с информацией о сотруднике
+        # Отправляем одно объединенное сообщение в раздел "В работе"
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"💬 Заявка готова ✅\n\n"
-            f"Отмечена сотрудником: {call.from_user.first_name}",
+            f"✅ НОВАЯ ЗАЯВКА РЕШЕНА ✅\n\n"
+            f"{original_message}\n\n"
+            f"👤 Решена сотрудником: {resolver_name}",
             message_thread_id=IN_PROGRESS_THREAD_ID
         )
 

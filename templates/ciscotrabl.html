@@ -13,11 +13,11 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            color: #333;
+            color: #e8e8e8;
         }
 
         .container {
-            background-color: #ffffff;
+            background: linear-gradient(180deg, #1a1a1a, #202020); border: 1px solid #151515;
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
@@ -67,7 +67,7 @@
     font-weight: normal;
 
     /* === НОВЫЕ СТИЛИ ДЛЯ ВЫДЕЛЕНИЯ ГРАНИЦ === */
-    background-color: #ffffff; /* Белый фон для контраста */
+    background: linear-gradient(180deg, #1a1a1a, #202020); border: 1px solid #151515; /* Белый фон для контраста */
     padding: 8px 12px;         /* Внутренние отступы */
     border: 1px solid #007bff; /* Синяя рамка (грань) */
     border-radius: 5px;        /* Скругление углов */
@@ -89,9 +89,6 @@
     </style>
 </head>
 <body>
-<a href="javascript:history.back()" class="back-link">
-    ⬅️ Назад
-</a>
     <div class="container">
         <h2>Пожалуйста, опишите вашу проблему как можно подробнее.</h2>
         <form action="{{ url_for('other_problem') }}" method="POST">

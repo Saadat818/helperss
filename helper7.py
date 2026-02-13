@@ -1,9 +1,12 @@
 import os
+import sqlite3
 import threading
+import json
 from typing import Any
+from datetime import datetime, timedelta
 from markupsafe import escape as m_escape
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from flask import Flask, render_template, request, session, redirect, url_for, flash, abort, jsonify
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from flask import Flask, render_template, request, session, redirect, url_for, flash, abort, jsonify, g
 from dotenv import load_dotenv
 import telebot
 import werkzeug.routing
@@ -23,6 +26,12 @@ from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_A
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
 from trainer_manager import TrainerManager
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except Exception:
+    psycopg2 = None
+    RealDictCursor = None
 
 # ============================================
 # RATE LIMITING
@@ -57,6 +66,8 @@ class RateLimiter:
         return True
 
 rate_limiter = RateLimiter()
+ticket_counter_lock = threading.Lock()
+audit_log_lock = threading.Lock()
 
 def rate_limit(max_requests: int = 60, window: int = 60):
     """Rate limiting decorator"""
@@ -103,7 +114,8 @@ csrf = CSRFProtect(app)
 # Security configurations for production
 # Security Fix: Always use secure cookies in production
 IS_DEVELOPMENT = os.getenv('FLASK_ENV', 'production') == 'development'
-app.config['SESSION_COOKIE_SECURE'] = False  # Disabled for HTTP (enable in production with HTTPS)
+default_secure_cookie = 'false' if IS_DEVELOPMENT else 'true'
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', default_secure_cookie).lower() == 'true'
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Lax for better compatibility
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
@@ -142,9 +154,66 @@ def add_security_headers(response):
 
     return response
 
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+
+@app.before_request
+def mark_request_start():
+    """Отмечает старт запроса для расчета времени выполнения."""
+    g.request_started_at = time()
+
+
+@app.after_request
+def audit_request(response):
+    """Аудит всех действий пользователей/администраторов с IP и временем."""
+    try:
+        if request.path.startswith('/static/'):
+            return response
+
+        request_duration_ms = int((time() - getattr(g, 'request_started_at', time())) * 1000)
+        request_data = {}
+
+        if request.args:
+            request_data.update({f"arg:{k}": v for k, v in request.args.items()})
+
+        if request.form:
+            request_data.update({f"form:{k}": v for k, v in request.form.items()})
+
+        if request.is_json:
+            payload = request.get_json(silent=True) or {}
+            if isinstance(payload, dict):
+                request_data.update({f"json:{k}": v for k, v in payload.items()})
+
+        if request.files:
+            for key, file in request.files.items():
+                request_data[f"file:{key}"] = f"{file.filename}|{file.mimetype}"
+
+        request_data['duration_ms'] = request_duration_ms
+        request_data['user_agent'] = request.headers.get('User-Agent', '')[:250]
+
+        action = f"{request.method} {request.path}"
+        write_audit_log(action=action, status_code=response.status_code, details=request_data)
+    except Exception as e:
+        print(f"[audit_log] Ошибка post-request аудита: {e}")
+
+    return response
+
+APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
+BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
 
 TRUSTED_PROXY_IP = os.getenv("TRUSTED_PROXY_IP")
+TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', 'topics.db')
+TICKET_NUMBER_START = int(os.getenv('TICKET_NUMBER_START', '125'))
+AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', 'topics.db')
+ANALYTICS_BACKEND = os.getenv('ANALYTICS_BACKEND', 'postgres').lower()
+ANALYTICS_USE_POSTGRES = ANALYTICS_BACKEND == 'postgres' and psycopg2 is not None
+POSTGRES_CONFIG = {
+    'host': os.getenv('POSTGRES_HOST', 'localhost'),
+    'port': os.getenv('POSTGRES_PORT', '5432'),
+    'database': os.getenv('POSTGRES_DB', 'helper_analytics'),
+    'user': os.getenv('POSTGRES_USER', 'ruslan'),
+    'password': os.getenv('POSTGRES_PASSWORD', ''),
+    'connect_timeout': 10,
+    'sslmode': os.getenv('POSTGRES_SSLMODE', 'prefer')
+}
 
 # Security Fix: Safe integer conversion with validation
 try:
@@ -152,6 +221,7 @@ try:
     NEW_TICKETS_THREAD_ID = int(os.getenv('NEW_TICKETS_THREAD_ID', '0'))
     IN_PROGRESS_THREAD_ID = int(os.getenv('IN_PROGRESS_THREAD_ID', '0'))
     SOLVED_TICKETS_THREAD_ID = int(os.getenv('SOLVED_TICKETS_THREAD_ID', '0'))
+    CISCO_TICKETS_THREAD_ID = int(os.getenv('CISCO_TICKETS_THREAD_ID', '0'))
 
     if not all([TECH_SUPPORT_CHAT_ID, NEW_TICKETS_THREAD_ID, IN_PROGRESS_THREAD_ID, SOLVED_TICKETS_THREAD_ID]):
         print("ПРЕДУПРЕЖДЕНИЕ: Не все ID чатов/топиков Telegram установлены!")
@@ -169,11 +239,486 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+
+def _init_ticket_counter_table():
+    """Инициализация таблицы для инкрементного номера заявок."""
+    try:
+        with sqlite3.connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_sequence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.commit()
+    except Exception as e:
+        print(f"[ticket_counter] Ошибка инициализации таблицы: {e}")
+
+
+def get_next_ticket_number() -> int:
+    """Возвращает следующий инкрементный номер заявки."""
+    with ticket_counter_lock:
+        with sqlite3.connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO ticket_sequence (created_at) VALUES (?)",
+                (datetime.now().strftime('%Y-%m-%d %H:%M:%S'),)
+            )
+            conn.commit()
+            seq_id = cursor.lastrowid
+            return TICKET_NUMBER_START + seq_id - 1
+
+
+def _pg_connect():
+    """Открывает новое подключение к PostgreSQL для аналитики."""
+    if not ANALYTICS_USE_POSTGRES or not psycopg2:
+        return None
+    return psycopg2.connect(**POSTGRES_CONFIG, cursor_factory=RealDictCursor)
+
+
+def _init_audit_log_table():
+    """Инициализация таблицы аудита действий пользователей и администраторов."""
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS audit_logs (
+                            id BIGSERIAL PRIMARY KEY,
+                            created_at TIMESTAMP NOT NULL,
+                            ip_address TEXT,
+                            method TEXT,
+                            path TEXT,
+                            endpoint TEXT,
+                            status_code INTEGER,
+                            actor_type TEXT,
+                            actor_username TEXT,
+                            actor_name TEXT,
+                            actor_role TEXT,
+                            action TEXT,
+                            details_json JSONB
+                        )
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_username)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_path ON audit_logs(path)")
+                conn.commit()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        ip_address TEXT,
+                        method TEXT,
+                        path TEXT,
+                        endpoint TEXT,
+                        status_code INTEGER,
+                        actor_type TEXT,
+                        actor_username TEXT,
+                        actor_name TEXT,
+                        actor_role TEXT,
+                        action TEXT,
+                        details_json TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_username)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_path ON audit_logs(path)")
+                conn.commit()
+    except Exception as e:
+        print(f"[audit_log] Ошибка инициализации таблицы: {e}")
+
+
+def _init_analytics_tables():
+    """Инициализация таблиц аналитики для dashboard."""
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS ticket_events (
+                            id BIGSERIAL PRIMARY KEY,
+                            created_at TIMESTAMP NOT NULL,
+                            event_type TEXT NOT NULL,
+                            ticket_number INTEGER,
+                            problem TEXT,
+                            department TEXT,
+                            user_name TEXT,
+                            workplace TEXT,
+                            channel TEXT,
+                            topic_name TEXT,
+                            is_cisco INTEGER DEFAULT 0,
+                            actor_name TEXT,
+                            actor_username TEXT,
+                            actor_role TEXT
+                        )
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_created_at ON ticket_events(created_at)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_type ON ticket_events(event_type)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON ticket_events(ticket_number)")
+
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS topic_changes (
+                            id BIGSERIAL PRIMARY KEY,
+                            created_at TIMESTAMP NOT NULL,
+                            action TEXT NOT NULL,
+                            topic_id INTEGER,
+                            channel TEXT,
+                            full_topic TEXT,
+                            actor_name TEXT,
+                            actor_username TEXT,
+                            actor_role TEXT,
+                            details_json JSONB
+                        )
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_changes_created_at ON topic_changes(created_at)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_changes_action ON topic_changes(action)")
+
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS topic_search_events (
+                            id BIGSERIAL PRIMARY KEY,
+                            created_at TIMESTAMP NOT NULL,
+                            query_text TEXT,
+                            channel TEXT,
+                            results_count INTEGER DEFAULT 0,
+                            actor_name TEXT,
+                            actor_username TEXT,
+                            actor_role TEXT
+                        )
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_created_at ON topic_search_events(created_at)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_channel ON topic_search_events(channel)")
+                conn.commit()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS ticket_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        ticket_number INTEGER,
+                        problem TEXT,
+                        department TEXT,
+                        user_name TEXT,
+                        workplace TEXT,
+                        channel TEXT,
+                        topic_name TEXT,
+                        is_cisco INTEGER DEFAULT 0,
+                        actor_name TEXT,
+                        actor_username TEXT,
+                        actor_role TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_created_at ON ticket_events(created_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_type ON ticket_events(event_type)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON ticket_events(ticket_number)")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS topic_changes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        topic_id INTEGER,
+                        channel TEXT,
+                        full_topic TEXT,
+                        actor_name TEXT,
+                        actor_username TEXT,
+                        actor_role TEXT,
+                        details_json TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_changes_created_at ON topic_changes(created_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_changes_action ON topic_changes(action)")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS topic_search_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        query_text TEXT,
+                        channel TEXT,
+                        results_count INTEGER DEFAULT 0,
+                        actor_name TEXT,
+                        actor_username TEXT,
+                        actor_role TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_created_at ON topic_search_events(created_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_channel ON topic_search_events(channel)")
+                conn.commit()
+    except Exception as e:
+        print(f"[analytics] Ошибка инициализации таблиц: {e}")
+
+
+def get_client_ip() -> str:
+    """Безопасно определяет клиентский IP с учетом доверенных прокси."""
+    trusted_proxies = set()
+    if TRUSTED_PROXY_IP:
+        trusted_proxies = {ip.strip() for ip in TRUSTED_PROXY_IP.split(',') if ip.strip()}
+
+    if request.remote_addr in trusted_proxies and request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr or ''
+
+
+def _sanitize_audit_payload(data: dict) -> dict:
+    """Удаляет чувствительные поля и ограничивает длину значений для аудита."""
+    sensitive_markers = ('password', 'token', 'secret', 'csrf')
+    sanitized = {}
+    for key, value in data.items():
+        key_str = str(key)
+        if any(marker in key_str.lower() for marker in sensitive_markers):
+            sanitized[key_str] = "***REDACTED***"
+            continue
+        value_str = str(value)
+        if len(value_str) > 500:
+            value_str = value_str[:500] + "...[truncated]"
+        sanitized[key_str] = value_str
+    return sanitized
+
+
+def write_audit_log(action: str, status_code: int, details: dict | None = None):
+    """Пишет запись аудита в БД."""
+    try:
+        if details is None:
+            details = {}
+
+        actor_type = 'guest'
+        actor_username = ''
+        actor_name = ''
+        actor_role = ''
+
+        if session.get('admin_logged_in'):
+            actor_type = 'admin'
+            actor_username = session.get('admin_username', '')
+            actor_name = session.get('admin_username', '')
+            actor_role = session.get('admin_role', '')
+        elif session.get('authenticated') and session.get('user_info'):
+            actor_type = 'user'
+            user_info = session.get('user_info', {})
+            actor_username = user_info.get('username', '')
+            actor_name = user_info.get('name', '')
+            actor_role = 'user'
+
+        record = {
+            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'ip_address': get_client_ip(),
+            'method': request.method,
+            'path': request.path,
+            'endpoint': request.endpoint or '',
+            'status_code': int(status_code),
+            'actor_type': actor_type,
+            'actor_username': actor_username,
+            'actor_name': actor_name,
+            'actor_role': actor_role,
+            'action': action,
+            'details_json': json.dumps(_sanitize_audit_payload(details), ensure_ascii=False)
+        }
+
+        with audit_log_lock:
+            if ANALYTICS_USE_POSTGRES:
+                with _pg_connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO audit_logs (
+                                created_at, ip_address, method, path, endpoint, status_code,
+                                actor_type, actor_username, actor_name, actor_role, action, details_json
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        """, (
+                            record['created_at'], record['ip_address'], record['method'], record['path'],
+                            record['endpoint'], record['status_code'], record['actor_type'],
+                            record['actor_username'], record['actor_name'], record['actor_role'],
+                            record['action'], record['details_json']
+                        ))
+                    conn.commit()
+            else:
+                with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                    conn.execute("""
+                        INSERT INTO audit_logs (
+                            created_at, ip_address, method, path, endpoint, status_code,
+                            actor_type, actor_username, actor_name, actor_role, action, details_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        record['created_at'], record['ip_address'], record['method'], record['path'],
+                        record['endpoint'], record['status_code'], record['actor_type'],
+                        record['actor_username'], record['actor_name'], record['actor_role'],
+                        record['action'], record['details_json']
+                    ))
+                    conn.commit()
+    except Exception as e:
+        print(f"[audit_log] Ошибка записи: {e}")
+
+
+def _current_actor():
+    """Возвращает данные текущего пользователя/админа."""
+    if session.get('admin_logged_in'):
+        return {
+            'name': session.get('admin_username', ''),
+            'username': session.get('admin_username', ''),
+            'role': session.get('admin_role', '')
+        }
+    if session.get('authenticated') and session.get('user_info'):
+        user_info = session.get('user_info', {})
+        return {
+            'name': user_info.get('name', ''),
+            'username': user_info.get('username', ''),
+            'role': 'user'
+        }
+    return {'name': '', 'username': '', 'role': 'guest'}
+
+
+def log_ticket_event(event_type: str, ticket_number: int | None = None, problem: str = '',
+                     channel: str = '', topic_name: str = '', is_cisco: bool = False):
+    """Логирует событие по заявке для аналитики."""
+    try:
+        actor = _current_actor()
+        user_info = session.get('user_info', {})
+        payload = (
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            event_type,
+            ticket_number,
+            str(problem)[:500],
+            str(user_info.get('department', ''))[:200],
+            str(user_info.get('name', ''))[:200],
+            str(user_info.get('workplace', ''))[:100],
+            str(channel)[:150],
+            str(topic_name)[:500],
+            1 if is_cisco else 0,
+            str(actor['name'])[:200],
+            str(actor['username'])[:200],
+            str(actor['role'])[:100]
+        )
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO ticket_events (
+                            created_at, event_type, ticket_number, problem, department, user_name, workplace,
+                            channel, topic_name, is_cisco, actor_name, actor_username, actor_role
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, payload)
+                conn.commit()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.execute("""
+                    INSERT INTO ticket_events (
+                        created_at, event_type, ticket_number, problem, department, user_name, workplace,
+                        channel, topic_name, is_cisco, actor_name, actor_username, actor_role
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, payload)
+                conn.commit()
+    except Exception as e:
+        print(f"[analytics] Ошибка логирования ticket_event: {e}")
+
+def log_manual_open(manual_title: str, has_video: bool):
+    """Логирует факт открытия инструкции (видео/текст)."""
+    event_type = 'manual_opened_video' if has_video else 'manual_opened_text'
+    log_ticket_event(
+        event_type=event_type,
+        ticket_number=None,
+        problem=str(manual_title or '')[:500]
+    )
+
+
+def log_topic_change(action: str, topic_id: int | None = None, channel: str = '',
+                     full_topic: str = '', details: dict | None = None):
+    """Логирует изменения по тематикам."""
+    try:
+        actor = _current_actor()
+        details = details or {}
+        details_json = json.dumps(_sanitize_audit_payload(details), ensure_ascii=False)
+        payload = (
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            action,
+            topic_id,
+            str(channel)[:150],
+            str(full_topic)[:500],
+            str(actor['name'])[:200],
+            str(actor['username'])[:200],
+            str(actor['role'])[:100],
+            details_json
+        )
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO topic_changes (
+                            created_at, action, topic_id, channel, full_topic,
+                            actor_name, actor_username, actor_role, details_json
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """, payload)
+                conn.commit()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.execute("""
+                    INSERT INTO topic_changes (
+                        created_at, action, topic_id, channel, full_topic,
+                        actor_name, actor_username, actor_role, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, payload)
+                conn.commit()
+    except Exception as e:
+        print(f"[analytics] Ошибка логирования topic_change: {e}")
+
+
+def log_topic_search(query_text: str, channel: str, results_count: int):
+    """Логирует поиски тематик для dashboard."""
+    try:
+        actor = _current_actor()
+        payload = (
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            str(query_text)[:500],
+            str(channel)[:150],
+            int(results_count),
+            str(actor['name'])[:200],
+            str(actor['username'])[:200],
+            str(actor['role'])[:100]
+        )
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO topic_search_events (
+                            created_at, query_text, channel, results_count,
+                            actor_name, actor_username, actor_role
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, payload)
+                conn.commit()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.execute("""
+                    INSERT INTO topic_search_events (
+                        created_at, query_text, channel, results_count,
+                        actor_name, actor_username, actor_role
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, payload)
+                conn.commit()
+    except Exception as e:
+        print(f"[analytics] Ошибка логирования topic_search: {e}")
+
+
+def extract_ticket_number_from_text(text: str) -> int | None:
+    """Извлекает номер заявки из текста вида 'НОВАЯ ЗАЯВКА №123'."""
+    if not text:
+        return None
+    match = re.search(r'№\s*(\d+)', text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (ValueError, TypeError):
+        return None
+
 # Инициализация TopicsManager
 tm = TopicsManager("topics.db")
 
 # Инициализация TrainerManager
 trainer_mgr = TrainerManager("topics.db")
+
+# Инициализация счётчика заявок
+_init_ticket_counter_table()
+_init_audit_log_table()
+_init_analytics_tables()
 
 # TODO: СТАТИСТИКА В РАЗРАБОТКЕ
 # Инициализация StatsManager для сбора аналитики
@@ -265,15 +810,18 @@ def get_file_url(file_id):
         print(f"Error getting file URL")
         return None
 
-def send_ticket(problem, screenshots=None, topic_info=None):
+def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_id=None):
     user_info = session.get('user_info', {})
     department = user_info.get('department', 'Неизвестно')
     name = user_info.get('name', 'Неизвестно')
     workplace = user_info.get('workplace', '')
+    ticket_number = get_next_ticket_number()
+    session['current_ticket_number'] = ticket_number
+    session.modified = True
 
     # Формируем сообщение
     support_message = (
-        f"🚨 **НОВАЯ ЗАЯВКА** 🚨\n"
+        f"🚨 **НОВАЯ ЗАЯВКА №{ticket_number}** 🚨\n"
         f"Отдел: {department}\n"
         f"Имя: {name}\n"
     )
@@ -288,11 +836,12 @@ def send_ticket(problem, screenshots=None, topic_info=None):
     # topic_info используется только на стороне веб-приложения
 
     try:
+        target_thread_id = thread_id or NEW_TICKETS_THREAD_ID
         print(f"[send_ticket] Отправка новой заявки в чат {TECH_SUPPORT_CHAT_ID}")
         msg = bot.send_message(
             TECH_SUPPORT_CHAT_ID,
             support_message,
-            message_thread_id=NEW_TICKETS_THREAD_ID,
+            message_thread_id=target_thread_id,
             parse_mode='Markdown',
             reply_markup=create_ticket_buttons()  # <- добавляем кнопки
         )
@@ -300,17 +849,42 @@ def send_ticket(problem, screenshots=None, topic_info=None):
 
         # Отправляем скриншоты, если они есть
         if screenshots:
-            for i, screenshot in enumerate(screenshots, 1):
-                try:
+            try:
+                if len(screenshots) > 1:
+                    media = []
+                    for i, screenshot in enumerate(screenshots, 1):
+                        if i == 1:
+                            media.append(InputMediaPhoto(screenshot, caption="Скриншоты"))
+                        else:
+                            media.append(InputMediaPhoto(screenshot))
+                    bot.send_media_group(
+                        TECH_SUPPORT_CHAT_ID,
+                        media,
+                        message_thread_id=target_thread_id
+                    )
+                    print(f"[send_ticket] Отправлены скриншоты альбомом ({len(screenshots)})")
+                else:
                     bot.send_photo(
                         TECH_SUPPORT_CHAT_ID,
-                        screenshot,
-                        caption=f"Скриншот {i}",
-                        message_thread_id=NEW_TICKETS_THREAD_ID
+                        screenshots[0],
+                        caption="Скриншот 1",
+                        message_thread_id=target_thread_id
                     )
-                    print(f"[send_ticket] Отправлен скриншот {i}")
-                except Exception as e:
-                    print(f"[send_ticket] Ошибка при отправке скриншота {i}: {e}")
+                    print("[send_ticket] Отправлен скриншот 1")
+            except Exception as e:
+                print(f"[send_ticket] Ошибка при отправке скриншотов: {e}")
+
+        if video:
+            try:
+                bot.send_video(
+                    TECH_SUPPORT_CHAT_ID,
+                    video,
+                    caption="Видео",
+                    message_thread_id=target_thread_id
+                )
+                print("[send_ticket] Отправлено видео")
+            except Exception as e:
+                print(f"[send_ticket] Ошибка при отправке видео: {e}")
 
         # Логируем в PostgreSQL для статистики
         topic_id = None
@@ -340,6 +914,15 @@ def send_ticket(problem, screenshots=None, topic_info=None):
                 topic_name=topic_name
             )
 
+        log_ticket_event(
+            event_type='ticket_created',
+            ticket_number=ticket_number,
+            problem=problem,
+            channel=topic_info.get('channel', '') if topic_info else '',
+            topic_name=topic_name or '',
+            is_cisco=(target_thread_id == CISCO_TICKETS_THREAD_ID and CISCO_TICKETS_THREAD_ID != 0)
+        )
+
         return msg
     except Exception as e:
         print("[send_ticket] Ошибка при отправке заявки:", e)
@@ -351,19 +934,16 @@ def send_ticket(problem, screenshots=None, topic_info=None):
 def handle_ticket_done(call):
     print(f"🔔 Получен callback от кнопки 'Готово'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
     try:
-        # Пересылаем оригинальное сообщение в IN_PROGRESS_THREAD_ID
-        bot.copy_message(
-            chat_id=TECH_SUPPORT_CHAT_ID,
-            from_chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            message_thread_id=IN_PROGRESS_THREAD_ID
-        )
+        original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
+        resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
+        ticket_number = extract_ticket_number_from_text(original_message)
 
-        # Добавляем комментарий с информацией о сотруднике
+        # Отправляем одно объединенное сообщение в раздел "В работе"
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"💬 Заявка готова ✅\n\n"
-            f"Отмечена сотрудником: {call.from_user.first_name}",
+            f"✅ НОВАЯ ЗАЯВКА РЕШЕНА ✅\n\n"
+            f"{original_message}\n\n"
+            f"👤 Решена сотрудником: {resolver_name}",
             message_thread_id=IN_PROGRESS_THREAD_ID
         )
 
@@ -372,6 +952,14 @@ def handle_ticket_done(call):
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None
+        )
+
+        log_ticket_event(
+            event_type='ticket_resolved_by_staff',
+            ticket_number=ticket_number,
+            problem=original_message,
+            channel='',
+            topic_name=''
         )
 
         print("✅ Кнопка 'Готово' успешно обработана!")
@@ -385,6 +973,8 @@ def handle_ticket_done(call):
 def handle_ticket_not_relevant(call):
     print(f"🔔 Получен callback от кнопки 'Не актуально'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
     try:
+        original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
+        ticket_number = extract_ticket_number_from_text(original_message)
         # Убираем кнопки с оригинального сообщения
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
@@ -401,6 +991,12 @@ def handle_ticket_not_relevant(call):
             message_thread_id=NEW_TICKETS_THREAD_ID,
             parse_mode='Markdown',
             reply_to_message_id=call.message.message_id
+        )
+
+        log_ticket_event(
+            event_type='ticket_not_relevant',
+            ticket_number=ticket_number,
+            problem=original_message
         )
 
         print("✅ Кнопка 'Не актуально' успешно обработана!")
@@ -442,6 +1038,12 @@ def send_solved_ticket(problem):
                     problem_id=session.get('problem_id'),
                     subproblem_id=session.get('current_subproblem_id')
                 )
+            log_ticket_event(
+                # Текстовый мануал/шаги помогли (результат до создания заявки)
+                event_type='manual_helped',
+                ticket_number=session.get('current_ticket_number'),
+                problem=problem
+            )
         except Exception as e:
             print(f"Ошибка при отправке решённой заявки: {e}")
             traceback.print_exc()
@@ -495,6 +1097,11 @@ def send_video_feedback(problem, helped):
                     problem_id=session.get('problem_id'),
                     subproblem_id=session.get('current_subproblem_id')
                 )
+            log_ticket_event(
+                event_type='video_helped' if helped else 'video_not_helped',
+                ticket_number=session.get('current_ticket_number'),
+                problem=problem
+            )
         except Exception as e:
             print(f"Ошибка при отправке фидбека по видео: {e}")
             traceback.print_exc()
@@ -542,6 +1149,8 @@ def show_manual_steps():
         data = problem_data
 
     manual_title = session.get('problem_title', 'Инструкция')
+    # Фиксируем просмотр текстовой инструкции (после видео или без видео)
+    log_manual_open(manual_title, has_video=False)
 
     # Получаем фото
     photo_urls_with_captions = []
@@ -661,6 +1270,8 @@ def select_problem(problem_id):
 
     # Загружаем актуальные мануалы из JSON
     manuals = load_manuals()
+
+    # Проверяем что мануал существует
     if problem_id not in manuals:
         print(f"[select_problem] problem_id not in manuals: {problem_id}")
         flash('Выбрана несуществующая проблема.')
@@ -719,8 +1330,15 @@ def select_problem(problem_id):
         session['problem_title'] = manual_title
 
         # Если выбрана "Другая проблема" или "CISCO" — редиректим
-        if 'Другая проблема' in str(raw_manual_title) or 'CISCO' in str(raw_manual_title):
-            print(f"[select_problem] Redirecting to other_problem for problem_id: {problem_id}")
+        raw_title = str(raw_manual_title)
+        raw_title_lower = raw_title.lower()
+        if 'другая проблема' in raw_title_lower:
+            session['other_problem_type'] = 'other'
+            print(f"[select_problem] Redirecting to other_problem (other) for problem_id: {problem_id}")
+            return redirect(url_for('other_problem'))
+        if 'cisco' in raw_title_lower:
+            session['other_problem_type'] = 'cisco'
+            print(f"[select_problem] Redirecting to other_problem (cisco) for problem_id: {problem_id}")
             return redirect(url_for('other_problem'))
 
         # --- Обрабатываем фото (показываем все шаги, даже без фото) ---
@@ -730,7 +1348,7 @@ def select_problem(problem_id):
             url = get_file_url(photo_id) if photo_id else None
             caption = photo.get('caption', '')
             safe_caption = m_escape(str(caption).strip()[:300])
-            # Добавляем ВСЕ шаги, даже если фото удалено (url = None)
+            # Добавляем ВСЕ шаги, даже если фото отсутствует (url = None)
             photo_urls_with_captions.append({'url': url, 'caption': safe_caption})
 
         # --- Обрабатываем видео если есть ---
@@ -750,6 +1368,8 @@ def select_problem(problem_id):
         safe_photos = deep_escape(photo_urls_with_captions)
 
         print(f"[select_problem] Rendering manual.html for problem_id: {problem_id}")
+        # Фиксируем просмотр инструкции (видео/текст)
+        log_manual_open(manual_title, has_video=bool(video_data))
         return render_template(
             'manual.html',
             manual=safe_manual_data,
@@ -800,7 +1420,8 @@ def show_manual(subproblem_id):
 
     # Если это подпроблема с возможностью добавления скриншотов и нет фотографий
     if can_add_screenshots and not subproblem_data.get('photos'):
-        return render_template('other_problem.html')
+        session['other_problem_type'] = 'other'
+        return render_template('other_problem.html', is_cisco=False)
 
     photo_urls_with_captions = []
     for photo in subproblem_data.get('photos', []):
@@ -827,6 +1448,9 @@ def show_manual(subproblem_id):
     safe_photos = deep_escape(photo_urls_with_captions)
     safe_video = deep_escape(video_data) if video_data else None
 
+    # Фиксируем просмотр инструкции (видео/текст)
+    log_manual_open(manual_title, has_video=bool(safe_video))
+
     return render_template(
         'manual.html',
         manual=safe_manual_data,
@@ -841,6 +1465,15 @@ def show_manual(subproblem_id):
 def other_problem():
     if 'user_info' not in session:
         return redirect(url_for('index'))
+    other_problem_type = (
+        request.args.get('type')
+        or request.form.get('problem_type')
+        or session.get('other_problem_type', 'other')
+    )
+    if other_problem_type not in ['other', 'cisco']:
+        other_problem_type = 'other'
+    session['other_problem_type'] = other_problem_type
+    is_cisco = other_problem_type == 'cisco'
     if request.method == 'POST':
         problem_description = request.form.get('problem')
 
@@ -891,10 +1524,48 @@ def other_problem():
 
                     screenshots.append(file)
 
-        send_ticket(problem_description, screenshots, topic_info)
-        session.clear()
+        video_file = None
+        if is_cisco and 'video' in request.files:
+            video = request.files.get('video')
+            if video and video.filename:
+                allowed_video_types = {
+                    'video/mp4',
+                    'video/quicktime',
+                    'video/webm',
+                    'video/x-msvideo'
+                }
+                max_video_size = 50 * 1024 * 1024  # 50 МБ
+
+                if not video.content_type or video.content_type not in allowed_video_types:
+                    flash(f'Файл {video.filename} имеет недопустимый тип. Разрешены: MP4, MOV, WEBM, AVI')
+                else:
+                    video.seek(0, os.SEEK_END)
+                    video_size = video.tell()
+                    video.seek(0)
+                    if video_size > max_video_size:
+                        flash(f'Видео {video.filename} слишком большое. Максимальный размер: 50 МБ')
+                    else:
+                        video_file = video
+
+        if is_cisco:
+            target_thread_id = CISCO_TICKETS_THREAD_ID or NEW_TICKETS_THREAD_ID
+        else:
+            target_thread_id = NEW_TICKETS_THREAD_ID
+        send_ticket(problem_description, screenshots, topic_info, video=video_file, thread_id=target_thread_id)
+        # Не сбрасываем user_info/workplace — сохраняем авторизацию
+        for key in [
+            'problem_id',
+            'problem_title',
+            'current_subproblem_id',
+            'other_problem_type',
+            'selected_topic_id',
+            'selected_topic_name',
+            'selected_topic_similarity',
+            'next_after_workplace'
+        ]:
+            session.pop(key, None)
         return render_template('ticket_sent.html')
-    return render_template('other_problem.html')
+    return render_template('other_problem.html', is_cisco=is_cisco)
 
 @app.route('/send_final_ticket')
 def send_final_ticket():
@@ -907,6 +1578,14 @@ def send_final_ticket():
         # Отправляем заявку только если флаг не установлен
         problem_description = session.get('problem_title', 'Неизвестная проблема')
         send_ticket(problem_description)
+
+        # Явно фиксируем, что текстовый мануал не помог (пользователь эскалировал в заявку)
+        # Это нужно, чтобы "Не помогло / Заявки" корректно считалось даже без доп.статуса.
+        log_ticket_event(
+            event_type='manual_not_helped',
+            ticket_number=session.get('current_ticket_number'),
+            problem=problem_description
+        )
 
         # Устанавливаем флаг что заявка отправлена
         session['ticket_sent'] = True
@@ -961,6 +1640,11 @@ def finish_unsolved():
         # Sanitize before sending
         problem_description = m_escape(str(problem_description)[:500])
         send_ticket(problem_description)
+        log_ticket_event(
+            event_type='manual_not_helped',
+            ticket_number=session.get('current_ticket_number'),
+            problem=problem_description
+        )
         return render_template('ticket_sent.html')
     except Exception as e:
         print("[finish_unsolved] Error sending ticket")
@@ -988,10 +1672,10 @@ def go_home():
 @csrf.exempt  # Exempted but protected by rate limiting
 @rate_limit(max_requests=30, window=60)  # Security Fix: Add rate limiting
 def get_all_topics_api():
-    """API для получения всех тематик (ограничено 100 записями)"""
+    """API для получения всех тематик"""
     try:
-        # Получаем все тематики с ограничением
-        topics = tm.get_all_topics(limit=100)
+        # Получаем все тематики без жесткого лимита
+        topics = tm.get_all_topics()
 
         formatted_results = []
         for topic in topics:
@@ -1021,7 +1705,6 @@ def get_all_topics_api():
         })
 
 @app.route('/api/admin/check-password', methods=['POST'])
-@csrf.exempt
 @rate_limit(max_requests=10, window=60)
 def api_admin_check_password():
     """API для быстрой проверки пароля админа из модального окна"""
@@ -1029,6 +1712,15 @@ def api_admin_check_password():
         data = request.get_json()
         password = data.get('password', '')
         section = data.get('section', '')
+
+        # В тестовом режиме принимаем упрощенные пароли (как в /admin/login)
+        TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
+        if TEST_MODE and password in ['admin', '123', 'test']:
+            session['admin_logged_in'] = True
+            session['admin_username'] = os.getenv('ADMIN_USERNAME', 'admin')
+            session['admin_role'] = ROLE_SUPER_ADMIN
+            session['admin_token'] = AdminAuth.generate_session_token()
+            return jsonify({'success': True})
 
         # Проверяем пароль через AdminAuth с username из .env
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
@@ -1047,7 +1739,6 @@ def api_admin_check_password():
 
 
 @app.route('/api/search_topic', methods=['POST'])
-@csrf.exempt  # Exempt from CSRF for API endpoint
 @rate_limit(max_requests=30, window=60)  # Security Fix: Add rate limiting
 def search_topic_api():
     """API для поиска тематики по описанию проблемы"""
@@ -1077,7 +1768,7 @@ def search_topic_api():
 
         # Если query пустой, но канал выбран - возвращаем все тематики канала
         if not query and channel:
-            topics = tm.get_topics_by_channel(channel, limit=100)
+            topics = tm.get_topics_by_channel(channel)
             formatted_results = []
             for r in topics:
                 formatted_results.append({
@@ -1090,6 +1781,7 @@ def search_topic_api():
                     'sr3': r.get('sr3', ''),
                     'sr4': r.get('sr4', '')
                 })
+            log_topic_search(query_text='', channel=channel, results_count=len(formatted_results))
             return jsonify({
                 'success': True,
                 'query': '',
@@ -1107,7 +1799,7 @@ def search_topic_api():
         # Поиск тематик
         results = tm.search(
             query=query,
-            limit=50,  # Увеличено до 50 для отображения большего количества результатов
+            limit=300,  # Показываем больше результатов в live-поиске
             threshold=0.2,  # Низкий порог для большего кол-ва результатов
             use_cache=True
         )
@@ -1137,6 +1829,7 @@ def search_topic_api():
                 'sr4': r.get('sr4', '')
             })
 
+        log_topic_search(query_text=query, channel=channel, results_count=len(formatted_results))
         return jsonify({
             'success': True,
             'query': query,
@@ -1205,6 +1898,9 @@ def handle_video_upload(message):
 @bot.message_handler(func=lambda message: message.chat.type in ['group', 'supergroup'])
 def handle_channel_messages(message):
     try:
+        thread_id = getattr(message, 'message_thread_id', None)
+        if thread_id:
+            print(f"[thread] message_thread_id={thread_id}")
         print(f"Получено сообщение: {message.text} от {message.from_user.id}")
         if message.reply_to_message:
             print(f"Это ответ на сообщение ID {message.reply_to_message.message_id}")
@@ -2685,7 +3381,7 @@ def user_login():
 
     if request.method == 'POST':
         # Rate limiting для защиты от brute force
-        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+        ip = get_client_ip()
         if not rate_limiter.check_login_attempt(ip, max_attempts=5, window=900):
             return redirect(url_for('user_login', error='rate_limit')), 429
 
@@ -2698,7 +3394,7 @@ def user_login():
 
         # Тестовый режим (без AD) - для локальной разработки
         # По умолчанию включен если нет AD_SERVER в .env
-        TEST_MODE = os.getenv('TEST_MODE', 'true').lower() == 'true' or not os.getenv('AD_SERVER')
+        TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 
         if TEST_MODE:
             # Тестовая авторизация: любой логин/пароль где пароль = "test" или "123"
@@ -2768,7 +3464,7 @@ def admin_login():
     """Страница авторизации администратора"""
     if request.method == 'POST':
         # Security Fix: Stricter rate limiting for login attempts to prevent brute force
-        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+        ip = get_client_ip()
         if not rate_limiter.check_login_attempt(ip, max_attempts=5, window=900):  # 5 attempts per 15 minutes
             flash('Слишком много попыток входа. Попробуйте через 15 минут.')
             return redirect(url_for('admin_login')), 429
@@ -2782,7 +3478,7 @@ def admin_login():
             return redirect(url_for('admin_login'))
 
         # Тестовый режим для админа
-        TEST_MODE = os.getenv('TEST_MODE', 'true').lower() == 'true' or not os.getenv('AD_SERVER')
+        TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 
         if TEST_MODE and password in ['admin', '123', 'test']:
             session['admin_logged_in'] = True
@@ -2905,8 +3601,7 @@ def admin_edit_manual(manual_id):
     if 'subproblems' in manual:
         return render_template('admin_manual_subproblems.html', manual_id=manual_id, manual=manual)
 
-    # Если нет поля subproblems - это простой мануал, редактируем его напрямую
-    # Используем ту же страницу что и для подпроблем, но с ID = manual_id (без точки)
+    # Если нет поля subproblems - это простой мануал
     return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
 
 
@@ -2941,7 +3636,6 @@ def admin_create_subproblem(manual_id):
         # Автоматически находим следующий свободный номер
         existing_nums = []
         for subp_id in manual['subproblems'].keys():
-            # Извлекаем номер после точки (например, из "8.1" получаем 1)
             if '.' in subp_id:
                 try:
                     num = int(subp_id.split('.')[1])
@@ -2950,9 +3644,7 @@ def admin_create_subproblem(manual_id):
                     pass
 
         # Находим следующий свободный номер
-        next_num = 1
-        if existing_nums:
-            next_num = max(existing_nums) + 1
+        next_num = max(existing_nums) + 1 if existing_nums else 1
 
         # Формируем полный ID подпроблемы
         subproblem_id = f"{manual_id}.{next_num}"
@@ -3047,7 +3739,6 @@ def admin_edit_simple_manual(manual_id):
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
-
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
@@ -3172,10 +3863,6 @@ def admin_update_subproblem(manual_id, subproblem_id):
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
-
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
         return redirect(url_for('admin_dashboard'))
 
     manual = admin_manager.get_manual(manual_id)
@@ -3458,7 +4145,7 @@ def admin_upload_photo():
 
             # Обновляем фото
             if admin_manager.update_photo(manual_id, subproblem_id, photo_index, new_photo_id, current_caption):
-                flash(f'Скриншот успешно обновлён! File ID: {new_photo_id}')
+                flash('Скриншот успешно обновлён')
             else:
                 flash('Ошибка при сохранении изменений')
         else:
@@ -3486,10 +4173,12 @@ def admin_add_new_step():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
-    # if not admin_manager.validate_subproblem_id(subproblem_id):
-    #     flash('Некорректный ID подпроблемы')
-    #     return redirect(url_for('admin_dashboard'))
+    # Для простых мануалов subproblem_id = manual_id, для подпроблем проверяем формат X.Y
+    manual = admin_manager.get_manual(manual_id)
+    if manual and 'subproblems' in manual:
+        if not admin_manager.validate_subproblem_id(subproblem_id):
+            flash('Некорректный ID подпроблемы')
+            return redirect(url_for('admin_dashboard'))
 
     caption = admin_manager.sanitize_text(caption, max_length=300)
     if not caption:
@@ -3511,14 +4200,11 @@ def admin_add_new_step():
     else:
         flash('Ошибка при добавлении шага')
 
-    # Редиректим правильно в зависимости от типа мануала
+    # Редирект обратно на страницу редактирования
     manual = admin_manager.get_manual(manual_id)
     if manual and 'subproblems' in manual:
-        # Мануал с подпроблемами - редирект на страницу редактирования подпроблемы
         return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
-    else:
-        # Простой мануал - редирект на страницу редактирования простого мануала
-        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
+    return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
 
 
 @app.route('/admin/upload-video', methods=['GET', 'POST'])
@@ -3603,7 +4289,7 @@ def admin_upload_video():
 
             # Добавляем видео в подпроблему
             if admin_manager.add_video_to_subproblem(manual_id, subproblem_id, video_file_id, caption):
-                flash(f'Видео успешно загружено! File ID: {video_file_id}')
+                flash('Видео успешно загружено')
             else:
                 flash('Ошибка при сохранении изменений')
         else:
@@ -3680,6 +4366,13 @@ def admin_add_topic():
 
         if result['success']:
             flash(f'Тематика успешно добавлена (ID: {result["id"]})')
+            log_topic_change(
+                action='topic_created',
+                topic_id=result.get('id'),
+                channel=channel,
+                full_topic=full_topic or '',
+                details={'sr1': sr1 or '', 'sr2': sr2 or '', 'sr3': sr3 or '', 'sr4': sr4 or ''}
+            )
         else:
             flash(f'Ошибка при добавлении тематики: {result.get("error", "Неизвестная ошибка")}')
 
@@ -3696,10 +4389,27 @@ def admin_add_topic():
 def admin_delete_topic(topic_id):
     """Удаление тематики"""
     try:
+        topic_before = None
+        try:
+            cursor = tm.conn.cursor()
+            cursor.execute("SELECT id, channel, full_topic, sr1, sr2, sr3, sr4 FROM topics WHERE id = ?", (topic_id,))
+            row = cursor.fetchone()
+            if row:
+                topic_before = dict(row)
+        except Exception:
+            topic_before = None
+
         result = tm.delete_topic(topic_id)
 
         if result['success']:
             flash(f'Тематика успешно удалена')
+            log_topic_change(
+                action='topic_deleted',
+                topic_id=topic_id,
+                channel=(topic_before or {}).get('channel', ''),
+                full_topic=(topic_before or {}).get('full_topic', ''),
+                details=topic_before or {}
+            )
         else:
             flash(f'Ошибка при удалении тематики: {result.get("error", "Неизвестная ошибка")}')
 
@@ -3782,9 +4492,19 @@ def admin_import_topics_upload():
             # Удаляем все существующие тематики если требуется
             if clear_existing:
                 cursor = tm.conn.cursor()
+                cursor.execute("SELECT COUNT(*) as cnt FROM topics")
+                before_count_row = cursor.fetchone()
+                before_count = int(before_count_row['cnt']) if before_count_row else 0
                 cursor.execute("DELETE FROM topics")
                 tm.conn.commit()
                 print(f"[admin_import_topics_upload] Все существующие тематики удалены")
+                log_topic_change(
+                    action='topics_cleared_before_import',
+                    topic_id=None,
+                    channel='',
+                    full_topic='',
+                    details={'deleted_count': before_count}
+                )
 
             # Импортируем из Excel
             result = tm.import_from_excel(tmp_path, sheet_name=sheet_name)
@@ -3792,6 +4512,18 @@ def admin_import_topics_upload():
             if result['success']:
                 flash(f'✅ Успешно импортировано тематик: {result["imported"]}', 'success')
                 print(f"[admin_import_topics_upload] Импортировано: {result['imported']} тематик")
+                log_topic_change(
+                    action='topics_imported',
+                    topic_id=None,
+                    channel='',
+                    full_topic='',
+                    details={
+                        'imported': int(result.get('imported', 0)),
+                        'errors_count': len(result.get('errors') or []),
+                        'sheet_name': sheet_name,
+                        'clear_existing': clear_existing
+                    }
+                )
                 if result.get('errors'):
                     flash(f'⚠️ Ошибки при импорте: {len(result["errors"])} строк', 'warning')
                     print(f"[admin_import_topics_upload] Ошибок: {len(result['errors'])}")
@@ -3858,6 +4590,234 @@ def admin_export_topics():
 # Требуется настройка PostgreSQL базы данных (см. переменные POSTGRES_* в .env)
 # В production окружении убедитесь в корректной настройке БД перед использованием
 
+
+def _resolve_period_range():
+    """Возвращает границы периода для статистики."""
+    period = (request.args.get('period', '') or '').strip().lower()
+    days_param = request.args.get('days', type=int)
+    date_from = (request.args.get('date_from', '') or '').strip()
+    date_to = (request.args.get('date_to', '') or '').strip()
+    now = datetime.now()
+
+    if date_from and date_to:
+        start = f"{date_from} 00:00:00"
+        end = f"{date_to} 23:59:59"
+        return start, end
+
+    if period == '1d':
+        days = 1
+    elif period == '7d':
+        days = 7
+    elif period == '30d':
+        days = 30
+    else:
+        days = days_param if days_param else 30
+
+    days = max(1, min(days, 365))
+    start_dt = now - timedelta(days=days - 1)
+    return start_dt.strftime('%Y-%m-%d 00:00:00'), now.strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _load_ticket_dashboard_data(start_at: str, end_at: str):
+    """Загружает и агрегирует события обращений для dashboard.
+
+    "Всего обращений" считается по открытиям инструкций + созданным заявкам, чтобы
+    учитывать пользователей, которые не нажали "помогло/не помогло".
+    """
+    base_events = {'manual_opened_video', 'manual_opened_text', 'ticket_created'}
+    helped_events = {'video_helped', 'manual_helped', 'ticket_solved_by_helper'}  # legacy supported
+    not_helped_events = {
+        'video_not_helped',
+        'manual_not_helped',
+        'ticket_created',  # эскалация в заявку
+        'ticket_not_relevant',
+        'ticket_resolved_by_staff'
+    }
+
+    # Summary counts
+    counts_by_type: dict[str, int] = {}
+
+    # Timeline (date -> counters)
+    timeline_map: dict[str, dict] = {}
+
+    # Group stats
+    problems_map: dict[str, dict] = {}
+    departments_map: dict[str, dict] = {}
+
+    def _bump_group(m: dict, key: str, total_inc: int, helped_inc: int, not_helped_inc: int, key_name: str):
+        if key not in m:
+            m[key] = {key_name: key, 'count': 0, 'helped': 0, 'not_helped': 0}
+        m[key]['count'] += total_inc
+        m[key]['helped'] += helped_inc
+        m[key]['not_helped'] += not_helped_inc
+
+    if ANALYTICS_USE_POSTGRES:
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                # counts by type
+                cur.execute("""
+                    SELECT event_type, COUNT(*)::int as c
+                    FROM ticket_events
+                    WHERE created_at BETWEEN %s AND %s
+                    GROUP BY event_type
+                """, (start_at, end_at))
+                for row in cur.fetchall():
+                    counts_by_type[row.get('event_type')] = int(row.get('c') or 0)
+
+                # timeline by type
+                cur.execute("""
+                    SELECT to_char(created_at::date, 'YYYY-MM-DD') as d, event_type, COUNT(*)::int as c
+                    FROM ticket_events
+                    WHERE created_at BETWEEN %s AND %s
+                    GROUP BY created_at::date, event_type
+                    ORDER BY created_at::date ASC
+                """, (start_at, end_at))
+                for row in cur.fetchall():
+                    d = row.get('d')
+                    et = row.get('event_type')
+                    c = int(row.get('c') or 0)
+                    if d not in timeline_map:
+                        timeline_map[d] = {'date': d, 'total': 0, 'helped': 0, 'not_helped': 0}
+                    if et in base_events:
+                        timeline_map[d]['total'] += c
+                    if et in helped_events:
+                        timeline_map[d]['helped'] += c
+                    if et in not_helped_events:
+                        timeline_map[d]['not_helped'] += c
+
+                # group by problem/event_type
+                cur.execute("""
+                    SELECT COALESCE(NULLIF(TRIM(problem), ''), 'Не указано') as problem,
+                           event_type,
+                           COUNT(*)::int as c
+                    FROM ticket_events
+                    WHERE created_at BETWEEN %s AND %s
+                    GROUP BY problem, event_type
+                """, (start_at, end_at))
+                for row in cur.fetchall():
+                    p = row.get('problem') or 'Не указано'
+                    et = row.get('event_type')
+                    c = int(row.get('c') or 0)
+                    total_inc = c if et in base_events else 0
+                    helped_inc = c if et in helped_events else 0
+                    not_helped_inc = c if et in not_helped_events else 0
+                    if total_inc or helped_inc or not_helped_inc:
+                        _bump_group(problems_map, p, total_inc, helped_inc, not_helped_inc, 'problem')
+
+                # group by department/event_type
+                cur.execute("""
+                    SELECT COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                           event_type,
+                           COUNT(*)::int as c
+                    FROM ticket_events
+                    WHERE created_at BETWEEN %s AND %s
+                    GROUP BY department, event_type
+                """, (start_at, end_at))
+                for row in cur.fetchall():
+                    dep = row.get('department') or 'Не указан'
+                    et = row.get('event_type')
+                    c = int(row.get('c') or 0)
+                    total_inc = c if et in base_events else 0
+                    helped_inc = c if et in helped_events else 0
+                    not_helped_inc = c if et in not_helped_events else 0
+                    if total_inc or helped_inc or not_helped_inc:
+                        if dep not in departments_map:
+                            departments_map[dep] = {'department': dep, 'total': 0, 'helped': 0, 'not_helped': 0}
+                        departments_map[dep]['total'] += total_inc
+                        departments_map[dep]['helped'] += helped_inc
+                        departments_map[dep]['not_helped'] += not_helped_inc
+    else:
+        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT event_type, COUNT(*) as c
+                FROM ticket_events
+                WHERE created_at BETWEEN ? AND ?
+                GROUP BY event_type
+            """, (start_at, end_at))
+            for row in cur.fetchall():
+                counts_by_type[row['event_type']] = int(row['c'] or 0)
+
+            cur.execute("""
+                SELECT substr(created_at,1,10) as d, event_type, COUNT(*) as c
+                FROM ticket_events
+                WHERE created_at BETWEEN ? AND ?
+                GROUP BY d, event_type
+                ORDER BY d ASC
+            """, (start_at, end_at))
+            for row in cur.fetchall():
+                d = row['d']
+                et = row['event_type']
+                c = int(row['c'] or 0)
+                if d not in timeline_map:
+                    timeline_map[d] = {'date': d, 'total': 0, 'helped': 0, 'not_helped': 0}
+                if et in base_events:
+                    timeline_map[d]['total'] += c
+                if et in helped_events:
+                    timeline_map[d]['helped'] += c
+                if et in not_helped_events:
+                    timeline_map[d]['not_helped'] += c
+
+            cur.execute("""
+                SELECT COALESCE(NULLIF(TRIM(problem), ''), 'Не указано') as problem,
+                       event_type,
+                       COUNT(*) as c
+                FROM ticket_events
+                WHERE created_at BETWEEN ? AND ?
+                GROUP BY problem, event_type
+            """, (start_at, end_at))
+            for row in cur.fetchall():
+                p = row['problem']
+                et = row['event_type']
+                c = int(row['c'] or 0)
+                total_inc = c if et in base_events else 0
+                helped_inc = c if et in helped_events else 0
+                not_helped_inc = c if et in not_helped_events else 0
+                if total_inc or helped_inc or not_helped_inc:
+                    _bump_group(problems_map, p, total_inc, helped_inc, not_helped_inc, 'problem')
+
+            cur.execute("""
+                SELECT COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                       event_type,
+                       COUNT(*) as c
+                FROM ticket_events
+                WHERE created_at BETWEEN ? AND ?
+                GROUP BY department, event_type
+            """, (start_at, end_at))
+            for row in cur.fetchall():
+                dep = row['department']
+                et = row['event_type']
+                c = int(row['c'] or 0)
+                total_inc = c if et in base_events else 0
+                helped_inc = c if et in helped_events else 0
+                not_helped_inc = c if et in not_helped_events else 0
+                if total_inc or helped_inc or not_helped_inc:
+                    if dep not in departments_map:
+                        departments_map[dep] = {'department': dep, 'total': 0, 'helped': 0, 'not_helped': 0}
+                    departments_map[dep]['total'] += total_inc
+                    departments_map[dep]['helped'] += helped_inc
+                    departments_map[dep]['not_helped'] += not_helped_inc
+
+    total_requests = sum(counts_by_type.get(et, 0) for et in base_events)
+    helped_total = sum(counts_by_type.get(et, 0) for et in helped_events)
+    not_helped_total = sum(counts_by_type.get(et, 0) for et in not_helped_events)
+    rejected_total = int(counts_by_type.get('ticket_not_relevant', 0) or 0)
+
+    summary = {
+        'total': int(total_requests),
+        'helped': int(helped_total),
+        'not_helped': int(not_helped_total),
+        'self_solved': int(helped_total),
+        'rejected': rejected_total
+    }
+
+    timeline = [timeline_map[k] for k in sorted(timeline_map.keys())]
+    top_problems = sorted(problems_map.values(), key=lambda x: x['count'], reverse=True)
+    departments = sorted(departments_map.values(), key=lambda x: x['total'], reverse=True)
+
+    return summary, timeline, top_problems, departments
+
 @app.route('/admin/stats')
 @AdminAuth.login_required
 def admin_stats_dashboard():
@@ -3869,17 +4829,87 @@ def admin_stats_dashboard():
 @AdminAuth.login_required
 def api_stats_summary():
     """API для получения общей статистики"""
-    if not sm:
-        return jsonify({
-            'success': False,
-            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
-        }), 503
     try:
-        days = request.args.get('days', 30, type=int)
-        # Ограничиваем период от 1 до 365 дней
-        days = max(1, min(days, 365))
+        start_at, end_at = _resolve_period_range()
+        stats, _, _, _ = _load_ticket_dashboard_data(start_at, end_at)
 
-        stats = sm.get_statistics(days=days)
+        # Доп. breakdown по типам (видео/текст/тикеты/циско)
+        breakdown = {
+            # tickets_created - удобное поле для UI, вычисляется из ticket_created
+            'tickets_created': 0,
+            'tickets_created_cisco': 0,
+            # Ниже ключи совпадают с event_type в ticket_events
+            'ticket_created': 0,
+            'manual_opened_video': 0,
+            'manual_opened_text': 0,
+            'video_helped': 0,
+            'video_not_helped': 0,
+            'manual_helped': 0,
+            'manual_not_helped': 0,
+            'ticket_not_relevant': 0,
+            'ticket_resolved_by_staff': 0
+        }
+
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT event_type, COUNT(*)::int as c
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s
+                        GROUP BY event_type
+                    """, (start_at, end_at))
+                    for row in cur.fetchall():
+                        et = row.get('event_type')
+                        if et in breakdown:
+                            breakdown[et] = int(row.get('c') or 0)
+
+                    # Совместимость со старым названием (если было)
+                    cur.execute("""
+                        SELECT COUNT(*)::int as c
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s AND event_type = 'ticket_solved_by_helper'
+                    """, (start_at, end_at))
+                    legacy_manual_helped = int((cur.fetchone() or {}).get('c') or 0)
+                    breakdown['manual_helped'] += legacy_manual_helped
+
+                    cur.execute("""
+                        SELECT COUNT(*)::int as c
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s AND event_type = 'ticket_created' AND is_cisco = 1
+                    """, (start_at, end_at))
+                    breakdown['tickets_created_cisco'] = int((cur.fetchone() or {}).get('c') or 0)
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT event_type, COUNT(*) as c
+                    FROM ticket_events
+                    WHERE created_at BETWEEN ? AND ?
+                    GROUP BY event_type
+                """, (start_at, end_at))
+                for row in cur.fetchall():
+                    et = row['event_type']
+                    if et in breakdown:
+                        breakdown[et] = int(row['c'] or 0)
+                cur.execute("""
+                    SELECT COUNT(*) as c
+                    FROM ticket_events
+                    WHERE created_at BETWEEN ? AND ? AND event_type = 'ticket_solved_by_helper'
+                """, (start_at, end_at))
+                breakdown['manual_helped'] += int(cur.fetchone()['c'] or 0)
+                cur.execute("""
+                    SELECT COUNT(*) as c
+                    FROM ticket_events
+                    WHERE created_at BETWEEN ? AND ? AND event_type = 'ticket_created' AND is_cisco = 1
+                """, (start_at, end_at))
+                breakdown['tickets_created_cisco'] = int(cur.fetchone()['c'] or 0)
+
+        # Заполняем удобное поле для UI
+        breakdown['tickets_created'] = int(breakdown.get('ticket_created') or 0)
+
+        stats['breakdown'] = breakdown
         return jsonify({
             'success': True,
             'data': stats
@@ -3897,23 +4927,14 @@ def api_stats_summary():
 @AdminAuth.login_required
 def api_stats_top_problems():
     """API для получения топ проблем"""
-    if not sm:
-        return jsonify({
-            'success': False,
-            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
-        }), 503
     try:
         limit = request.args.get('limit', 10, type=int)
-        days = request.args.get('days', 30, type=int)
-
-        # Ограничиваем параметры
         limit = max(1, min(limit, 50))
-        days = max(1, min(days, 365))
-
-        problems = sm.get_top_problems(limit=limit, days=days)
+        start_at, end_at = _resolve_period_range()
+        _, _, problems, _ = _load_ticket_dashboard_data(start_at, end_at)
         return jsonify({
             'success': True,
-            'data': problems
+            'data': problems[:limit]
         })
     except Exception as e:
         print(f"[api_stats_top_problems] Ошибка: {e}")
@@ -3928,16 +4949,9 @@ def api_stats_top_problems():
 @AdminAuth.login_required
 def api_stats_departments():
     """API для получения статистики по отделам"""
-    if not sm:
-        return jsonify({
-            'success': False,
-            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
-        }), 503
     try:
-        days = request.args.get('days', 30, type=int)
-        days = max(1, min(days, 365))
-
-        departments = sm.get_department_stats(days=days)
+        start_at, end_at = _resolve_period_range()
+        _, _, _, departments = _load_ticket_dashboard_data(start_at, end_at)
         return jsonify({
             'success': True,
             'data': departments
@@ -3955,16 +4969,9 @@ def api_stats_departments():
 @AdminAuth.login_required
 def api_stats_timeline():
     """API для получения статистики по дням (для графика)"""
-    if not sm:
-        return jsonify({
-            'success': False,
-            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
-        }), 503
     try:
-        days = request.args.get('days', 30, type=int)
-        days = max(1, min(days, 365))
-
-        timeline = sm.get_timeline_stats(days=days)
+        start_at, end_at = _resolve_period_range()
+        _, timeline, _, _ = _load_ticket_dashboard_data(start_at, end_at)
         return jsonify({
             'success': True,
             'data': timeline
@@ -3976,6 +4983,219 @@ def api_stats_timeline():
             'success': False,
             'error': 'Ошибка получения timeline'
         }), 500
+
+
+@app.route('/api/stats/staff')
+@AdminAuth.login_required
+def api_stats_staff():
+    """Статистика по специалистам техподдержки."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT actor_name, event_type, COUNT(*) as cnt
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s
+                          AND event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                        GROUP BY actor_name, event_type
+                    """, (start_at, end_at))
+                    rows = cur.fetchall()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT actor_name, event_type, COUNT(*) as cnt
+                    FROM ticket_events
+                    WHERE created_at BETWEEN ? AND ?
+                      AND event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                    GROUP BY actor_name, event_type
+                """, (start_at, end_at))
+                rows = cur.fetchall()
+
+        staff_map = {}
+        for row in rows:
+            name = row['actor_name'] or 'Неизвестно'
+            if name not in staff_map:
+                staff_map[name] = {'staff': name, 'resolved': 0, 'not_relevant': 0, 'total_actions': 0}
+            if row['event_type'] == 'ticket_resolved_by_staff':
+                staff_map[name]['resolved'] += row['cnt']
+            elif row['event_type'] == 'ticket_not_relevant':
+                staff_map[name]['not_relevant'] += row['cnt']
+            staff_map[name]['total_actions'] += row['cnt']
+
+        data = sorted(staff_map.values(), key=lambda x: x['total_actions'], reverse=True)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        print(f"[api_stats_staff] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения статистики по специалистам'}), 500
+
+
+@app.route('/api/stats/topics/summary')
+@AdminAuth.login_required
+def api_stats_topics_summary():
+    """Сводная статистика по поискам тематик."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            COUNT(*) as total_searches,
+                            COUNT(DISTINCT CASE WHEN TRIM(COALESCE(query_text, '')) != '' THEN query_text END) as unique_queries,
+                            AVG(results_count) as avg_results
+                        FROM topic_search_events
+                        WHERE created_at BETWEEN %s AND %s
+                    """, (start_at, end_at))
+                    row = cur.fetchone()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT
+                        COUNT(*) as total_searches,
+                        COUNT(DISTINCT CASE WHEN TRIM(COALESCE(query_text, '')) != '' THEN query_text END) as unique_queries,
+                        AVG(results_count) as avg_results
+                    FROM topic_search_events
+                    WHERE created_at BETWEEN ? AND ?
+                """, (start_at, end_at))
+                row = cur.fetchone()
+
+        data = {
+            'total_searches': int((row['total_searches'] or 0) if row else 0),
+            'unique_queries': int((row['unique_queries'] or 0) if row else 0),
+            'avg_results': round(float((row['avg_results'] or 0.0) if row else 0.0), 2)
+        }
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        print(f"[api_stats_topics_summary] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения статистики по тематикам'}), 500
+
+
+@app.route('/api/stats/topics/top')
+@AdminAuth.login_required
+def api_stats_topics_top():
+    """Топ поисковых запросов по тематикам."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        limit = max(1, min(request.args.get('limit', 10, type=int), 50))
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT query_text as query, COUNT(*) as count
+                        FROM topic_search_events
+                        WHERE created_at BETWEEN %s AND %s
+                          AND TRIM(COALESCE(query_text, '')) != ''
+                        GROUP BY query_text
+                        ORDER BY count DESC
+                        LIMIT %s
+                    """, (start_at, end_at, limit))
+                    rows = [dict(r) for r in cur.fetchall()]
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT query_text as query, COUNT(*) as count
+                    FROM topic_search_events
+                    WHERE created_at BETWEEN ? AND ?
+                      AND TRIM(COALESCE(query_text, '')) != ''
+                    GROUP BY query_text
+                    ORDER BY count DESC
+                    LIMIT ?
+                """, (start_at, end_at, limit))
+                rows = [dict(r) for r in cur.fetchall()]
+        return jsonify({'success': True, 'data': rows})
+    except Exception as e:
+        print(f"[api_stats_topics_top] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения топа поисков'}), 500
+
+
+@app.route('/api/stats/topics/channels')
+@AdminAuth.login_required
+def api_stats_topics_channels():
+    """Топ каналов по количеству поисков тематик."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            CASE WHEN TRIM(COALESCE(channel, '')) = '' THEN 'Без канала' ELSE channel END as channel,
+                            COUNT(*) as count
+                        FROM topic_search_events
+                        WHERE created_at BETWEEN %s AND %s
+                        GROUP BY channel
+                        ORDER BY count DESC
+                        LIMIT 20
+                    """, (start_at, end_at))
+                    rows = [dict(r) for r in cur.fetchall()]
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT
+                        CASE WHEN TRIM(COALESCE(channel, '')) = '' THEN 'Без канала' ELSE channel END as channel,
+                        COUNT(*) as count
+                    FROM topic_search_events
+                    WHERE created_at BETWEEN ? AND ?
+                    GROUP BY channel
+                    ORDER BY count DESC
+                    LIMIT 20
+                """, (start_at, end_at))
+                rows = [dict(r) for r in cur.fetchall()]
+        return jsonify({'success': True, 'data': rows})
+    except Exception as e:
+        print(f"[api_stats_topics_channels] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения статистики по каналам'}), 500
+
+
+@app.route('/api/stats/topics/history')
+@AdminAuth.login_required
+def api_stats_topics_history():
+    """История изменений тематик: добавления/удаления/импорты."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        limit = max(1, min(request.args.get('limit', 200, type=int), 1000))
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT created_at::text as created_at, action, topic_id, channel, full_topic, actor_name, actor_username, details_json
+                        FROM topic_changes
+                        WHERE created_at BETWEEN %s AND %s
+                        ORDER BY id DESC
+                        LIMIT %s
+                    """, (start_at, end_at, limit))
+                    rows = [dict(r) for r in cur.fetchall()]
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT created_at, action, topic_id, channel, full_topic, actor_name, actor_username, details_json
+                    FROM topic_changes
+                    WHERE created_at BETWEEN ? AND ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (start_at, end_at, limit))
+                rows = [dict(r) for r in cur.fetchall()]
+        return jsonify({'success': True, 'data': rows})
+    except Exception as e:
+        print(f"[api_stats_topics_history] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения истории тематик'}), 500
 
 
 # ============================================
@@ -4111,6 +5331,7 @@ def run_bot():
     except Exception as e:
         print(f"❌ Ошибка в bot polling: {e}")
         traceback.print_exc()
+
 
 if __name__ == '__main__':
     print("=" * 60)

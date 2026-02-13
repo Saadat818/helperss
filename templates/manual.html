@@ -244,6 +244,7 @@
 
         .back-link {
             position: fixed;
+            top: 20px;
             left: 20px;
             z-index: 1000;
             font-size: 14px;
@@ -263,15 +264,6 @@
             border-color: rgba(0, 166, 81, 0.5);
             transform: translateY(-2px);
             text-decoration: none;
-        }
-
-        .back-link:first-of-type {
-            top: 20px;
-        }
-
-        .second-link {
-            top: 20px;
-            left: 140px;
         }
 
         @media (max-width: 768px) {
@@ -298,23 +290,15 @@
             }
 
             .back-link {
+                top: 16px;
+                left: 16px;
                 font-size: 12px;
                 padding: 8px 14px;
-            }
-
-            .second-link {
-                left: 120px;
             }
         }
     </style>
 </head>
 <body>
-<a href="javascript:history.back()" class="back-link">
-    ⬅️ Назад
-</a>
-<a href="{{ url_for('index') }}" class="back-link second-link">
-    🏠 Главная
-</a>
     <div class="container">
         <h1>{{ manual_title | e }}</h1>
 

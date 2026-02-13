@@ -131,7 +131,18 @@ class ADAuth:
 
     def is_configured(self) -> bool:
         """Проверка, настроен ли AD"""
-        return bool(self.server_uri and self.server_uri != 'ldap://localhost')
+        if not self.server_uri:
+            return False
+
+        normalized_uri = self.server_uri.strip().lower()
+        placeholder_hosts = {
+            'ldap://localhost',
+            'ldap://your-ad-server.local',
+            'ldaps://your-ad-server.local',
+            'your-ad-server.local',
+        }
+
+        return normalized_uri not in placeholder_hosts
 
 
 # Глобальный экземпляр

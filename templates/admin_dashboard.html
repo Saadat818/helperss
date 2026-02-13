@@ -13,19 +13,21 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
+            color: #e8e8e8;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background-color: #ffffff;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            background: linear-gradient(180deg, #1a1a1a, #202020);
+            border: 1px solid #151515;
+            padding: 35px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
         }
 
         .header {
@@ -34,18 +36,18 @@
             align-items: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 1px solid #2a2a2a;
         }
 
         h1 {
-            color: #007b7e;
+            color: #e8e8e8;
             font-size: 28px;
         }
 
         .btn {
-            padding: 10px 20px;
+            padding: 10px 18px;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
@@ -55,23 +57,36 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            background: linear-gradient(135deg, #00a651 0%, #009448 100%);
             color: white;
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
         }
 
         .btn-danger {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            background: linear-gradient(135deg, #e94b5a 0%, #c82333 100%);
             color: white;
+            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(233, 75, 90, 0.3);
         }
 
         .btn-logout {
-            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%);
             color: white;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
+        }
+
+        .btn-logout:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.3);
         }
 
         .manuals-grid {
@@ -82,22 +97,23 @@
         }
 
         .manual-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-left: 4px solid #0bb17c;
-            border-radius: 10px;
+            background: #141414;
+            border: 1px solid #242424;
+            border-left: 4px solid #00a651;
+            border-radius: 14px;
             padding: 20px;
             transition: all 0.3s;
         }
 
         .manual-card:hover {
             transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
         }
 
         .manual-title {
             font-size: 18px;
             font-weight: 700;
-            color: #007b7e;
+            color: #e8e8e8;
             margin-bottom: 15px;
         }
 
@@ -108,7 +124,7 @@
         }
 
         .subproblems-count {
-            color: #666;
+            color: #b5b5b5;
             font-size: 14px;
             margin-bottom: 10px;
         }
@@ -121,15 +137,15 @@
         }
 
         .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background-color: rgba(0, 166, 81, 0.12);
+            color: #bfe8d1;
+            border: 1px solid rgba(0, 166, 81, 0.25);
         }
 
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            color: #666;
+            color: #b5b5b5;
         }
 
         .empty-state-icon {
@@ -144,23 +160,203 @@
             z-index: 1000;
             font-size: 14px;
             text-decoration: none;
-            color: #ffffff;
+            color: #e8e8e8;
             font-weight: 600;
-            background: rgba(255, 165, 0, 0.3);
+            background: rgba(26, 26, 26, 0.95);
             backdrop-filter: blur(10px);
             padding: 8px 16px;
-            border: 2px solid rgba(255, 165, 0, 0.5);
-            border-radius: 20px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border: 1px solid #2a2a2a;
+            border-radius: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
             transition: all 0.3s ease;
         }
 
         .back-link:hover {
-            background: rgba(255, 165, 0, 0.5);
-            border-color: rgba(255, 165, 0, 0.7);
+            background: rgba(26, 26, 26, 1);
+            border-color: #00a651;
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
             text-decoration: none;
+        }
+    
+        /* Admin Dark Theme */
+        :root {
+            --bg: #0c0c0c;
+            --panel: #1a1a1a;
+            --panel-2: #202020;
+            --panel-3: #141414;
+            --text: #e8e8e8;
+            --muted: #b5b5b5;
+            --border: #242424;
+            --accent: #00a651;
+            --accent-2: #009448;
+            --danger: #e94b5a;
+            --warning: #f2b705;
+        }
+
+        body {
+            background: var(--bg) !important;
+            color: var(--text);
+        }
+
+        .container {
+            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
+            border: 1px solid #151515;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .header,
+        .form-actions {
+            border-bottom: 1px solid #2a2a2a !important;
+            border-top: 1px solid #2a2a2a !important;
+        }
+
+        h1, h2, h3, h4 {
+            color: var(--text) !important;
+        }
+
+        .subtitle,
+        .stat-label,
+        .subproblems-count,
+        .helper-text,
+        .help-text,
+        .info-text,
+        .warning-text,
+        .error-text,
+        .role-description,
+        label {
+            color: var(--muted) !important;
+        }
+
+        .stat-card,
+        .manual-card,
+        .form-section,
+        .info-box,
+        .warning-box,
+        .error-card,
+        .subproblem-card,
+        .problem-item,
+        .upload-form,
+        .modal-content,
+        .preview-container,
+        .photo-item,
+        .video-item,
+        .stats-summary,
+        .stat-item {
+            background: var(--panel-3) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 14px;
+            color: var(--text);
+        }
+
+        .warning-box {
+            border-color: rgba(242, 183, 5, 0.4) !important;
+            background: rgba(242, 183, 5, 0.08) !important;
+        }
+
+        .error-card {
+            border-color: rgba(233, 75, 90, 0.4) !important;
+            background: rgba(233, 75, 90, 0.08) !important;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"],
+        input[type="email"],
+        textarea,
+        select {
+            background: #111 !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
+        }
+
+        table {
+            color: var(--text);
+        }
+
+        th {
+            background: #1f1f1f !important;
+            color: var(--text) !important;
+            border-bottom: 1px solid #2a2a2a !important;
+        }
+
+        td {
+            background: #141414 !important;
+            border-bottom: 1px solid #242424 !important;
+        }
+
+        tr:nth-child(even) td {
+            background: #171717 !important;
+        }
+
+        .btn {
+            border-radius: 12px !important;
+        }
+
+        .btn-primary,
+        .btn-success {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
+        }
+
+        .btn-primary:hover,
+        .btn-success:hover {
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
+        }
+
+        .btn-secondary,
+        .btn-logout {
+            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
+        }
+
+        .btn-danger,
+        .btn-delete {
+            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
+            color: #1b1b1b !important;
+            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
+        }
+
+        .alert-success {
+            background-color: rgba(0, 166, 81, 0.12) !important;
+            color: #bfe8d1 !important;
+            border: 1px solid rgba(0, 166, 81, 0.25) !important;
+        }
+
+        .alert-danger,
+        .danger {
+            background-color: rgba(233, 75, 90, 0.12) !important;
+            color: #f3c0c6 !important;
+            border: 1px solid rgba(233, 75, 90, 0.25) !important;
+        }
+
+        .back-link {
+            background: rgba(26, 26, 26, 0.95) !important;
+            border: 1px solid #2a2a2a !important;
+            color: var(--text) !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        .back-link:hover {
+            border-color: var(--accent) !important;
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
         }
     </style>
 </head>
@@ -172,6 +368,7 @@
         <div class="header">
             <h1>📚 Управление мануалами</h1>
             <div style="display: flex; gap: 10px;">
+                <a href="{{ url_for('admin_create_manual') }}" class="btn btn-primary">➕ Создать мануал</a>
                 {% if session.get('admin_role') == 'super_admin' %}
                     <a href="{{ url_for('admin_users') }}" class="btn btn-primary">👥 Администраторы</a>
                 {% endif %}
@@ -206,6 +403,10 @@
                         </div>
                         <div class="manual-actions">
                             <a href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}" class="btn btn-primary">Редактировать</a>
+                            <form method="POST" action="{{ url_for('admin_delete_manual', manual_id=manual_id) }}" style="display: inline;" onsubmit="return confirm('⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить мануал:\n{{ manual.title | e }}{%- if manual.subproblems and manual.subproblems | length > 0 %}\n\nЭтот мануал содержит {{ manual.subproblems | length }} подпроблем(ы).{%- endif %}\n\nВсе данные будут удалены безвозвратно!\n\nПродолжить удаление?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-danger">Удалить</button>
+                            </form>
                         </div>
                     </div>
                 {% endfor %}

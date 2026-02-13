@@ -111,6 +111,8 @@
 
         .back-link {
             position: fixed;
+            top: 20px;
+            left: 20px;
             z-index: 1000;
             font-size: 13px;
             text-decoration: none;
@@ -129,16 +131,6 @@
             border-color: rgba(0, 166, 81, 0.5);
             transform: translateY(-2px);
             text-decoration: none;
-        }
-
-        .back-link:first-of-type {
-            top: 20px;
-            left: 20px;
-        }
-
-        .second-link {
-            top: 20px;
-            left: 140px;
         }
 
         .version-hints {
@@ -238,16 +230,9 @@
                 font-size: 15px;
             }
 
-            .back-link:first-of-type {
+            .back-link {
                 top: 16px;
                 left: 16px;
-                font-size: 12px;
-                padding: 8px 14px;
-            }
-
-            .second-link {
-                top: 16px;
-                left: 110px;
                 font-size: 12px;
                 padding: 8px 14px;
             }
@@ -265,12 +250,8 @@
 <body>
 
     <!-- Кнопки навигации -->
-    <a href="javascript:history.back()" class="back-link">
+    <a href="{{ url_for('show_problems') }}" class="back-link">
         ⬅️ Назад
-    </a>
-
-    <a href="{{ url_for('index') }}" class="back-link second-link">
-        👤 Вход
     </a>
 
     <!-- Основное содержимое -->

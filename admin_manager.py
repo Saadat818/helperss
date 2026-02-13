@@ -124,6 +124,15 @@ class AdminManager:
         if 'version_hints' in data and isinstance(data['version_hints'], dict):
             manuals[manual_id]['version_hints'] = data['version_hints']
 
+        if 'photos' in data and isinstance(data['photos'], list):
+            manuals[manual_id]['photos'] = data['photos']
+
+        if 'video' in data and isinstance(data['video'], dict):
+            manuals[manual_id]['video'] = data['video']
+
+        if 'can_add_screenshots' in data:
+            manuals[manual_id]['can_add_screenshots'] = data['can_add_screenshots']
+
         return self.save_manuals(manuals)
 
     def delete_manual(self, manual_id: str) -> bool:
@@ -278,8 +287,6 @@ class AdminManager:
         """
         if not self.validate_manual_id(manual_id):
             return False
-        if not self.validate_subproblem_id(subproblem_id):
-            return False
 
         caption = self.sanitize_text(caption, max_length=300)
         if not caption:
@@ -292,10 +299,19 @@ class AdminManager:
 
         manual = manuals[manual_id]
 
-        if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
-            return False
-
-        subproblem = manual['subproblems'][subproblem_id]
+        # Поддержка двух типов мануалов:
+        # 1. Мануал с подпроблемами: subproblem_id должен быть в формате X.Y
+        # 2. Простой мануал: subproblem_id = manual_id, работаем напрямую с manual
+        if 'subproblems' in manual:
+            # Мануал с подпроблемами
+            if not self.validate_subproblem_id(subproblem_id):
+                return False
+            if subproblem_id not in manual['subproblems']:
+                return False
+            subproblem = manual['subproblems'][subproblem_id]
+        else:
+            # Простой мануал - работаем напрямую с manual
+            subproblem = manual
 
         if 'photos' not in subproblem or not isinstance(subproblem['photos'], list):
             subproblem['photos'] = []

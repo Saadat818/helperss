@@ -714,6 +714,35 @@
         </div>
     </div>
 
+    <!-- Topic Classification Modal -->
+    <div class="modal-overlay" id="topicModal">
+        <div class="modal-content" style="max-width: 550px; text-align: left;">
+            <div style="text-align: center;">
+                <div class="modal-icon">📋</div>
+                <div class="modal-title">Классификация обращения</div>
+                <div class="modal-text">Выберите тематику данного обращения:</div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="topicSearchPlay" placeholder="Начните вводить тематику..."
+                    style="width:100%; padding:12px 16px; background:rgba(255,255,255,0.1); border:2px solid rgba(233,69,96,0.5); border-radius:12px; color:#fff; font-size:14px; outline:none;">
+                <div id="topicResultsPlay" style="max-height:200px; overflow-y:auto; margin-top:6px; display:none; background:rgba(22,33,62,0.98); border:1px solid rgba(233,69,96,0.3); border-radius:10px;"></div>
+            </div>
+
+            <div id="selectedTopicPlay" style="display:none; background:rgba(76,175,80,0.15); border:1px solid rgba(76,175,80,0.5); border-radius:10px; padding:12px 16px; margin-bottom:15px;">
+                <div style="font-size:12px; color:#a8a8a8; margin-bottom:4px;">Выбранная тематика:</div>
+                <div id="selectedTopicText" style="font-size:14px; color:#fff; font-weight:600;"></div>
+            </div>
+
+            <div id="topicFeedback" style="display:none; border-radius:10px; padding:12px 16px; margin-bottom:15px;"></div>
+
+            <div style="text-align:center; display:flex; gap:10px; justify-content:center;">
+                <button type="button" id="confirmTopicBtn" class="modal-btn" style="opacity:0.5; cursor:default;" disabled onclick="confirmTopicSelection()">Подтвердить выбор</button>
+                <button type="button" class="modal-btn" style="background:rgba(255,255,255,0.15); font-size:14px;" onclick="skipTopicSelection()">Пропустить</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Game Over -->
     <div class="modal-overlay" id="gameOverModal">
         <div class="modal-content">
@@ -752,6 +781,7 @@
         const totalPoints = {{ scenario.total_points }};
         const csrfToken = '{{ csrf_token() }}';
         const isPreviewMode = {{ 'true' if preview_mode else 'false' }};
+        const correctTopics = {{ correct_topics | tojson }};
 
         let currentStepNum = 0;
         let score = 0;
@@ -994,12 +1024,37 @@
             setTimeout(() => { dialogArea.scrollTop = dialogArea.scrollHeight; }, 100);
         }
 
+        let pendingGameOver = false;
+        let selectedTopicId = null;
+        let selectedTopicName = null;
+
         function showGameOver() {
+            pendingGameOver = true;
+            if (correctTopics.length > 0) {
+                showTopicModal();
+            } else {
+                finishGameOver();
+            }
+        }
+
+        function finishGameOver() {
+            document.getElementById('topicModal').classList.remove('show');
             document.getElementById('gameOverModal').classList.add('show');
             saveResult(true);
         }
 
         function showSuccess() {
+            pendingGameOver = false;
+            if (correctTopics.length > 0) {
+                showTopicModal();
+            } else {
+                finishSuccess();
+            }
+        }
+
+        function finishSuccess() {
+            document.getElementById('topicModal').classList.remove('show');
+
             const percent = Math.round((score / totalPoints) * 100);
             const modal = document.getElementById('resultModal');
             const content = document.getElementById('resultModalContent');
@@ -1034,6 +1089,105 @@
 
             modal.classList.add('show');
             saveResult(false);
+        }
+
+        // ==================== Topic Classification ====================
+        function showTopicModal() {
+            document.getElementById('topicModal').classList.add('show');
+            document.getElementById('topicSearchPlay').focus();
+        }
+
+        let topicSearchPlayTimeout = null;
+        document.getElementById('topicSearchPlay').addEventListener('input', function() {
+            clearTimeout(topicSearchPlayTimeout);
+            const query = this.value.trim();
+            const resultsDiv = document.getElementById('topicResultsPlay');
+
+            if (query.length < 3) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+
+            topicSearchPlayTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch('/api/search_topic', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                        body: JSON.stringify({ query: query })
+                    });
+                    const data = await response.json();
+
+                    if (data.success && data.results && data.results.length > 0) {
+                        resultsDiv.innerHTML = '';
+                        data.results.slice(0, 10).forEach(r => {
+                            const item = document.createElement('div');
+                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.1); font-size:13px; color:#e8e8e8; transition:background 0.2s;';
+                            item.onmouseenter = () => item.style.background = 'rgba(233,69,96,0.2)';
+                            item.onmouseleave = () => item.style.background = '';
+                            item.innerHTML = `<strong>${r.topic}</strong> <span style="color:#a8a8a8; font-size:11px;">${r.channel || ''}</span>`;
+                            item.onclick = () => selectTopicPlay(r);
+                            resultsDiv.appendChild(item);
+                        });
+                        resultsDiv.style.display = 'block';
+                    } else {
+                        resultsDiv.innerHTML = '<div style="padding:10px 14px; color:#a8a8a8; font-size:13px;">Ничего не найдено</div>';
+                        resultsDiv.style.display = 'block';
+                    }
+                } catch (e) {
+                    console.error('Topic search error:', e);
+                }
+            }, 300);
+        });
+
+        function selectTopicPlay(topic) {
+            selectedTopicId = topic.id;
+            selectedTopicName = topic.topic;
+            document.getElementById('selectedTopicText').textContent = topic.topic + (topic.channel ? ` (${topic.channel})` : '');
+            document.getElementById('selectedTopicPlay').style.display = 'block';
+            document.getElementById('topicResultsPlay').style.display = 'none';
+            document.getElementById('topicSearchPlay').value = '';
+
+            const btn = document.getElementById('confirmTopicBtn');
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        }
+
+        function confirmTopicSelection() {
+            if (!selectedTopicId) return;
+
+            // Сравниваем с эталонными тематиками
+            const isCorrect = correctTopics.some(t => String(t.id) === String(selectedTopicId));
+            const feedbackDiv = document.getElementById('topicFeedback');
+
+            if (isCorrect) {
+                feedbackDiv.style.background = 'rgba(76,175,80,0.2)';
+                feedbackDiv.style.border = '1px solid rgba(76,175,80,0.5)';
+                feedbackDiv.innerHTML = '<div style="color:#4CAF50; font-weight:600; font-size:15px; margin-bottom:4px;">✓ Верно!</div><div style="color:#a8a8a8; font-size:13px;">Тематика выбрана правильно.</div>';
+            } else {
+                const correctNames = correctTopics.map(t => t.topic).join(', ');
+                feedbackDiv.style.background = 'rgba(244,67,54,0.2)';
+                feedbackDiv.style.border = '1px solid rgba(244,67,54,0.5)';
+                feedbackDiv.innerHTML = `<div style="color:#f44336; font-weight:600; font-size:15px; margin-bottom:4px;">✕ Неверно</div><div style="color:#a8a8a8; font-size:13px;">Правильная тематика: <strong style="color:#fff;">${correctNames}</strong></div>`;
+            }
+            feedbackDiv.style.display = 'block';
+
+            // Меняем кнопку на "Продолжить"
+            const btn = document.getElementById('confirmTopicBtn');
+            btn.textContent = 'Продолжить';
+            btn.onclick = () => proceedAfterTopic();
+        }
+
+        function skipTopicSelection() {
+            proceedAfterTopic();
+        }
+
+        function proceedAfterTopic() {
+            if (pendingGameOver) {
+                finishGameOver();
+            } else {
+                finishSuccess();
+            }
         }
 
         function showRecommendations() {
@@ -1114,17 +1268,33 @@
             }
 
             try {
-                await fetch('/api/trainer/complete', {
+                const payload = {
+                    scenario_id: scenarioId,
+                    score: score,
+                    answers: answersHistory,
+                    is_game_over: isGameOver,
+                    final_loyalty: 100 - emotion
+                };
+
+                if (selectedTopicId) {
+                    payload.selected_topic_id = selectedTopicId;
+                    payload.selected_topic_name = selectedTopicName;
+                }
+
+                const response = await fetch('/api/trainer/complete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify({
-                        scenario_id: scenarioId,
-                        score: score,
-                        answers: answersHistory,
-                        is_game_over: isGameOver,
-                        final_loyalty: 100 - emotion
-                    })
+                    body: JSON.stringify(payload)
                 });
+                const result = await response.json();
+
+                // Если есть result_id, обновляем ссылку "Продолжить" на страницу результатов
+                if (result.success && result.result_id) {
+                    const resultBtn = document.querySelector('#resultModal .modal-btn');
+                    if (resultBtn) {
+                        resultBtn.href = `/trainer/results/${result.result_id}`;
+                    }
+                }
             } catch (e) { console.error(e); }
         }
 

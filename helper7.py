@@ -2032,10 +2032,19 @@ def trainer_play(scenario_id):
         flash('В этом сценарии пока нет шагов')
         return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id) if preview_mode else url_for('trainer_level', level_code=scenario['level_code']))
 
+    # Парсим эталонные тематики для пост-обработки
+    correct_topics = []
+    if scenario.get('correct_topics'):
+        try:
+            correct_topics = json.loads(scenario['correct_topics'])
+        except:
+            pass
+
     return render_template('trainer_play.html',
                          scenario=scenario,
                          total_steps=total_steps,
-                         preview_mode=preview_mode)
+                         preview_mode=preview_mode,
+                         correct_topics=correct_topics)
 
 
 @app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
@@ -2258,11 +2267,30 @@ def trainer_results(result_id):
         if s['id'] == result['scenario_id']:
             found_current = True
 
+    # Получаем эталонные тематики сценария
+    scenario_data = trainer_mgr.get_scenario(result['scenario_id'])
+    correct_topics = []
+    if scenario_data and scenario_data.get('correct_topics'):
+        try:
+            correct_topics = json.loads(scenario_data['correct_topics'])
+        except:
+            pass
+
+    # Проверяем совпадение выбранной тематики с эталонными
+    topic_match = False
+    if result.get('selected_topic_id') and correct_topics:
+        topic_match = any(
+            str(t.get('id')) == str(result['selected_topic_id'])
+            for t in correct_topics
+        )
+
     return render_template('trainer_results.html',
                          result=result,
                          grade_info=grade_info,
                          answers_detail=answers_detail,
-                         next_scenario=next_scenario)
+                         next_scenario=next_scenario,
+                         correct_topics=correct_topics,
+                         topic_match=topic_match)
 
 
 # ============================================
@@ -2393,6 +2421,9 @@ def admin_trainer_edit(scenario_id):
         client_info_json = json.dumps(client_info, ensure_ascii=False) if client_info else None
 
         # Обновляем основную информацию сценария
+        correct_topics_raw = request.form.get('correct_topics', '').strip()
+        correct_topics_val = correct_topics_raw if correct_topics_raw else None
+
         data = {
             'level_id': request.form.get('level_id', type=int),
             'category_id': request.form.get('category_id', type=int) or None,
@@ -2404,7 +2435,8 @@ def admin_trainer_edit(scenario_id):
             'order_num': request.form.get('order_num', 0, type=int),
             'timer_seconds': request.form.get('timer_seconds', 15, type=int),
             'initial_loyalty': request.form.get('initial_loyalty', 100, type=int),
-            'client_info_json': client_info_json
+            'client_info_json': client_info_json,
+            'correct_topics': correct_topics_val
         }
 
         result = trainer_mgr.update_scenario(scenario_id, data)
@@ -2483,6 +2515,14 @@ def admin_trainer_edit(scenario_id):
     scenario_tags = trainer_mgr.get_scenario_tags(scenario_id)
     scenario_tag_ids = [t['id'] for t in scenario_tags]
 
+    # Парсим эталонные тематики
+    correct_topics = []
+    if scenario.get('correct_topics'):
+        try:
+            correct_topics = json.loads(scenario['correct_topics'])
+        except:
+            pass
+
     return render_template('admin_trainer_edit.html',
                          scenario=scenario,
                          levels=levels,
@@ -2491,7 +2531,8 @@ def admin_trainer_edit(scenario_id):
                          client_info=client_info,
                          client_extra=client_extra,
                          tags=tags,
-                         scenario_tag_ids=scenario_tag_ids)
+                         scenario_tag_ids=scenario_tag_ids,
+                         correct_topics=correct_topics)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/delete', methods=['POST'])

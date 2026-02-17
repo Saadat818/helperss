@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -22,10 +22,11 @@
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            background-color: #ffffff;
+            background-color: #1a1a2e;
             padding: 30px;
             border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
         }
 
         .header {
@@ -34,11 +35,11 @@
             align-items: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid #2a2a3e;
         }
 
         h1 {
-            color: #007b7e;
+            color: #00d4aa;
             font-size: 28px;
         }
 
@@ -83,7 +84,8 @@
         }
 
         .stat-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border: 1px solid #2a2a3e;
             border-radius: 10px;
             padding: 20px;
             text-align: center;
@@ -92,12 +94,12 @@
         .stat-value {
             font-size: 28px;
             font-weight: 700;
-            color: #007b7e;
+            color: #00d4aa;
         }
 
         .stat-label {
             font-size: 13px;
-            color: #666;
+            color: #999;
             margin-top: 5px;
         }
 
@@ -111,13 +113,13 @@
         .log-table td {
             padding: 12px 14px;
             text-align: left;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #2a2a3e;
         }
 
         .log-table th {
-            background: #f8f9fa;
+            background: #16213e;
             font-weight: 600;
-            color: #495057;
+            color: #aaa;
             font-size: 13px;
             text-transform: uppercase;
             position: sticky;
@@ -125,7 +127,7 @@
         }
 
         .log-table tr:hover {
-            background: #f8f9fa;
+            background: #16213e;
         }
 
         .action-badge {
@@ -163,12 +165,12 @@
 
         .timestamp {
             font-size: 13px;
-            color: #666;
+            color: #999;
         }
 
         .user-cell {
             font-weight: 600;
-            color: #333;
+            color: #e0e0e0;
         }
 
         .ip-cell {
@@ -179,8 +181,8 @@
 
         .changes-btn {
             background: none;
-            border: 1px solid #007b7e;
-            color: #007b7e;
+            border: 1px solid #00d4aa;
+            color: #00d4aa;
             padding: 4px 10px;
             border-radius: 5px;
             font-size: 12px;
@@ -189,8 +191,8 @@
         }
 
         .changes-btn:hover {
-            background: #007b7e;
-            color: white;
+            background: #00d4aa;
+            color: #1a1a2e;
         }
 
         /* Modal */
@@ -212,22 +214,24 @@
         }
 
         .modal {
-            background: white;
+            background: #1a1a2e;
             padding: 30px;
             border-radius: 12px;
             max-width: 600px;
             width: 90%;
             max-height: 80vh;
             overflow-y: auto;
+            border: 1px solid #2a2a3e;
         }
 
         .modal h3 {
             margin-bottom: 20px;
-            color: #333;
+            color: #e0e0e0;
         }
 
         .modal pre {
-            background: #f8f9fa;
+            background: #16213e;
+            color: #e0e0e0;
             padding: 15px;
             border-radius: 8px;
             font-size: 13px;
@@ -251,27 +255,27 @@
 
         .pagination a {
             padding: 8px 16px;
-            background: #f8f9fa;
+            background: #16213e;
             border-radius: 6px;
             text-decoration: none;
-            color: #333;
+            color: #e0e0e0;
             transition: all 0.2s;
         }
 
         .pagination a:hover {
-            background: #007b7e;
-            color: white;
+            background: #00d4aa;
+            color: #1a1a2e;
         }
 
         .pagination .current {
-            background: #007b7e;
-            color: white;
+            background: #00d4aa;
+            color: #1a1a2e;
         }
 
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            color: #666;
+            color: #999;
         }
 
         .back-link {
@@ -283,16 +287,17 @@
             text-decoration: none;
             color: #ffffff;
             font-weight: 600;
-            background: rgba(255, 165, 0, 0.3);
-            backdrop-filter: blur(10px);
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 100%);
             padding: 8px 16px;
-            border: 2px solid rgba(255, 165, 0, 0.5);
+            border: none;
             border-radius: 20px;
             transition: all 0.3s ease;
         }
 
         .back-link:hover {
-            background: rgba(255, 165, 0, 0.5);
+            background: linear-gradient(135deg, #0cc98d 0%, #009a9e 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
         }
     </style>
 </head>

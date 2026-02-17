@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Обратная связь - Админ-панель</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0c0c0c;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #2a2a3e;
+        }
+
+        h1 {
+            color: #00d4aa;
+            font-size: 28px;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 12px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border: 1px solid #2a2a3e;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #00d4aa;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .feedback-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .feedback-table th,
+        .feedback-table td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid #2a2a3e;
+        }
+
+        .feedback-table th {
+            background: #16213e;
+            font-weight: 600;
+            color: #aaa;
+            font-size: 13px;
+            text-transform: uppercase;
+            position: sticky;
+            top: 0;
+        }
+
+        .feedback-table tr:hover {
+            background: #16213e;
+        }
+
+        .feedback-table tr.unread {
+            background: rgba(0, 212, 170, 0.05);
+        }
+
+        .feedback-table tr.unread td {
+            font-weight: 500;
+        }
+
+        .timestamp {
+            font-size: 13px;
+            color: #999;
+            white-space: nowrap;
+        }
+
+        .user-cell {
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+
+        .level-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .message-cell {
+            max-width: 500px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .status-unread {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00d4aa;
+        }
+
+        .status-read {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .mark-read-btn {
+            background: none;
+            border: 1px solid #00d4aa;
+            color: #00d4aa;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .mark-read-btn:hover {
+            background: #00d4aa;
+            color: #1a1a2e;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .back-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            font-size: 14px;
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: 600;
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 100%);
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            background: linear-gradient(135deg, #0cc98d 0%, #009a9e 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('admin_trainer') }}" class="back-link">
+        &larr; К тренажеру
+    </a>
+
+    <div class="container">
+        <div class="header">
+            <h1>💬 Обратная связь</h1>
+            <div class="header-buttons">
+                <a href="{{ url_for('admin_trainer') }}" class="btn btn-primary">🎯 Тренажер</a>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ feedback_list | length }}</div>
+                <div class="stat-label">Всего сообщений</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: {% if unread_count > 0 %}#F44336{% else %}#00d4aa{% endif %}">{{ unread_count }}</div>
+                <div class="stat-label">Непрочитанных</div>
+            </div>
+        </div>
+
+        {% if feedback_list %}
+        <table class="feedback-table">
+            <thead>
+                <tr>
+                    <th>Статус</th>
+                    <th>Дата</th>
+                    <th>Пользователь</th>
+                    <th>Уровень</th>
+                    <th>Сообщение</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in feedback_list %}
+                <tr class="{% if not item.is_read %}unread{% endif %}" id="feedback-row-{{ item.id }}">
+                    <td>
+                        {% if not item.is_read %}
+                            <span class="status-unread" title="Непрочитано"></span>
+                        {% else %}
+                            <span class="status-read" title="Прочитано">✓</span>
+                        {% endif %}
+                    </td>
+                    <td class="timestamp">{{ item.created_at }}</td>
+                    <td class="user-cell">{{ item.user_id }}</td>
+                    <td>
+                        {% if item.level_code %}
+                            <span class="level-badge">{{ item.level_code }}</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td class="message-cell">{{ item.message }}</td>
+                    <td>
+                        {% if not item.is_read %}
+                            <button class="mark-read-btn" onclick="markRead({{ item.id }})">Прочитано</button>
+                        {% else %}
+                            <span class="status-read">Прочитано</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p style="font-size: 48px; margin-bottom: 20px;">💬</p>
+            <p>Сообщений пока нет</p>
+            <p style="margin-top: 10px; color: #888;">Здесь будут отображаться сообщения от специалистов</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        async function markRead(id) {
+            try {
+                const resp = await fetch('/api/admin/trainer/feedback/' + id + '/read', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    const row = document.getElementById('feedback-row-' + id);
+                    row.classList.remove('unread');
+                    row.querySelector('td:first-child').innerHTML = '<span class="status-read" title="Прочитано">✓</span>';
+                    row.querySelector('td:last-child').innerHTML = '<span class="status-read">Прочитано</span>';
+                }
+            } catch (e) {
+                console.error('Error marking feedback as read:', e);
+            }
+        }
+    </script>
+</body>
+</html>

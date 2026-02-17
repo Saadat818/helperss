@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -22,10 +22,11 @@
         .container {
             max-width: 1000px;
             margin: 0 auto;
-            background-color: #ffffff;
+            background-color: #1a1a2e;
             padding: 30px;
             border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
         }
 
         .header {
@@ -34,20 +35,20 @@
             align-items: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid #2a2a3e;
         }
 
         h1 {
-            color: #007b7e;
+            color: #00d4aa;
             font-size: 24px;
         }
 
         h2 {
-            color: #333;
+            color: #e0e0e0;
             font-size: 18px;
             margin-bottom: 15px;
             padding-bottom: 10px;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #2a2a3e;
         }
 
         .btn {
@@ -105,7 +106,7 @@
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #333;
+            color: #e0e0e0;
         }
 
         .form-group input,
@@ -113,17 +114,19 @@
         .form-group textarea {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e9ecef;
+            border: 2px solid #2a2a3e;
             border-radius: 8px;
             font-size: 14px;
             transition: border-color 0.3s;
+            background: #16213e;
+            color: #e0e0e0;
         }
 
         .form-group input:focus,
         .form-group select:focus,
         .form-group textarea:focus {
             outline: none;
-            border-color: #007b7e;
+            border-color: #00d4aa;
         }
 
         .form-group textarea {
@@ -142,7 +145,7 @@
 
         .form-hint {
             font-size: 12px;
-            color: #666;
+            color: #999;
             margin-top: 5px;
         }
 
@@ -158,7 +161,7 @@
 
         /* Gamification Section */
         .gamification-section {
-            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            background: linear-gradient(135deg, #16213e, #0f3460);
             border: 2px solid #2196f3;
             border-radius: 12px;
             padding: 20px;
@@ -166,13 +169,13 @@
         }
 
         .gamification-section h2 {
-            color: #1976d2;
-            border-bottom-color: rgba(25, 118, 210, 0.3);
+            color: #64b5f6;
+            border-bottom-color: rgba(100, 181, 246, 0.3);
         }
 
         /* Client Card Section */
         .client-card-section {
-            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            background: linear-gradient(135deg, #1a2e1a, #16213e);
             border: 2px solid #4caf50;
             border-radius: 12px;
             padding: 20px;
@@ -180,8 +183,8 @@
         }
 
         .client-card-section h2 {
-            color: #388e3c;
-            border-bottom-color: rgba(56, 142, 60, 0.3);
+            color: #66bb6a;
+            border-bottom-color: rgba(102, 187, 106, 0.3);
         }
 
         .client-card-fields {
@@ -198,12 +201,12 @@
         .steps-section {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 2px solid #e9ecef;
+            border-top: 2px solid #2a2a3e;
         }
 
         .step-card {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
+            background: #16213e;
+            border: 1px solid #2a2a3e;
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 20px;
@@ -221,14 +224,14 @@
             align-items: center;
             gap: 10px;
             font-weight: 600;
-            color: #007b7e;
+            color: #00d4aa;
         }
 
         .step-number span {
             width: 30px;
             height: 30px;
-            background: #007b7e;
-            color: white;
+            background: #00d4aa;
+            color: #1a1a2e;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -242,8 +245,8 @@
         }
 
         .client-message-input {
-            background: white;
-            border: 1px solid #ddd;
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 15px;
@@ -255,6 +258,8 @@
             resize: vertical;
             min-height: 60px;
             font-size: 14px;
+            background: transparent;
+            color: #e0e0e0;
         }
 
         .client-message-input textarea:focus {
@@ -271,9 +276,11 @@
         .client-info input,
         .client-info select {
             padding: 8px 12px;
-            border: 1px solid #ddd;
+            border: 1px solid #2a2a3e;
             border-radius: 6px;
             font-size: 13px;
+            background: #16213e;
+            color: #e0e0e0;
         }
 
         .client-info input:first-child {
@@ -286,7 +293,7 @@
         }
 
         .mood-select {
-            background: #fff3e0;
+            background: #2e1a00 !important;
             border-color: #ff9800 !important;
         }
 
@@ -296,8 +303,8 @@
         }
 
         .answer-item {
-            background: white;
-            border: 1px solid #ddd;
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
             border-radius: 8px;
             padding: 12px;
             margin-bottom: 10px;
@@ -316,6 +323,8 @@
             resize: vertical;
             min-height: 40px;
             font-size: 14px;
+            background: transparent;
+            color: #e0e0e0;
         }
 
         .answer-main textarea:focus {
@@ -334,7 +343,7 @@
             align-items: center;
             gap: 5px;
             font-size: 12px;
-            color: #666;
+            color: #999;
         }
 
         .answer-options input[type="checkbox"] {
@@ -345,16 +354,18 @@
         .answer-options input[type="number"] {
             width: 60px;
             padding: 4px 8px;
-            border: 1px solid #ddd;
+            border: 1px solid #2a2a3e;
             border-radius: 4px;
             font-size: 12px;
+            background: #16213e;
+            color: #e0e0e0;
         }
 
         .answer-extra {
             display: flex;
             gap: 12px;
             padding-top: 10px;
-            border-top: 1px dashed #ddd;
+            border-top: 1px dashed #2a2a3e;
             flex-wrap: wrap;
         }
 
@@ -366,7 +377,7 @@
 
         .answer-extra label {
             font-size: 11px;
-            color: #666;
+            color: #999;
             margin-bottom: 4px;
         }
 
@@ -377,7 +388,7 @@
         }
 
         .mood-impact-select {
-            background: #fff3e0;
+            background: #2e1a00 !important;
         }
 
         .mood-impact-select option.positive {
@@ -393,7 +404,7 @@
             align-items: center;
             gap: 6px;
             padding: 8px 14px;
-            background: #e8f5e9;
+            background: rgba(76, 175, 80, 0.1);
             border: 1px dashed #4caf50;
             border-radius: 6px;
             color: #4caf50;
@@ -403,7 +414,7 @@
         }
 
         .add-btn:hover {
-            background: #c8e6c9;
+            background: rgba(76, 175, 80, 0.2);
         }
 
         .alert {
@@ -434,16 +445,17 @@
             text-decoration: none;
             color: #ffffff;
             font-weight: 600;
-            background: rgba(255, 165, 0, 0.3);
-            backdrop-filter: blur(10px);
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 100%);
             padding: 8px 16px;
-            border: 2px solid rgba(255, 165, 0, 0.5);
+            border: none;
             border-radius: 20px;
             transition: all 0.3s ease;
         }
 
         .back-link:hover {
-            background: rgba(255, 165, 0, 0.5);
+            background: linear-gradient(135deg, #0cc98d 0%, #009a9e 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
         }
 
         .form-actions {
@@ -451,7 +463,7 @@
             gap: 15px;
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 2px solid #e9ecef;
+            border-top: 2px solid #2a2a3e;
         }
 
         /* Visual Editor Link */
@@ -475,7 +487,7 @@
 
         /* Tags Section */
         .tags-section {
-            background: linear-gradient(135deg, #fce4ec, #f8bbd9);
+            background: linear-gradient(135deg, #2e1a2e, #16213e);
             border: 2px solid #e91e63;
             border-radius: 12px;
             padding: 20px;
@@ -483,8 +495,8 @@
         }
 
         .tags-section h2 {
-            color: #c2185b;
-            border-bottom-color: rgba(194, 24, 91, 0.3);
+            color: #f06292;
+            border-bottom-color: rgba(240, 98, 146, 0.3);
         }
 
         .tags-container {
@@ -531,9 +543,11 @@
             flex: 1;
             max-width: 200px;
             padding: 8px 12px;
-            border: 1px solid #ddd;
+            border: 1px solid #2a2a3e;
             border-radius: 6px;
             font-size: 13px;
+            background: #16213e;
+            color: #e0e0e0;
         }
 
         .add-tag-inline button {
@@ -890,11 +904,93 @@
                 <a href="{{ url_for('admin_trainer') }}" class="btn btn-secondary">Отмена</a>
             </div>
         </form>
+
+        {% if scenario and version_history %}
+        <!-- Version History Section -->
+        <div style="margin-top: 30px; background: linear-gradient(135deg, #1a1a2e, #16213e); border: 1px solid #2a2a3e; border-radius: 12px; padding: 20px;">
+            <h2 style="color: #00d4aa; margin-bottom: 15px; font-size: 18px;">
+                📋 История версий
+                <span style="font-size: 13px; color: #888; font-weight: normal; margin-left: 10px;">
+                    Текущая: v{{ scenario.version or 1 }}
+                </span>
+            </h2>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid #2a2a3e; color: #888; font-size: 13px;">
+                        <th style="padding: 8px; text-align: left;">Версия</th>
+                        <th style="padding: 8px; text-align: left;">Изменил</th>
+                        <th style="padding: 8px; text-align: left;">Дата</th>
+                        <th style="padding: 8px; text-align: left;">Комментарий</th>
+                        <th style="padding: 8px; text-align: center;">Действие</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in version_history %}
+                    <tr style="border-bottom: 1px solid #1a1a2e;">
+                        <td style="padding: 8px; color: #00d4aa; font-weight: bold;">v{{ v.version }}</td>
+                        <td style="padding: 8px; color: #e0e0e0;">{{ v.changed_by or '—' }}</td>
+                        <td style="padding: 8px; color: #888; font-size: 13px;">{{ v.changed_at[:16] if v.changed_at else '—' }}</td>
+                        <td style="padding: 8px; color: #888; font-size: 13px;">{{ v.change_summary or '' }}</td>
+                        <td style="padding: 8px; text-align: center;">
+                            <button type="button" onclick="viewVersion({{ v.version }})"
+                                    style="background: #2a2a3e; border: 1px solid #3a3a4e; color: #00d4aa; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                Посмотреть
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Version Snapshot Modal -->
+    <div id="versionModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; overflow:auto;">
+        <div style="max-width:700px; margin:60px auto; background:#1a1a2e; border-radius:12px; padding:25px; color:#e0e0e0; position:relative;">
+            <button onclick="document.getElementById('versionModal').style.display='none'"
+                    style="position:absolute; top:15px; right:15px; background:none; border:none; color:#888; font-size:20px; cursor:pointer;">&times;</button>
+            <h3 id="versionModalTitle" style="color:#00d4aa; margin-bottom:15px;"></h3>
+            <div id="versionModalContent" style="font-size:14px; line-height:1.6;"></div>
+        </div>
     </div>
 
     <script>
         const csrfToken = '{{ csrf_token() }}';
         const scenarioId = {{ scenario.id if scenario else 'null' }};
+
+        async function viewVersion(version) {
+            try {
+                const resp = await fetch(`/admin/trainer/scenario/${scenarioId}/versions/${version}`);
+                const data = await resp.json();
+                if (!data.success) { alert('Ошибка загрузки версии'); return; }
+
+                const snap = data.snapshot;
+                const sc = snap.scenario || {};
+                let html = `<p><strong>Название:</strong> ${sc.title || '—'}</p>`;
+                html += `<p><strong>Описание:</strong> ${sc.description || '—'}</p>`;
+                html += `<p style="color:#888; font-size:12px;">Изменил: ${data.changed_by || '—'} | ${(data.changed_at || '').substring(0, 16)}</p>`;
+                html += '<hr style="border-color:#2a2a3e; margin:12px 0;">';
+
+                const steps = snap.steps || [];
+                steps.forEach((step, i) => {
+                    html += `<div style="margin-bottom:12px; padding:10px; background:#16213e; border-radius:8px;">`;
+                    html += `<div style="color:#00d4aa; font-size:13px; margin-bottom:6px;">Шаг ${step.step_num}: ${step.client_name || 'Клиент'}</div>`;
+                    html += `<div style="margin-bottom:8px;">${step.client_message}</div>`;
+                    (step.answers || []).forEach(a => {
+                        const color = a.is_correct ? '#4CAF50' : (a.is_partial ? '#FF9800' : '#888');
+                        html += `<div style="margin-left:12px; padding:4px 0; color:${color}; font-size:13px;">• ${a.answer_text} (${a.points} б.)</div>`;
+                    });
+                    html += '</div>';
+                });
+
+                document.getElementById('versionModalTitle').textContent = `Версия v${version}`;
+                document.getElementById('versionModalContent').innerHTML = html;
+                document.getElementById('versionModal').style.display = 'block';
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        }
 
         async function addStep() {
             if (!scenarioId) {

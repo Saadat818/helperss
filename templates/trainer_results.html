@@ -560,7 +560,18 @@
             {% endif %}
 
             <div class="scenario-info">
-                <strong>{{ result.scenario_title }}</strong><br>
+                <strong>{{ result.scenario_title }}</strong>
+                {% if result_version %}
+                <span style="display:inline-block; background:#2a2a2a; color:#00d4aa; padding:2px 8px; border-radius:10px; font-size:12px; margin-left:6px; vertical-align:middle;">
+                    v{{ result_version }}
+                </span>
+                {% if version_outdated %}
+                <span style="display:inline-block; background:rgba(255,152,0,0.15); color:#ff9800; padding:2px 8px; border-radius:10px; font-size:11px; margin-left:4px; vertical-align:middle;">
+                    устаревшая версия
+                </span>
+                {% endif %}
+                {% endif %}
+                <br>
                 Уровень: {{ result.level_name }}
                 {% if result.timeout_count and result.timeout_count > 0 %}
                 <br><span style="color: var(--orange);">Пропущено ответов: {{ result.timeout_count }}</span>
@@ -568,6 +579,24 @@
             </div>
 
         </div>
+
+        <!-- Ваши бейджи -->
+        {% if user_badges %}
+        <div class="details-section" style="border-color: rgba(255, 193, 7, 0.4); background: linear-gradient(180deg, rgba(255, 193, 7, 0.06), var(--card2));">
+            <div class="details-title">
+                <span>🏅</span>
+                <span>Ваши бейджи</span>
+            </div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; padding: 8px 0;">
+                {% for badge in user_badges %}
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255,255,255,0.07); border-radius: 20px; font-size: 0.95em;">
+                    <span style="font-size: 1.3em;">{{ badge.icon }}</span>
+                    <span style="font-weight: 500;">{{ badge.name }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Классификация обращения -->
         {% if correct_topics or result.selected_topic_name %}

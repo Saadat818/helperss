@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -22,10 +22,11 @@
         .container {
             max-width: 800px;
             margin: 0 auto;
-            background-color: #ffffff;
+            background-color: #1a1a2e;
             padding: 30px;
             border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
         }
 
         .header {
@@ -34,16 +35,16 @@
             align-items: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid #2a2a3e;
         }
 
         h1 {
-            color: #007b7e;
+            color: #00d4aa;
             font-size: 24px;
         }
 
         h2 {
-            color: #333;
+            color: #e0e0e0;
             font-size: 18px;
             margin-bottom: 15px;
         }
@@ -82,11 +83,11 @@
 
         /* Drop Zone */
         .drop-zone {
-            border: 3px dashed #007b7e;
+            border: 3px dashed #00d4aa;
             border-radius: 15px;
             padding: 50px 20px;
             text-align: center;
-            background: #f8f9fa;
+            background: #16213e;
             margin-bottom: 30px;
             transition: all 0.3s;
             cursor: pointer;
@@ -94,7 +95,7 @@
 
         .drop-zone:hover,
         .drop-zone.dragover {
-            background: #e8f5e9;
+            background: #1a2e1a;
             border-color: #4CAF50;
         }
 
@@ -105,13 +106,13 @@
 
         .drop-zone-text {
             font-size: 18px;
-            color: #333;
+            color: #e0e0e0;
             margin-bottom: 10px;
         }
 
         .drop-zone-hint {
             font-size: 14px;
-            color: #666;
+            color: #999;
         }
 
         .file-input {
@@ -120,7 +121,7 @@
 
         /* Template Section */
         .template-section {
-            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            background: linear-gradient(135deg, #16213e, #0f3460);
             border: 2px solid #2196f3;
             border-radius: 12px;
             padding: 20px;
@@ -128,19 +129,19 @@
         }
 
         .template-section h2 {
-            color: #1976d2;
+            color: #64b5f6;
             margin-bottom: 15px;
         }
 
         .template-description {
-            color: #333;
+            color: #e0e0e0;
             font-size: 14px;
             line-height: 1.6;
             margin-bottom: 15px;
         }
 
         .template-description strong {
-            color: #1976d2;
+            color: #64b5f6;
         }
 
         .format-table {
@@ -154,7 +155,7 @@
         .format-table td {
             padding: 10px;
             text-align: left;
-            border: 1px solid #ccc;
+            border: 1px solid #2a2a3e;
         }
 
         .format-table th {
@@ -165,13 +166,14 @@
         .format-table td:first-child {
             font-weight: 600;
             width: 30%;
+            color: #e0e0e0;
         }
 
         /* Preview Section */
         .preview-section {
             display: none;
-            background: #f8f9fa;
-            border: 1px solid #ddd;
+            background: #16213e;
+            border: 1px solid #2a2a3e;
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 30px;
@@ -184,27 +186,27 @@
         .preview-title {
             font-size: 16px;
             font-weight: 600;
-            color: #333;
+            color: #e0e0e0;
             margin-bottom: 15px;
         }
 
         .preview-item {
-            background: white;
+            background: #1a1a2e;
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 10px;
-            border-left: 4px solid #007b7e;
+            border-left: 4px solid #00d4aa;
         }
 
         .preview-label {
             font-size: 12px;
-            color: #666;
+            color: #999;
             margin-bottom: 5px;
         }
 
         .preview-value {
             font-size: 14px;
-            color: #333;
+            color: #e0e0e0;
         }
 
         .preview-steps {
@@ -212,7 +214,7 @@
         }
 
         .preview-step {
-            background: #e8f5e9;
+            background: #1a2e1a;
             padding: 10px;
             border-radius: 6px;
             margin-bottom: 8px;
@@ -220,7 +222,7 @@
 
         .preview-step-num {
             font-size: 11px;
-            color: #388e3c;
+            color: #4caf50;
             font-weight: 600;
         }
 
@@ -231,7 +233,7 @@
 
         .preview-answer {
             font-size: 12px;
-            color: #555;
+            color: #ccc;
             padding: 4px 0;
         }
 
@@ -281,16 +283,17 @@
             text-decoration: none;
             color: #ffffff;
             font-weight: 600;
-            background: rgba(255, 165, 0, 0.3);
-            backdrop-filter: blur(10px);
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 100%);
             padding: 8px 16px;
-            border: 2px solid rgba(255, 165, 0, 0.5);
+            border: none;
             border-radius: 20px;
             transition: all 0.3s ease;
         }
 
         .back-link:hover {
-            background: rgba(255, 165, 0, 0.5);
+            background: linear-gradient(135deg, #0cc98d 0%, #009a9e 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
         }
 
         .form-actions {
@@ -312,8 +315,8 @@
         .spinner {
             width: 40px;
             height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #007b7e;
+            border: 4px solid #2a2a3e;
+            border-top: 4px solid #00d4aa;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin: 0 auto 15px;

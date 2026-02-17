@@ -1945,8 +1945,10 @@ def trainer_menu():
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
     progress = trainer_mgr.get_user_progress(user_id)
+    stats = trainer_mgr.get_statistics()
 
-    return render_template('trainer_menu.html', levels=levels, progress=progress)
+    return render_template('trainer_menu.html', levels=levels, progress=progress,
+                         top_users=stats['top_users'], current_user_id=user_id)
 
 
 @app.route('/trainer/level/<level_code>')
@@ -2235,16 +2237,43 @@ def trainer_results(result_id):
 
     grade_info = trainer_mgr.get_grade_info(result['grade'])
 
+    # Определяем, нужен ли снимок старой версии
+    scenario_data = trainer_mgr.get_scenario(result['scenario_id'])
+    result_version = result.get('scenario_version')
+    current_version = scenario_data.get('version', 1) if scenario_data else 1
+    version_outdated = False
+    snapshot_steps = None
+
+    if result_version and result_version != current_version:
+        version_outdated = True
+        ver_snap = trainer_mgr.get_scenario_version_snapshot(result['scenario_id'], result_version)
+        if ver_snap and ver_snap.get('snapshot'):
+            snapshot_steps = ver_snap['snapshot'].get('steps', [])
+
     # Получаем детализацию ответов
     answers_detail = []
     if result.get('answers'):
         for ans in result['answers']:
-            step = trainer_mgr.get_step_by_num(result['scenario_id'], ans['step_num'])
+            step_num = ans.get('step_num') or ans.get('step')
+            if not step_num:
+                continue
+
+            # Если есть снимок старой версии — используем данные из него
+            step = None
+            if snapshot_steps:
+                for ss in snapshot_steps:
+                    if ss.get('step_num') == step_num:
+                        step = ss
+                        break
+
+            if not step:
+                step = trainer_mgr.get_step_by_num(result['scenario_id'], step_num)
+
             if step:
                 for answer in step.get('answers', []):
-                    if answer['id'] == ans['answer_id']:
+                    if answer['id'] == ans.get('answer_id'):
                         answers_detail.append({
-                            'step_num': ans['step_num'],
+                            'step_num': step_num,
                             'answer_text': answer['answer_text'],
                             'points': ans['points'],
                             'is_correct': ans['is_correct'],
@@ -2268,7 +2297,6 @@ def trainer_results(result_id):
             found_current = True
 
     # Получаем эталонные тематики сценария
-    scenario_data = trainer_mgr.get_scenario(result['scenario_id'])
     correct_topics = []
     if scenario_data and scenario_data.get('correct_topics'):
         try:
@@ -2284,13 +2312,20 @@ def trainer_results(result_id):
             for t in correct_topics
         )
 
+    # Бейджи пользователя
+    user_badges = trainer_mgr.get_user_badges(user_id)
+
     return render_template('trainer_results.html',
                          result=result,
                          grade_info=grade_info,
                          answers_detail=answers_detail,
                          next_scenario=next_scenario,
                          correct_topics=correct_topics,
-                         topic_match=topic_match)
+                         topic_match=topic_match,
+                         version_outdated=version_outdated,
+                         result_version=result_version,
+                         current_version=current_version,
+                         user_badges=user_badges)
 
 
 # ============================================
@@ -2328,6 +2363,8 @@ def admin_trainer():
     if tag_id:
         scenarios = [s for s in scenarios if any(t['id'] == tag_id for t in s['tags'])]
 
+    unread_feedback = trainer_mgr.get_unread_feedback_count()
+
     return render_template('admin_trainer.html',
                          stats=stats,
                          levels=levels,
@@ -2336,7 +2373,8 @@ def admin_trainer():
                          scenarios=scenarios,
                          current_level=level_code,
                          current_category=category_id,
-                         current_tag=tag_id)
+                         current_tag=tag_id,
+                         unread_feedback=unread_feedback)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
@@ -2439,6 +2477,11 @@ def admin_trainer_edit(scenario_id):
             'correct_topics': correct_topics_val
         }
 
+        # Сохраняем снимок текущей версии перед обновлением
+        user_info = session.get('user_info', {})
+        editor = user_info.get('username') or user_info.get('name', 'admin')
+        trainer_mgr.save_version_snapshot(scenario_id, changed_by=editor)
+
         result = trainer_mgr.update_scenario(scenario_id, data)
 
         if result['success']:
@@ -2448,7 +2491,6 @@ def admin_trainer_edit(scenario_id):
             trainer_mgr.set_scenario_tags(scenario_id, tag_ids)
 
             # Логируем изменение (берём AD учётку пользователя)
-            user_info = session.get('user_info', {})
             trainer_mgr.log_action(
                 user_id=user_info.get('username') or user_info.get('name', 'admin'),
                 action='edit',
@@ -2523,6 +2565,9 @@ def admin_trainer_edit(scenario_id):
         except:
             pass
 
+    # Получаем историю версий
+    version_history = trainer_mgr.get_scenario_version_history(scenario_id)
+
     return render_template('admin_trainer_edit.html',
                          scenario=scenario,
                          levels=levels,
@@ -2532,7 +2577,39 @@ def admin_trainer_edit(scenario_id):
                          client_extra=client_extra,
                          tags=tags,
                          scenario_tag_ids=scenario_tag_ids,
-                         correct_topics=correct_topics)
+                         correct_topics=correct_topics,
+                         version_history=version_history)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/versions')
+@AdminAuth.login_required
+def admin_trainer_versions(scenario_id):
+    """Просмотр истории версий сценария"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    if not scenario:
+        flash('Сценарий не найден')
+        return redirect(url_for('admin_trainer'))
+
+    version_history = trainer_mgr.get_scenario_version_history(scenario_id)
+    return render_template('admin_trainer_versions.html',
+                         scenario=scenario,
+                         version_history=version_history)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/versions/<int:version>')
+@AdminAuth.login_required
+def admin_trainer_version_detail(scenario_id, version):
+    """Просмотр конкретной версии сценария (JSON)"""
+    snapshot = trainer_mgr.get_scenario_version_snapshot(scenario_id, version)
+    if not snapshot:
+        return jsonify({'success': False, 'error': 'Версия не найдена'}), 404
+    return jsonify({
+        'success': True,
+        'version': snapshot.get('version'),
+        'changed_by': snapshot.get('changed_by'),
+        'changed_at': snapshot.get('changed_at'),
+        'snapshot': snapshot.get('snapshot')
+    })
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/delete', methods=['POST'])
@@ -2666,6 +2743,20 @@ def admin_trainer_visual_save(scenario_id):
         data = request.get_json()
         nodes = data.get('nodes', [])
         connections = data.get('connections', [])
+
+        # Сохраняем снимок текущей версии перед изменениями
+        user_info = session.get('user_info', {})
+        editor = user_info.get('username') or user_info.get('name', 'admin')
+        trainer_mgr.save_version_snapshot(scenario_id, changed_by=editor,
+                                          change_summary='visual_editor')
+
+        # Инкремент версии сценария
+        cursor_v = trainer_mgr.conn.cursor()
+        cursor_v.execute(
+            "UPDATE trainer_scenarios SET version = COALESCE(version, 1) + 1 WHERE id = ?",
+            (scenario_id,)
+        )
+        trainer_mgr.conn.commit()
 
         # Очищаем существующие шаги
         for step in trainer_mgr.get_scenario_steps(scenario_id):
@@ -3070,6 +3161,53 @@ def admin_trainer_audit_export():
         print(f"[admin_trainer_audit_export] Ошибка: {e}")
         flash('Ошибка экспорта')
         return redirect(url_for('admin_trainer_audit'))
+
+
+# ============================================
+# ОБРАТНАЯ СВЯЗЬ ОТ СПЕЦИАЛИСТОВ
+# ============================================
+
+@app.route('/api/trainer/feedback', methods=['POST'])
+@rate_limit(max_requests=10, window=60)
+def trainer_submit_feedback():
+    """API: отправить обратную связь"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    try:
+        data = request.get_json()
+        message = (data.get('message') or '').strip()
+        level_code = data.get('level_code')
+
+        if not message:
+            return jsonify({'success': False, 'error': 'Сообщение не может быть пустым'})
+
+        if len(message) > 2000:
+            return jsonify({'success': False, 'error': 'Сообщение слишком длинное (макс. 2000 символов)'})
+
+        user_id = session['user_info'].get('username', 'anonymous')
+        result = trainer_mgr.add_feedback(user_id, message, level_code)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/trainer/feedback')
+@AdminAuth.login_required
+def admin_trainer_feedback():
+    """Страница обратной связи от специалистов"""
+    feedback_list = trainer_mgr.get_all_feedback()
+    unread_count = trainer_mgr.get_unread_feedback_count()
+    return render_template('admin_trainer_feedback.html',
+                         feedback_list=feedback_list, unread_count=unread_count)
+
+
+@app.route('/api/admin/trainer/feedback/<int:feedback_id>/read', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_feedback_mark_read(feedback_id):
+    """API: пометить обратную связь как прочитанную"""
+    result = trainer_mgr.mark_feedback_read(feedback_id)
+    return jsonify(result)
 
 
 # ============================================

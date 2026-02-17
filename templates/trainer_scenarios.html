@@ -397,5 +397,170 @@
         </div>
         {% endif %}
     </div>
+
+    <!-- Кнопка обратной связи -->
+    <button class="feedback-btn" onclick="openFeedback()" title="Обратная связь">💬</button>
+
+    <!-- Модальное окно обратной связи -->
+    <div class="feedback-overlay" id="feedbackModal">
+        <div class="feedback-modal">
+            <h3>💬 Обратная связь</h3>
+            <p style="color: var(--muted); font-size: 13px; margin-bottom: 16px;">
+                Нашли ошибку или есть предложение? Напишите нам.
+            </p>
+            <textarea id="feedbackMessage" placeholder="Опишите проблему или предложение..." maxlength="2000"></textarea>
+            <div class="feedback-actions">
+                <button class="feedback-cancel" onclick="closeFeedback()">Отмена</button>
+                <button class="feedback-send" id="feedbackSendBtn" onclick="sendFeedback()">Отправить</button>
+            </div>
+            <div class="feedback-status" id="feedbackStatus"></div>
+        </div>
+    </div>
+
+    <style>
+        .feedback-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 999;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 166, 81, 0.4);
+            background: rgba(0, 166, 81, 0.15);
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+        .feedback-btn:hover {
+            background: rgba(0, 166, 81, 0.3);
+            border-color: rgba(0, 166, 81, 0.6);
+            transform: scale(1.1);
+        }
+        .feedback-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .feedback-overlay.show { display: flex; }
+        .feedback-modal {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            width: 90%;
+            max-width: 480px;
+        }
+        .feedback-modal h3 {
+            color: var(--text);
+            margin-bottom: 4px;
+            font-size: 18px;
+        }
+        .feedback-modal textarea {
+            width: 100%;
+            min-height: 120px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 12px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .feedback-modal textarea:focus {
+            outline: none;
+            border-color: var(--green);
+        }
+        .feedback-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .feedback-cancel {
+            padding: 8px 18px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .feedback-send {
+            padding: 8px 18px;
+            border-radius: 8px;
+            border: none;
+            background: var(--green);
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .feedback-send:hover { background: var(--greenHover); }
+        .feedback-send:disabled { opacity: 0.5; cursor: not-allowed; }
+        .feedback-status {
+            margin-top: 10px;
+            font-size: 13px;
+            text-align: center;
+        }
+        .feedback-status.success { color: var(--greenLight); }
+        .feedback-status.error { color: #E57373; }
+    </style>
+
+    <script>
+        function openFeedback() {
+            document.getElementById('feedbackModal').classList.add('show');
+            document.getElementById('feedbackMessage').focus();
+        }
+        function closeFeedback() {
+            document.getElementById('feedbackModal').classList.remove('show');
+            document.getElementById('feedbackMessage').value = '';
+            document.getElementById('feedbackStatus').textContent = '';
+            document.getElementById('feedbackStatus').className = 'feedback-status';
+        }
+        async function sendFeedback() {
+            const msg = document.getElementById('feedbackMessage').value.trim();
+            const statusEl = document.getElementById('feedbackStatus');
+            const btn = document.getElementById('feedbackSendBtn');
+            if (!msg) {
+                statusEl.textContent = 'Введите сообщение';
+                statusEl.className = 'feedback-status error';
+                return;
+            }
+            btn.disabled = true;
+            btn.textContent = 'Отправка...';
+            try {
+                const resp = await fetch('/api/trainer/feedback', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: msg, level_code: '{{ level.code }}'})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    statusEl.textContent = 'Спасибо! Сообщение отправлено.';
+                    statusEl.className = 'feedback-status success';
+                    document.getElementById('feedbackMessage').value = '';
+                    setTimeout(closeFeedback, 1500);
+                } else {
+                    statusEl.textContent = data.error || 'Ошибка отправки';
+                    statusEl.className = 'feedback-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = 'Ошибка сети';
+                statusEl.className = 'feedback-status error';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Отправить';
+        }
+        document.getElementById('feedbackModal').addEventListener('click', function(e) {
+            if (e.target === this) closeFeedback();
+        });
+    </script>
 </body>
 </html>

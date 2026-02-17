@@ -195,8 +195,14 @@ class TrainerManager:
         # Инициализация начальных данных если таблицы пустые
         self._init_default_data()
 
+        # Миграция: версионность сценариев
+        self._migrate_versioning()
+
         # Инициализация тегов
         self._init_default_tags()
+
+        # Миграция: таблица обратной связи
+        self._migrate_feedback_table()
 
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
@@ -329,6 +335,57 @@ class TrainerManager:
                     (order_num, code),
                 )
 
+        self.conn.commit()
+
+    def _migrate_versioning(self):
+        """Миграция: версионность сценариев"""
+        cursor = self.conn.cursor()
+
+        # Таблица снимков версий
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trainer_scenario_versions (
+                id INTEGER PRIMARY KEY,
+                scenario_id INTEGER NOT NULL,
+                version INTEGER NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                changed_by TEXT,
+                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                change_summary TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_scenario_versions_sid
+            ON trainer_scenario_versions(scenario_id, version)
+        """)
+
+        # Колонка version в trainer_scenarios
+        try:
+            cursor.execute("SELECT version FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN version INTEGER DEFAULT 1")
+
+        # Колонка scenario_version в trainer_results
+        try:
+            cursor.execute("SELECT scenario_version FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN scenario_version INTEGER")
+
+        self.conn.commit()
+
+    def _migrate_feedback_table(self):
+        """Миграция: таблица обратной связи от специалистов"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trainer_feedback (
+                id INTEGER PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                level_code TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_read BOOLEAN DEFAULT 0
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_feedback_created ON trainer_feedback(created_at)")
         self.conn.commit()
 
     def _init_default_data(self):
@@ -999,13 +1056,19 @@ class TrainerManager:
         percent = round((score / max_score) * 100) if max_score > 0 else 0
         grade = self.calculate_grade(percent)
 
+        # Получаем текущую версию сценария
+        scenario = self.get_scenario(scenario_id)
+        scenario_version = scenario.get('version', 1) if scenario else None
+
         cursor = self.conn.cursor()
         cursor.execute("""
             INSERT INTO trainer_results (user_id, scenario_id, score, max_score, percent, grade, answers_json,
-                                        final_loyalty, is_game_over, timeout_count, selected_topic_id, selected_topic_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        final_loyalty, is_game_over, timeout_count, selected_topic_id, selected_topic_name,
+                                        scenario_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (user_id, scenario_id, score, max_score, percent, grade, json.dumps(answers, ensure_ascii=False),
-              final_loyalty, 1 if is_game_over else 0, timeout_count, selected_topic_id, selected_topic_name))
+              final_loyalty, 1 if is_game_over else 0, timeout_count, selected_topic_id, selected_topic_name,
+              scenario_version))
 
         self.conn.commit()
         result_id = cursor.lastrowid
@@ -1135,6 +1198,13 @@ class TrainerManager:
                 SET {', '.join(set_parts)}
                 WHERE id = ?
             """, values)
+
+            # Инкремент версии
+            cursor.execute(
+                "UPDATE trainer_scenarios SET version = COALESCE(version, 1) + 1 WHERE id = ?",
+                (scenario_id,)
+            )
+
             self.conn.commit()
             return {"success": True}
         except Exception as e:
@@ -1326,6 +1396,10 @@ class TrainerManager:
         """)
         top_users = [dict(row) for row in cursor.fetchall()]
 
+        # Добавляем бейджи для каждого пользователя в топе
+        for user in top_users:
+            user['badges'] = self.get_user_badges(user['user_id'])
+
         return {
             'total_scenarios': total_scenarios,
             'total_completions': total_completions,
@@ -1334,6 +1408,109 @@ class TrainerManager:
             'levels': levels_stats,
             'top_users': top_users
         }
+
+    def get_user_badges(self, user_id: str) -> list:
+        """Вычислить бейджи пользователя на основе его результатов"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total,
+                AVG(final_loyalty) as avg_loyalty,
+                SUM(CASE WHEN timeout_count = 0 THEN 1 ELSE 0 END) as no_timeout_count,
+                SUM(CASE WHEN percent = 100 THEN 1 ELSE 0 END) as perfect_count,
+                SUM(CASE WHEN percent >= 90 THEN 1 ELSE 0 END) as excellent_count,
+                SUM(CASE WHEN is_game_over = 0 THEN 1 ELSE 0 END) as no_gameover_count,
+                COUNT(DISTINCT s.level_id) as levels_touched
+            FROM trainer_results r
+            JOIN trainer_scenarios s ON r.scenario_id = s.id
+            WHERE r.user_id = ?
+        """, (user_id,))
+        row = cursor.fetchone()
+        if not row or row[0] == 0:
+            return []
+
+        total = row[0]
+        avg_loyalty = row[1] or 0
+        no_timeout_count = row[2] or 0
+        perfect_count = row[3] or 0
+        excellent_count = row[4] or 0
+        no_gameover_count = row[5] or 0
+        levels_touched = row[6] or 0
+
+        badges = []
+
+        # Новичок — у всех кто прошёл хотя бы 1
+        badges.append({
+            'code': 'newbie',
+            'name': 'Новичок',
+            'icon': '🌱',
+            'description': 'Первое прохождение тренажёра'
+        })
+
+        # Укротитель гнева — avg final_loyalty >= 80%
+        if avg_loyalty >= 80:
+            badges.append({
+                'code': 'anger_tamer',
+                'name': 'Укротитель гнева',
+                'icon': '😤→😊',
+                'description': 'Средняя лояльность клиента >= 80%'
+            })
+
+        # Flash — 0 таймаутов при >= 5 прохождениях
+        if total >= 5 and no_timeout_count == total:
+            badges.append({
+                'code': 'flash',
+                'name': 'Flash',
+                'icon': '⚡',
+                'description': '0 таймаутов при >= 5 прохождениях'
+            })
+
+        # Знаток Мвики — >= 3 прохождений с результатом >= 90%
+        if excellent_count >= 3:
+            badges.append({
+                'code': 'expert',
+                'name': 'Знаток Мвики',
+                'icon': '📖',
+                'description': '>= 3 прохождений с результатом >= 90%'
+            })
+
+        # Перфекционист — хотя бы 1 прохождение на 100%
+        if perfect_count >= 1:
+            badges.append({
+                'code': 'perfectionist',
+                'name': 'Перфекционист',
+                'icon': '💎',
+                'description': 'Хотя бы 1 прохождение на 100%'
+            })
+
+        # Марафонец — >= 10 прохождений
+        if total >= 10:
+            badges.append({
+                'code': 'marathon',
+                'name': 'Марафонец',
+                'icon': '🏃',
+                'description': '>= 10 прохождений'
+            })
+
+        # Покоритель уровней — >= 3 разных уровней
+        if levels_touched >= 3:
+            badges.append({
+                'code': 'level_conqueror',
+                'name': 'Покоритель уровней',
+                'icon': '🏔️',
+                'description': 'Прошёл сценарии на >= 3 разных уровнях'
+            })
+
+        # Стальные нервы — >= 5 прохождений без game_over
+        if no_gameover_count >= 5:
+            badges.append({
+                'code': 'steel_nerves',
+                'name': 'Стальные нервы',
+                'icon': '🧘',
+                'description': '>= 5 прохождений без game over'
+            })
+
+        return badges
 
     def get_scenario_statistics(self, scenario_id: int) -> Dict:
         """Получить статистику по конкретному сценарию"""
@@ -1429,6 +1606,43 @@ class TrainerManager:
             })
 
         return results
+
+    # ==================== ОБРАТНАЯ СВЯЗЬ ====================
+
+    def add_feedback(self, user_id: str, message: str, level_code: str = None) -> Dict:
+        """Добавить сообщение обратной связи"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO trainer_feedback (user_id, message, level_code)
+                VALUES (?, ?, ?)
+            """, (user_id, message, level_code))
+            self.conn.commit()
+            return {"success": True, "id": cursor.lastrowid}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_all_feedback(self) -> List[Dict]:
+        """Получить все сообщения обратной связи"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM trainer_feedback ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def mark_feedback_read(self, feedback_id: int) -> Dict:
+        """Пометить сообщение как прочитанное"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("UPDATE trainer_feedback SET is_read = 1 WHERE id = ?", (feedback_id,))
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_unread_feedback_count(self) -> int:
+        """Получить количество непрочитанных сообщений"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = 0")
+        return cursor.fetchone()[0]
 
     def close(self):
         """Закрытие соединения с БД"""
@@ -1538,6 +1752,75 @@ class TrainerManager:
             ORDER BY l.order_num, s.order_num
         """, (tag_id,))
         return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== ВЕРСИОННОСТЬ ====================
+
+    def _snapshot_scenario(self, scenario_id: int) -> Optional[Dict]:
+        """Собрать полный снимок сценария (scenario + steps + answers + tags)"""
+        scenario = self.get_scenario(scenario_id)
+        if not scenario:
+            return None
+
+        steps = self.get_scenario_steps(scenario_id)
+        for step in steps:
+            step['answers'] = self.get_step_answers(step['id'])
+
+        tags = self.get_scenario_tags(scenario_id)
+
+        return {
+            'scenario': scenario,
+            'steps': steps,
+            'tags': tags
+        }
+
+    def save_version_snapshot(self, scenario_id: int, changed_by: str = None,
+                              change_summary: str = None) -> Dict:
+        """Сохранить снимок текущей версии сценария перед редактированием"""
+        try:
+            snapshot = self._snapshot_scenario(scenario_id)
+            if not snapshot:
+                return {"success": False, "error": "Сценарий не найден"}
+
+            current_version = snapshot['scenario'].get('version') or 1
+
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO trainer_scenario_versions
+                (scenario_id, version, snapshot_json, changed_by, change_summary)
+                VALUES (?, ?, ?, ?, ?)
+            """, (scenario_id, current_version,
+                  json.dumps(snapshot, ensure_ascii=False),
+                  changed_by, change_summary))
+            self.conn.commit()
+            return {"success": True, "version": current_version}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_scenario_version_history(self, scenario_id: int) -> List[Dict]:
+        """Получить список версий сценария (без snapshot_json)"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, scenario_id, version, changed_by, changed_at, change_summary
+            FROM trainer_scenario_versions
+            WHERE scenario_id = ?
+            ORDER BY version DESC
+        """, (scenario_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_scenario_version_snapshot(self, scenario_id: int, version: int) -> Optional[Dict]:
+        """Получить снимок конкретной версии сценария"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM trainer_scenario_versions
+            WHERE scenario_id = ? AND version = ?
+        """, (scenario_id, version))
+        row = cursor.fetchone()
+        if row:
+            result = dict(row)
+            if result.get('snapshot_json'):
+                result['snapshot'] = json.loads(result['snapshot_json'])
+            return result
+        return None
 
     # ==================== АУДИТ ====================
 

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>История версий - {{ scenario.title }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0c0c0c;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            color: #e0e0e0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #2a2a3e;
+        }
+        h1 { color: #00d4aa; font-size: 22px; }
+        .back-btn {
+            background: #2a2a3e;
+            color: #e0e0e0;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .back-btn:hover { background: #3a3a4e; }
+        .current-version {
+            background: linear-gradient(135deg, #00d4aa20, #00a65120);
+            border: 1px solid #00d4aa40;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .current-version strong { color: #00d4aa; }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            padding: 10px;
+            text-align: left;
+            color: #888;
+            font-size: 13px;
+            border-bottom: 1px solid #2a2a3e;
+        }
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #1a1a2e;
+            font-size: 14px;
+        }
+        .ver-badge {
+            display: inline-block;
+            background: #00d4aa20;
+            color: #00d4aa;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        .view-btn {
+            background: #2a2a3e;
+            border: 1px solid #3a3a4e;
+            color: #00d4aa;
+            padding: 5px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .view-btn:hover { background: #3a3a4e; }
+        .empty { text-align: center; color: #666; padding: 40px; font-size: 15px; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            overflow: auto;
+        }
+        .modal-content {
+            max-width: 700px;
+            margin: 60px auto;
+            background: #1a1a2e;
+            border-radius: 12px;
+            padding: 25px;
+            color: #e0e0e0;
+            position: relative;
+        }
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .step-card {
+            margin-bottom: 12px;
+            padding: 10px;
+            background: #16213e;
+            border-radius: 8px;
+        }
+        .step-title { color: #00d4aa; font-size: 13px; margin-bottom: 6px; }
+        .answer-line { margin-left: 12px; padding: 4px 0; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>История версий</h1>
+            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="back-btn">← Назад</a>
+        </div>
+
+        <div class="current-version">
+            <strong>{{ scenario.title }}</strong><br>
+            Текущая версия: <strong>v{{ scenario.version or 1 }}</strong>
+        </div>
+
+        {% if version_history %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Версия</th>
+                    <th>Изменил</th>
+                    <th>Дата</th>
+                    <th>Комментарий</th>
+                    <th style="text-align:center;">Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in version_history %}
+                <tr>
+                    <td><span class="ver-badge">v{{ v.version }}</span></td>
+                    <td>{{ v.changed_by or '—' }}</td>
+                    <td style="color:#888; font-size:13px;">{{ v.changed_at[:16] if v.changed_at else '—' }}</td>
+                    <td style="color:#888; font-size:13px;">{{ v.change_summary or '' }}</td>
+                    <td style="text-align:center;">
+                        <button class="view-btn" onclick="viewVersion({{ v.version }})">Посмотреть</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">
+            История версий пока пуста.<br>
+            Снимки сохраняются автоматически при каждом редактировании сценария.
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-overlay" id="versionModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="document.getElementById('versionModal').style.display='none'">&times;</button>
+            <h3 id="versionModalTitle" style="color:#00d4aa; margin-bottom:15px;"></h3>
+            <div id="versionModalContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const scenarioId = {{ scenario.id }};
+
+        async function viewVersion(version) {
+            try {
+                const resp = await fetch(`/admin/trainer/scenario/${scenarioId}/versions/${version}`);
+                const data = await resp.json();
+                if (!data.success) { alert('Ошибка загрузки версии'); return; }
+
+                const snap = data.snapshot;
+                const sc = snap.scenario || {};
+                let html = `<p><strong>Название:</strong> ${sc.title || '—'}</p>`;
+                html += `<p><strong>Описание:</strong> ${sc.description || '—'}</p>`;
+                html += `<p style="color:#888; font-size:12px;">Изменил: ${data.changed_by || '—'} | ${(data.changed_at || '').substring(0, 16)}</p>`;
+                html += '<hr style="border-color:#2a2a3e; margin:12px 0;">';
+
+                const steps = snap.steps || [];
+                steps.forEach(step => {
+                    html += `<div class="step-card">`;
+                    html += `<div class="step-title">Шаг ${step.step_num}: ${step.client_name || 'Клиент'}</div>`;
+                    html += `<div style="margin-bottom:8px;">${step.client_message}</div>`;
+                    (step.answers || []).forEach(a => {
+                        const color = a.is_correct ? '#4CAF50' : (a.is_partial ? '#FF9800' : '#888');
+                        html += `<div class="answer-line" style="color:${color};">• ${a.answer_text} (${a.points} б.)</div>`;
+                    });
+                    html += '</div>';
+                });
+
+                if (snap.tags && snap.tags.length > 0) {
+                    html += '<hr style="border-color:#2a2a3e; margin:12px 0;">';
+                    html += '<p style="font-size:13px; color:#888;">Теги: ' +
+                        snap.tags.map(t => `<span style="background:${t.color}20; color:${t.color}; padding:2px 8px; border-radius:8px; font-size:12px;">${t.icon} ${t.name}</span>`).join(' ') +
+                        '</p>';
+                }
+
+                document.getElementById('versionModalTitle').textContent = `Версия v${version}`;
+                document.getElementById('versionModalContent').innerHTML = html;
+                document.getElementById('versionModal').style.display = 'block';
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        }
+    </script>
+</body>
+</html>

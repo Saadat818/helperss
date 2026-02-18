@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -22,10 +22,11 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background-color: #ffffff;
+            background-color: #1a1a2e;
             padding: 30px;
             border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
         }
 
         .header {
@@ -34,16 +35,16 @@
             align-items: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid #2a2a3e;
         }
 
         h1 {
-            color: #007b7e;
+            color: #00d4aa;
             font-size: 28px;
         }
 
         h2 {
-            color: #333;
+            color: #e0e0e0;
             font-size: 18px;
             margin-bottom: 15px;
         }
@@ -79,14 +80,15 @@
         }
 
         .stat-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border: 1px solid #2a2a3e;
             border-radius: 12px;
             padding: 25px;
             text-align: center;
         }
 
         .stat-card.highlight {
-            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            background: linear-gradient(135deg, #1a2e1a 0%, #16213e 100%);
             border: 2px solid #4caf50;
         }
 
@@ -98,12 +100,12 @@
         .stat-value {
             font-size: 36px;
             font-weight: 700;
-            color: #007b7e;
+            color: #00d4aa;
         }
 
         .stat-label {
             font-size: 14px;
-            color: #666;
+            color: #999;
             margin-top: 5px;
         }
 
@@ -127,7 +129,7 @@
         }
 
         .level-card {
-            background: #f8f9fa;
+            background: #16213e;
             border-radius: 12px;
             padding: 20px;
             border-left: 4px solid;
@@ -147,18 +149,18 @@
         .level-name {
             font-weight: 600;
             font-size: 18px;
-            color: #333;
+            color: #e0e0e0;
         }
 
         .level-stats {
             display: flex;
             justify-content: space-between;
             font-size: 14px;
-            color: #666;
+            color: #999;
         }
 
         .level-stats strong {
-            color: #333;
+            color: #e0e0e0;
         }
 
         /* Top Users Table */
@@ -171,18 +173,18 @@
         .users-table td {
             padding: 12px 16px;
             text-align: left;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #2a2a3e;
         }
 
         .users-table th {
-            background: #f8f9fa;
+            background: #16213e;
             font-weight: 600;
-            color: #495057;
+            color: #aaa;
             font-size: 13px;
         }
 
         .users-table tr:hover {
-            background: #f8f9fa;
+            background: #16213e;
         }
 
         .rank {
@@ -204,7 +206,7 @@
         .progress-bar-mini {
             width: 100px;
             height: 8px;
-            background: #e9ecef;
+            background: #2a2a3e;
             border-radius: 4px;
             overflow: hidden;
             display: inline-block;
@@ -227,22 +229,136 @@
             text-decoration: none;
             color: #ffffff;
             font-weight: 600;
-            background: rgba(255, 165, 0, 0.3);
-            backdrop-filter: blur(10px);
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 100%);
             padding: 8px 16px;
-            border: 2px solid rgba(255, 165, 0, 0.5);
+            border: none;
             border-radius: 20px;
             transition: all 0.3s ease;
         }
 
         .back-link:hover {
-            background: rgba(255, 165, 0, 0.5);
+            background: linear-gradient(135deg, #0cc98d 0%, #009a9e 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
         }
 
         .empty-state {
             text-align: center;
             padding: 40px;
-            color: #666;
+            color: #999;
+        }
+
+        .user-link {
+            color: #00d4aa;
+            text-decoration: none;
+            cursor: pointer;
+            border-bottom: 1px dashed #00d4aa;
+        }
+
+        .user-link:hover {
+            color: #00ffcc;
+        }
+
+        /* User Modal */
+        .user-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .user-modal-overlay.active {
+            display: flex;
+        }
+
+        .user-modal {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 750px;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 30px;
+            position: relative;
+        }
+
+        .user-modal-close {
+            position: absolute;
+            top: 16px; right: 16px;
+            background: none; border: none;
+            color: #999; font-size: 24px;
+            cursor: pointer;
+        }
+
+        .user-modal-close:hover { color: #fff; }
+
+        .user-modal h2 {
+            margin-bottom: 20px;
+            color: #00d4aa;
+        }
+
+        .user-modal .badges-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .user-modal .badge-item {
+            background: #16213e;
+            border: 1px solid #2a2a3e;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .user-modal .result-row {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-modal .result-title {
+            font-weight: 600;
+            color: #e0e0e0;
+            flex: 1;
+        }
+
+        .user-modal .result-meta {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            font-size: 13px;
+            color: #999;
+        }
+
+        .user-modal .result-percent {
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        .user-modal .result-gameover {
+            color: #f44336;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .user-modal .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
         }
     </style>
 </head>
@@ -315,6 +431,7 @@
                         <th>Пользователь</th>
                         <th>Прохождений</th>
                         <th>Средний балл</th>
+                        <th>Бейджи</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -325,13 +442,20 @@
                                 {{ loop.index }}
                             </div>
                         </td>
-                        <td><strong>{{ user.user_id }}</strong></td>
+                        <td><a href="#" class="user-link" data-user-id="{{ user.user_id }}" onclick="showUserModal('{{ user.user_id }}'); return false;"><strong>{{ user.user_id }}</strong></a></td>
                         <td>{{ user.completions }}</td>
                         <td>
                             <div class="progress-bar-mini">
                                 <div class="fill" style="width: {{ user.avg_percent | round }}%"></div>
                             </div>
                             {{ user.avg_percent | round(1) }}%
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                {% for badge in user.badges %}
+                                <span title="{{ badge.name }}: {{ badge.description }}" style="cursor: help; font-size: 1.1em;">{{ badge.icon }}</span>
+                                {% endfor %}
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -343,6 +467,121 @@
             </div>
             {% endif %}
         </div>
+
+        <!-- Error Heatmap -->
+        <div class="section">
+            <div class="section-header">
+                <h2>🔥 Тепловая карта ошибок</h2>
+            </div>
+
+            {% if heatmap %}
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>Сценарий</th>
+                        <th>Шаг</th>
+                        <th>Сообщение клиента</th>
+                        <th>Ответов</th>
+                        <th>Ошибок</th>
+                        <th>% ошибок</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in heatmap %}
+                    <tr>
+                        <td><strong>{{ item.scenario_title }}</strong></td>
+                        <td style="text-align: center;">{{ item.step_num }}</td>
+                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ item.client_message }}">{{ item.client_message[:80] }}{% if item.client_message|length > 80 %}...{% endif %}</td>
+                        <td style="text-align: center;">{{ item.total }}</td>
+                        <td style="text-align: center;">{{ item.wrong }}</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="flex: 1; height: 8px; background: #2a2a3e; border-radius: 4px; overflow: hidden; max-width: 100px;">
+                                    <div style="height: 100%; width: {{ item.error_rate }}%; border-radius: 4px; background: {% if item.error_rate >= 70 %}#f44336{% elif item.error_rate >= 40 %}#ff9800{% else %}#4caf50{% endif %};"></div>
+                                </div>
+                                <span style="color: {% if item.error_rate >= 70 %}#f44336{% elif item.error_rate >= 40 %}#ff9800{% else %}#4caf50{% endif %}; font-weight: 600; font-size: 13px;">{{ item.error_rate }}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>Нет данных для анализа ошибок</p>
+            </div>
+            {% endif %}
+        </div>
     </div>
+
+    <!-- User Detail Modal -->
+    <div class="user-modal-overlay" id="userModal">
+        <div class="user-modal">
+            <button class="user-modal-close" onclick="closeUserModal()">&times;</button>
+            <div id="userModalContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function showUserModal(userId) {
+        const modal = document.getElementById('userModal');
+        const content = document.getElementById('userModalContent');
+        content.innerHTML = '<div class="loading">Загрузка...</div>';
+        modal.classList.add('active');
+
+        fetch('/api/admin/trainer/user/' + encodeURIComponent(userId) + '/results')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    content.innerHTML = '<div class="loading">Ошибка загрузки</div>';
+                    return;
+                }
+
+                let html = '<h2>📋 ' + data.user_id + '</h2>';
+
+                // Badges
+                if (data.badges && data.badges.length > 0) {
+                    html += '<div class="badges-row">';
+                    data.badges.forEach(b => {
+                        html += '<div class="badge-item">' + b.icon + ' ' + b.name + '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                // Results
+                if (data.results && data.results.length > 0) {
+                    data.results.forEach(r => {
+                        const pColor = r.percent >= 80 ? '#4caf50' : r.percent >= 50 ? '#ff9800' : '#f44336';
+                        const date = r.completed_at ? r.completed_at.substring(0, 16).replace('T', ' ') : '';
+                        html += '<div class="result-row">';
+                        html += '<div class="result-title">' + (r.scenario_title || 'Сценарий #' + r.scenario_id) + '</div>';
+                        html += '<div class="result-meta">';
+                        html += '<span>' + date + '</span>';
+                        html += '<span class="result-percent" style="color:' + pColor + '">' + r.percent + '%</span>';
+                        html += '<span>' + (r.grade || '') + '</span>';
+                        if (r.is_game_over) html += '<span class="result-gameover">GAME OVER</span>';
+                        html += '</div></div>';
+                    });
+                } else {
+                    html += '<div class="loading">Нет прохождений</div>';
+                }
+
+                content.innerHTML = html;
+            })
+            .catch(() => {
+                content.innerHTML = '<div class="loading">Ошибка загрузки</div>';
+            });
+    }
+
+    function closeUserModal() {
+        document.getElementById('userModal').classList.remove('active');
+    }
+
+    document.getElementById('userModal').addEventListener('click', function(e) {
+        if (e.target === this) closeUserModal();
+    });
+    </script>
 </body>
 </html>

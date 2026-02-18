@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             min-height: 100vh;
             padding: 20px;
@@ -22,10 +22,11 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background-color: #ffffff;
+            background-color: #1a1a2e;
             padding: 30px;
             border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
         }
 
         .header {
@@ -34,11 +35,11 @@
             align-items: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid #2a2a3e;
         }
 
         h1 {
-            color: #007b7e;
+            color: #00d4aa;
             font-size: 28px;
         }
 
@@ -74,11 +75,6 @@
             color: white;
         }
 
-        .btn-logout {
-            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-            color: white;
-        }
-
         .btn-sm {
             padding: 6px 12px;
             font-size: 12px;
@@ -98,7 +94,8 @@
         }
 
         .stat-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border: 1px solid #2a2a3e;
             border-radius: 12px;
             padding: 20px;
             text-align: center;
@@ -107,12 +104,12 @@
         .stat-value {
             font-size: 36px;
             font-weight: 700;
-            color: #007b7e;
+            color: #00d4aa;
         }
 
         .stat-label {
             font-size: 14px;
-            color: #666;
+            color: #999;
             margin-top: 5px;
         }
 
@@ -133,14 +130,16 @@
 
         .filter-group label {
             font-size: 14px;
-            color: #666;
+            color: #999;
         }
 
         .filter-group select {
             padding: 8px 12px;
-            border: 1px solid #ddd;
+            border: 1px solid #2a2a3e;
             border-radius: 6px;
             font-size: 14px;
+            background: #16213e;
+            color: #e0e0e0;
         }
 
         /* Scenarios Table */
@@ -154,29 +153,29 @@
         .scenarios-table td {
             padding: 14px 16px;
             text-align: left;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #2a2a3e;
         }
 
         .scenarios-table th {
-            background: #f8f9fa;
+            background: #16213e;
             font-weight: 600;
-            color: #495057;
+            color: #aaa;
             font-size: 13px;
             text-transform: uppercase;
         }
 
         .scenarios-table tr:hover {
-            background: #f8f9fa;
+            background: #16213e;
         }
 
         .scenario-title {
             font-weight: 600;
-            color: #333;
+            color: #e0e0e0;
         }
 
         .scenario-desc {
             font-size: 13px;
-            color: #666;
+            color: #999;
             margin-top: 4px;
         }
 
@@ -250,7 +249,7 @@
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            color: #666;
+            color: #999;
         }
 
         .empty-state-icon {
@@ -267,18 +266,17 @@
             text-decoration: none;
             color: #ffffff;
             font-weight: 600;
-            background: rgba(255, 165, 0, 0.3);
-            backdrop-filter: blur(10px);
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 100%);
             padding: 8px 16px;
-            border: 2px solid rgba(255, 165, 0, 0.5);
+            border: none;
             border-radius: 20px;
             transition: all 0.3s ease;
         }
 
         .back-link:hover {
-            background: rgba(255, 165, 0, 0.5);
-            border-color: rgba(255, 165, 0, 0.7);
+            background: linear-gradient(135deg, #0cc98d 0%, #009a9e 100%);
             transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
         }
 
         /* Delete confirmation modal */
@@ -300,21 +298,22 @@
         }
 
         .modal {
-            background: white;
+            background: #1a1a2e;
             padding: 30px;
             border-radius: 12px;
             max-width: 400px;
             text-align: center;
+            border: 1px solid #2a2a3e;
         }
 
         .modal h3 {
             margin-bottom: 15px;
-            color: #333;
+            color: #e0e0e0;
         }
 
         .modal p {
             margin-bottom: 20px;
-            color: #666;
+            color: #999;
         }
 
         .modal-buttons {
@@ -333,11 +332,11 @@
         <div class="header">
             <h1>🎯 Управление тренажером</h1>
             <div class="header-buttons">
+                <a href="{{ url_for('admin_trainer_feedback') }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
                 <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
                 <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📊 Статистика</a>
                 <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a>
                 <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">+ Создать сценарий</a>
-                <a href="{{ url_for('admin_logout') }}" class="btn btn-logout">Выход</a>
             </div>
         </div>
 

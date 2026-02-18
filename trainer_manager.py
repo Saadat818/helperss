@@ -261,6 +261,12 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_results ADD COLUMN selected_topic_name TEXT")
 
+        # correct_topics в trainer_scenarios — эталонные тематики для пост-обработки
+        try:
+            cursor.execute("SELECT correct_topics FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN correct_topics TEXT")
+
         self.conn.commit()
 
     def _migrate_hard_level(self):
@@ -1112,7 +1118,8 @@ class TrainerManager:
         try:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
                             'estimated_time', 'total_points', 'is_active', 'order_num',
-                            'timer_seconds', 'initial_loyalty', 'client_info_json']
+                            'timer_seconds', 'initial_loyalty', 'client_info_json',
+                            'correct_topics']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:

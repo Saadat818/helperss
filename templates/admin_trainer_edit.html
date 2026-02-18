@@ -694,6 +694,27 @@
                 </div>
             </div>
 
+            <!-- Correct Topics Section -->
+            <div class="correct-topics-section" style="background: linear-gradient(135deg, #e8eaf6, #c5cae9); border: 2px solid #3f51b5; border-radius: 12px; padding: 20px; margin-bottom: 30px;">
+                <h2 style="color: #283593; border-bottom-color: rgba(40, 53, 147, 0.3);">📋 Эталонные тематики обращения</h2>
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                    Укажите правильные тематики, которые специалист должен выбрать после прохождения сценария.
+                </p>
+
+                <input type="hidden" name="correct_topics" id="correctTopicsInput"
+                       value='{{ correct_topics | tojson if correct_topics else "[]" }}'>
+
+                <div style="margin-bottom: 15px;">
+                    <input type="text" id="topicSearchInput" placeholder="Поиск тематики..."
+                           style="width: 100%; padding: 12px 15px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 14px;">
+                    <div id="topicSearchResults" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; margin-top: 5px; display: none; background: white;"></div>
+                </div>
+
+                <div id="selectedTopicsList" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Заполняется из JS -->
+                </div>
+            </div>
+
             <!-- Gamification Section -->
             <div class="gamification-section">
                 <h2>Настройки геймификации</h2>
@@ -970,6 +991,96 @@
                 alert('Ошибка соединения');
             }
         }
+
+        // ==================== Correct Topics ====================
+        let correctTopics = JSON.parse(document.getElementById('correctTopicsInput').value || '[]');
+
+        function renderCorrectTopics() {
+            const container = document.getElementById('selectedTopicsList');
+            container.innerHTML = '';
+            correctTopics.forEach((topic, idx) => {
+                const div = document.createElement('div');
+                div.style.cssText = 'display:flex; align-items:center; gap:10px; background:#fff; padding:10px 14px; border-radius:8px; border:1px solid #ddd;';
+                div.innerHTML = `
+                    <span style="flex:1; font-size:14px;">
+                        <strong>${topic.topic}</strong>
+                        <span style="color:#888; font-size:12px; margin-left:8px;">${topic.channel || ''}</span>
+                    </span>
+                    <button type="button" onclick="removeCorrectTopic(${idx})" style="background:#f44336; color:#fff; border:none; border-radius:50%; width:24px; height:24px; cursor:pointer; font-size:14px; line-height:1;">✕</button>
+                `;
+                container.appendChild(div);
+            });
+            document.getElementById('correctTopicsInput').value = JSON.stringify(correctTopics);
+        }
+
+        function removeCorrectTopic(idx) {
+            correctTopics.splice(idx, 1);
+            renderCorrectTopics();
+        }
+
+        function addCorrectTopic(topic) {
+            // Проверяем дубликаты
+            if (correctTopics.some(t => t.id === topic.id)) return;
+            correctTopics.push({ id: topic.id, topic: topic.topic, channel: topic.channel || '' });
+            renderCorrectTopics();
+            document.getElementById('topicSearchResults').style.display = 'none';
+            document.getElementById('topicSearchInput').value = '';
+        }
+
+        // Инициализация списка при загрузке
+        renderCorrectTopics();
+
+        // Поиск тематик
+        let topicSearchTimeout = null;
+        document.getElementById('topicSearchInput').addEventListener('input', function() {
+            clearTimeout(topicSearchTimeout);
+            const query = this.value.trim();
+            const resultsDiv = document.getElementById('topicSearchResults');
+
+            if (query.length < 3) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+
+            topicSearchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch('/api/search_topic', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                        body: JSON.stringify({ query: query })
+                    });
+                    const data = await response.json();
+
+                    if (data.success && data.results && data.results.length > 0) {
+                        resultsDiv.innerHTML = '';
+                        data.results.slice(0, 15).forEach(r => {
+                            const item = document.createElement('div');
+                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #eee; font-size:13px; transition:background 0.2s;';
+                            item.onmouseenter = () => item.style.background = '#f0f0f0';
+                            item.onmouseleave = () => item.style.background = '';
+                            item.innerHTML = `<strong>${r.topic}</strong> <span style="color:#888; font-size:11px;">${r.channel || ''}</span>`;
+                            item.onclick = () => addCorrectTopic(r);
+                            resultsDiv.appendChild(item);
+                        });
+                        resultsDiv.style.display = 'block';
+                    } else {
+                        resultsDiv.innerHTML = '<div style="padding:10px 14px; color:#888; font-size:13px;">Ничего не найдено</div>';
+                        resultsDiv.style.display = 'block';
+                    }
+                } catch (e) {
+                    console.error('Topic search error:', e);
+                }
+            }, 300);
+        });
+
+        // Закрытие результатов поиска при клике вне
+        document.addEventListener('click', function(e) {
+            const resultsDiv = document.getElementById('topicSearchResults');
+            const searchInput = document.getElementById('topicSearchInput');
+            if (!resultsDiv.contains(e.target) && e.target !== searchInput) {
+                resultsDiv.style.display = 'none';
+            }
+        });
 
         // Tags functions
         async function addNewTag() {

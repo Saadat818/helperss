@@ -567,13 +567,51 @@
                 {% endif %}
             </div>
 
+        </div>
+
+        <!-- Классификация обращения -->
+        {% if correct_topics or result.selected_topic_name %}
+        <div class="details-section" style="{% if topic_match %}border-color: rgba(76, 175, 80, 0.5); background: linear-gradient(180deg, rgba(76, 175, 80, 0.08), var(--card2));{% elif result.selected_topic_name and correct_topics %}border-color: rgba(244, 67, 54, 0.5); background: linear-gradient(180deg, rgba(244, 67, 54, 0.08), var(--card2));{% endif %}">
+            <div class="details-title">
+                <span>&#128209;</span>
+                <span>Классификация обращения</span>
+            </div>
+
             {% if result.selected_topic_name %}
-            <div class="selected-topic">
-                <span class="icon">&#128209;</span>
-                <span class="text">Выбрана тематика: <strong>{{ result.selected_topic_name }}</strong></span>
+            <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:rgba(255,255,255,0.05); border-radius:10px; margin-bottom:12px;">
+                {% if correct_topics %}
+                    {% if topic_match %}
+                    <span style="font-size:24px;">&#10004;</span>
+                    {% else %}
+                    <span style="font-size:24px;">&#10008;</span>
+                    {% endif %}
+                {% endif %}
+                <div>
+                    <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">Ваш выбор:</div>
+                    <div style="font-size:14px; font-weight:600; color:{% if topic_match %}#4CAF50{% elif correct_topics %}#f44336{% else %}var(--text){% endif %};">{{ result.selected_topic_name }}</div>
+                </div>
+            </div>
+            {% else %}
+                {% if correct_topics %}
+                <div style="padding:12px 16px; background:rgba(255,152,0,0.1); border:1px solid rgba(255,152,0,0.3); border-radius:10px; margin-bottom:12px;">
+                    <span style="color:#FF9800; font-size:13px;">Тематика не была выбрана</span>
+                </div>
+                {% endif %}
+            {% endif %}
+
+            {% if correct_topics %}
+            <div style="padding:12px 16px; background:rgba(255,255,255,0.03); border-radius:10px;">
+                <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">Правильная тематика:</div>
+                {% for topic in correct_topics %}
+                <div style="font-size:14px; color:#4CAF50; font-weight:500; {% if not loop.last %}margin-bottom:4px;{% endif %}">
+                    {{ topic.topic }}
+                    {% if topic.channel %}<span style="color:var(--muted); font-size:12px; margin-left:6px;">{{ topic.channel }}</span>{% endif %}
+                </div>
+                {% endfor %}
             </div>
             {% endif %}
         </div>
+        {% endif %}
 
         <!-- Error Analysis (only wrong answers) -->
         {% set wrong_answers = [] %}

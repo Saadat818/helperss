@@ -33,12 +33,16 @@ class ADAuth:
         self.bind_user = os.getenv('LDAP_BIND_USER', '')
         self.bind_password = os.getenv('LDAP_BIND_PASSWORD', '')
 
-        # Списки администраторов по логинам
-        admins_str = os.getenv('AD_ADMINS', '')
-        super_admins_str = os.getenv('AD_SUPER_ADMINS', '')
+        # Гранулярные роли администраторов по логинам
+        def _parse_logins(env_key):
+            val = os.getenv(env_key, '')
+            return set(u.strip().lower() for u in val.split(',') if u.strip())
 
-        self.admin_logins = set(u.strip().lower() for u in admins_str.split(',') if u.strip())
-        self.super_admin_logins = set(u.strip().lower() for u in super_admins_str.split(',') if u.strip())
+        self.super_admin_logins = _parse_logins('AD_SUPER_ADMINS')
+        self.admins_manuals = _parse_logins('AD_ADMINS_MANUALS')
+        self.admins_topics = _parse_logins('AD_ADMINS_TOPICS')
+        self.admins_trainer = _parse_logins('AD_ADMINS_TRAINER')
+        self.trainer_viewers = _parse_logins('AD_TRAINER_VIEWERS')
 
     def _get_user_principal(self, username: str) -> str:
         """
@@ -145,22 +149,39 @@ class ADAuth:
                 'department': str(entry.department) if hasattr(entry, 'department') else '',
                 'title': str(entry.title) if hasattr(entry, 'title') else '',
                 'dn': str(entry.distinguishedName) if hasattr(entry, 'distinguishedName') else '',
-                'role': 'editor'  # По умолчанию
+                'permissions': []  # Список разрешений
             }
 
-            # Проверка роли по логину (ПРИОРИТЕТ 1)
+            # Определяем разрешения по логину из .env
             lower_username = user_info['username'].lower()
-            if lower_username in self.super_admin_logins:
-                user_info['role'] = 'super_admin'
-            elif lower_username in self.admin_logins:
-                user_info['role'] = 'admin'
-            # Проверяем принадлежность к группе администраторов (ПРИОРИТЕТ 2)
-            elif self.admin_group and hasattr(entry, 'memberOf'):
-                member_of = [str(group) for group in entry.memberOf]
-                if self.admin_group in member_of:
-                    user_info['role'] = 'super_admin'
 
-            print(f"[AD] Пользователь найден: {user_info['display_name']} (роль: {user_info['role']})")
+            if lower_username in self.super_admin_logins:
+                user_info['permissions'].append('super_admin')
+            if lower_username in self.admins_manuals:
+                user_info['permissions'].append('admin_manuals')
+            if lower_username in self.admins_topics:
+                user_info['permissions'].append('admin_topics')
+            if lower_username in self.admins_trainer:
+                user_info['permissions'].append('admin_trainer')
+            if lower_username in self.trainer_viewers:
+                user_info['permissions'].append('trainer_viewer')
+
+            # Проверяем принадлежность к группе AD (если настроена)
+            if self.admin_group and hasattr(entry, 'memberOf'):
+                member_of = [str(group) for group in entry.memberOf]
+                if self.admin_group in member_of and 'super_admin' not in user_info['permissions']:
+                    user_info['permissions'].append('super_admin')
+
+            # Для обратной совместимости — определяем главную роль
+            if 'super_admin' in user_info['permissions']:
+                user_info['role'] = 'super_admin'
+            elif user_info['permissions']:
+                user_info['role'] = user_info['permissions'][0]
+            else:
+                user_info['role'] = 'user'  # Обычный пользователь, не админ
+
+            is_admin = bool(user_info['permissions'])
+            print(f"[AD] Пользователь найден: {user_info['display_name']} (права: {user_info['permissions']}, админ: {is_admin})")
             return user_info
 
         except Exception as e:

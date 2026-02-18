@@ -366,17 +366,27 @@
     </a>
     <div class="container">
         <div class="header">
-            <h1>📚 Управление мануалами</h1>
-            <div style="display: flex; gap: 10px;">
-                <a href="{{ url_for('admin_create_manual') }}" class="btn btn-primary">➕ Создать мануал</a>
-                {% if session.get('admin_role') == 'super_admin' %}
+            <h1>Панель администратора</h1>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                {% set perms = session.get('admin_permissions', []) %}
+                {% if 'super_admin' in perms or 'admin_manuals' in perms %}
+                    <a href="{{ url_for('admin_create_manual') }}" class="btn btn-primary">📚 Мануалы</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'admin_topics' in perms %}
+                    <a href="{{ url_for('admin_topics') }}" class="btn btn-primary">🏷️ Тематики</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'admin_trainer' in perms %}
+                    <a href="{{ url_for('admin_trainer') }}" class="btn btn-primary">🎯 Тренажёр</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'trainer_viewer' in perms %}
+                    <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📈 Статистика тренажёра</a>
+                {% endif %}
+                {% if perms %}
+                    <a href="{{ url_for('admin_stats_dashboard') }}" class="btn btn-primary">📊 Общая статистика</a>
+                {% endif %}
+                {% if 'super_admin' in perms %}
                     <a href="{{ url_for('admin_users') }}" class="btn btn-primary">👥 Администраторы</a>
                 {% endif %}
-                <a href="{{ url_for('admin_stats_dashboard') }}" class="btn btn-primary">📊 Статистика</a>
-                <!-- Убраны - теперь есть отдельные кнопки Админ в каждом разделе
-                <a href="{{ url_for('admin_topics') }}" class="btn btn-primary">🏷️ Тематики</a>
-                <a href="{{ url_for('admin_trainer') }}" class="btn btn-primary">🎯 Тренажер</a>
-                -->
                 <a href="{{ url_for('admin_logout') }}" class="btn btn-logout">Выход</a>
             </div>
         </div>

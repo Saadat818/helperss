@@ -338,12 +338,22 @@ class AdminManager:
 
 # Роли администраторов
 ROLE_SUPER_ADMIN = 'super_admin'
-ROLE_EDITOR = 'editor'
+ROLE_ADMIN_MANUALS = 'admin_manuals'
+ROLE_ADMIN_TOPICS = 'admin_topics'
+ROLE_ADMIN_TRAINER = 'admin_trainer'
+ROLE_TRAINER_VIEWER = 'trainer_viewer'
+ROLE_EDITOR = 'editor'  # Обратная совместимость
 
 ROLE_NAMES = {
     ROLE_SUPER_ADMIN: 'Супер-администратор',
+    ROLE_ADMIN_MANUALS: 'Админ мануалов',
+    ROLE_ADMIN_TOPICS: 'Админ тематик',
+    ROLE_ADMIN_TRAINER: 'Админ тренажёра',
+    ROLE_TRAINER_VIEWER: 'Наблюдатель тренажёра',
     ROLE_EDITOR: 'Редактор'
 }
+
+ALL_ADMIN_ROLES = {ROLE_SUPER_ADMIN, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER}
 
 
 class AdminsManager:
@@ -393,7 +403,7 @@ class AdminsManager:
     @staticmethod
     def validate_role(role: str) -> bool:
         """Валидация роли"""
-        return role in [ROLE_SUPER_ADMIN, ROLE_EDITOR]
+        return role in ALL_ADMIN_ROLES or role == ROLE_EDITOR
 
     def get_admin_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Получить администратора по username"""
@@ -567,6 +577,7 @@ class AdminAuth:
                     return {
                         'username': ad_result.get('username', username),
                         'role': ad_result.get('role', ROLE_EDITOR),
+                        'permissions': ad_result.get('permissions', []),
                         'display_name': ad_result.get('display_name', username),
                         'email': ad_result.get('email', ''),
                         'auth_method': 'ad'
@@ -602,30 +613,97 @@ class AdminAuth:
         return None
 
     @staticmethod
+    def _check_admin_login():
+        """Проверка что пользователь залогинен как админ"""
+        if not session.get('admin_logged_in'):
+            flash('Требуется авторизация')
+            return redirect(url_for('user_login'))
+        return None
+
+    @staticmethod
+    def _check_permission(*required_permissions):
+        """Проверка что у пользователя есть нужные разрешения"""
+        login_check = AdminAuth._check_admin_login()
+        if login_check:
+            return login_check
+
+        admin_permissions = session.get('admin_permissions', [])
+
+        # Супер-админ может всё
+        if 'super_admin' in admin_permissions:
+            return None
+
+        # Проверяем наличие хотя бы одного нужного разрешения
+        for perm in required_permissions:
+            if perm in admin_permissions:
+                return None
+
+        flash('Доступ запрещён. У вас нет прав для этого раздела.')
+        return redirect(url_for('admin_dashboard'))
+
+    @staticmethod
     def login_required(f):
-        """Декоратор для защиты admin маршрутов"""
+        """Декоратор: требуется любая админ-роль"""
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not session.get('admin_logged_in'):
-                flash('Требуется авторизация')
-                return redirect(url_for('admin_login'))
+            check = AdminAuth._check_admin_login()
+            if check:
+                return check
             return f(*args, **kwargs)
         return decorated_function
 
     @staticmethod
     def super_admin_required(f):
-        """Декоратор для защиты маршрутов, доступных только супер-администраторам"""
+        """Декоратор: только супер-администратор"""
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not session.get('admin_logged_in'):
-                flash('Требуется авторизация')
-                return redirect(url_for('admin_login'))
+            check = AdminAuth._check_permission('super_admin')
+            if check:
+                return check
+            return f(*args, **kwargs)
+        return decorated_function
 
-            admin_role = session.get('admin_role')
-            if admin_role != ROLE_SUPER_ADMIN:
-                flash('Доступ запрещен. Требуются права супер-администратора.')
-                return redirect(url_for('admin_dashboard'))
+    @staticmethod
+    def manuals_required(f):
+        """Декоратор: доступ к мануалам (super_admin или admin_manuals)"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            check = AdminAuth._check_permission('super_admin', 'admin_manuals')
+            if check:
+                return check
+            return f(*args, **kwargs)
+        return decorated_function
 
+    @staticmethod
+    def topics_required(f):
+        """Декоратор: доступ к тематикам (super_admin или admin_topics)"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            check = AdminAuth._check_permission('super_admin', 'admin_topics')
+            if check:
+                return check
+            return f(*args, **kwargs)
+        return decorated_function
+
+    @staticmethod
+    def trainer_required(f):
+        """Декоратор: доступ к тренажёру — редактирование (super_admin или admin_trainer)"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            check = AdminAuth._check_permission('super_admin', 'admin_trainer')
+            if check:
+                return check
+            return f(*args, **kwargs)
+        return decorated_function
+
+    @staticmethod
+    def trainer_view_required(f):
+        """Декоратор: доступ к статистике тренажёра (super_admin, admin_trainer или trainer_viewer)"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            check = AdminAuth._check_permission('super_admin', 'admin_trainer', 'trainer_viewer')
+            if check:
+                return check
             return f(*args, **kwargs)
         return decorated_function
 
@@ -635,15 +713,30 @@ class AdminAuth:
         if not session.get('admin_logged_in'):
             return False
 
-        admin_role = session.get('admin_role')
+        admin_permissions = session.get('admin_permissions', [])
 
         # Супер-админ может всё
-        if admin_role == ROLE_SUPER_ADMIN:
+        if 'super_admin' in admin_permissions:
             return True
 
-        # Редактор может редактировать контент
-        if admin_role == ROLE_EDITOR:
-            return permission in ['edit_manuals', 'edit_topics', 'view_stats']
+        # Проверяем конкретное разрешение
+        if permission in admin_permissions:
+            return True
+
+        # Обратная совместимость
+        permission_map = {
+            'edit_manuals': 'admin_manuals',
+            'edit_topics': 'admin_topics',
+            'edit_trainer': 'admin_trainer',
+            'view_trainer_stats': 'trainer_viewer',
+            'view_stats': None  # Любой админ может смотреть общую статистику
+        }
+
+        mapped = permission_map.get(permission)
+        if mapped and mapped in admin_permissions:
+            return True
+        if permission == 'view_stats' and admin_permissions:
+            return True
 
         return False
 

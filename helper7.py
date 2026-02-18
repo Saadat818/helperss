@@ -6,7 +6,7 @@ from typing import Any
 from datetime import datetime, timedelta
 from markupsafe import escape as m_escape
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
-from flask import Flask, render_template, request, session, redirect, url_for, flash, abort, jsonify, g
+from flask import Flask, render_template, request, session, redirect, url_for, flash, abort, jsonify, g, has_request_context
 from dotenv import load_dotenv
 import telebot
 import werkzeug.routing
@@ -22,7 +22,7 @@ from collections import defaultdict
 load_dotenv()
 
 from flask_wtf.csrf import CSRFProtect
-from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES
+from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER, ALL_ADMIN_ROLES
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
 from trainer_manager import TrainerManager
@@ -382,13 +382,23 @@ def _init_analytics_tables():
                             query_text TEXT,
                             channel TEXT,
                             results_count INTEGER DEFAULT 0,
+                            department TEXT,
+                            user_name TEXT,
+                            workplace TEXT,
                             actor_name TEXT,
                             actor_username TEXT,
                             actor_role TEXT
                         )
                     """)
+                    # Миграции (на случай если таблица уже была создана без новых колонок).
+                    # Важно: сначала добавляем колонки, потом создаем индексы (иначе CREATE INDEX упадет).
+                    cur.execute("ALTER TABLE topic_search_events ADD COLUMN IF NOT EXISTS department TEXT")
+                    cur.execute("ALTER TABLE topic_search_events ADD COLUMN IF NOT EXISTS user_name TEXT")
+                    cur.execute("ALTER TABLE topic_search_events ADD COLUMN IF NOT EXISTS workplace TEXT")
+
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_created_at ON topic_search_events(created_at)")
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_channel ON topic_search_events(channel)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_department ON topic_search_events(department)")
                 conn.commit()
         else:
             with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
@@ -438,6 +448,9 @@ def _init_analytics_tables():
                         query_text TEXT,
                         channel TEXT,
                         results_count INTEGER DEFAULT 0,
+                        department TEXT,
+                        user_name TEXT,
+                        workplace TEXT,
                         actor_name TEXT,
                         actor_username TEXT,
                         actor_role TEXT
@@ -445,6 +458,18 @@ def _init_analytics_tables():
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_created_at ON topic_search_events(created_at)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_channel ON topic_search_events(channel)")
+
+                # Миграции SQLite: добавляем недостающие колонки
+                cur = conn.cursor()
+                cur.execute("PRAGMA table_info(topic_search_events)")
+                existing_cols = {row[1] for row in cur.fetchall()}
+                for col_name, col_type in (
+                    ("department", "TEXT"),
+                    ("user_name", "TEXT"),
+                    ("workplace", "TEXT"),
+                ):
+                    if col_name not in existing_cols:
+                        conn.execute(f"ALTER TABLE topic_search_events ADD COLUMN {col_name} {col_type}")
                 conn.commit()
     except Exception as e:
         print(f"[analytics] Ошибка инициализации таблиц: {e}")
@@ -551,6 +576,8 @@ def write_audit_log(action: str, status_code: int, details: dict | None = None):
 
 def _current_actor():
     """Возвращает данные текущего пользователя/админа."""
+    if not has_request_context():
+        return {'name': '', 'username': '', 'role': 'guest'}
     if session.get('admin_logged_in'):
         return {
             'name': session.get('admin_username', ''),
@@ -567,12 +594,41 @@ def _current_actor():
     return {'name': '', 'username': '', 'role': 'guest'}
 
 
+def _parse_ticket_text_fields(text: str) -> dict:
+    """Best-effort парсинг полей из текста заявки (отдел/имя/рабочее место/проблема).
+
+    Нужно для аналитики событий, которые приходят из Telegram (polling), где нет Flask session.
+    """
+    if not text:
+        return {'department': '', 'name': '', 'workplace': '', 'problem': ''}
+    # Убираем маркдаун-обрамление для упрощения регулярных выражений.
+    t = str(text).replace('**', '')
+    def _m(pat: str) -> str:
+        m = re.search(pat, t, flags=re.IGNORECASE | re.MULTILINE)
+        return (m.group(1).strip() if m else '')
+    return {
+        'department': _m(r'^\s*Отдел:\s*(.+?)\s*$'),
+        'name': _m(r'^\s*Имя:\s*(.+?)\s*$'),
+        'workplace': _m(r'^\s*Рабочее место:\s*(.+?)\s*$'),
+        'problem': _m(r'^\s*Проблема:\s*(.+?)\s*$')
+    }
+
+
 def log_ticket_event(event_type: str, ticket_number: int | None = None, problem: str = '',
-                     channel: str = '', topic_name: str = '', is_cisco: bool = False):
+                     channel: str = '', topic_name: str = '', is_cisco: bool = False,
+                     actor_override: dict | None = None, user_info_override: dict | None = None):
     """Логирует событие по заявке для аналитики."""
     try:
-        actor = _current_actor()
-        user_info = session.get('user_info', {})
+        actor = actor_override or _current_actor()
+        if has_request_context():
+            user_info = session.get('user_info', {}) or {}
+        else:
+            user_info = {}
+        if user_info_override:
+            # Override only known user_info keys to avoid unexpected payload.
+            for k in ('department', 'name', 'workplace'):
+                if k in user_info_override:
+                    user_info[k] = user_info_override.get(k)
         payload = (
             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             event_type,
@@ -665,11 +721,15 @@ def log_topic_search(query_text: str, channel: str, results_count: int):
     """Логирует поиски тематик для dashboard."""
     try:
         actor = _current_actor()
+        user_info = session.get('user_info', {}) if has_request_context() else {}
         payload = (
             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             str(query_text)[:500],
             str(channel)[:150],
             int(results_count),
+            str((user_info or {}).get('department', ''))[:200],
+            str((user_info or {}).get('name', ''))[:200],
+            str((user_info or {}).get('workplace', ''))[:100],
             str(actor['name'])[:200],
             str(actor['username'])[:200],
             str(actor['role'])[:100]
@@ -680,8 +740,9 @@ def log_topic_search(query_text: str, channel: str, results_count: int):
                     cur.execute("""
                         INSERT INTO topic_search_events (
                             created_at, query_text, channel, results_count,
+                            department, user_name, workplace,
                             actor_name, actor_username, actor_role
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, payload)
                 conn.commit()
         else:
@@ -689,8 +750,9 @@ def log_topic_search(query_text: str, channel: str, results_count: int):
                 conn.execute("""
                     INSERT INTO topic_search_events (
                         created_at, query_text, channel, results_count,
+                        department, user_name, workplace,
                         actor_name, actor_username, actor_role
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, payload)
                 conn.commit()
     except Exception as e:
@@ -937,6 +999,12 @@ def handle_ticket_done(call):
         original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
         resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
         ticket_number = extract_ticket_number_from_text(original_message)
+        parsed = _parse_ticket_text_fields(original_message)
+        actor_override = {
+            'name': resolver_name,
+            'username': call.from_user.username or str(call.from_user.id),
+            'role': 'staff'
+        }
 
         # Отправляем одно объединенное сообщение в раздел "В работе"
         bot.send_message(
@@ -957,9 +1025,15 @@ def handle_ticket_done(call):
         log_ticket_event(
             event_type='ticket_resolved_by_staff',
             ticket_number=ticket_number,
-            problem=original_message,
+            problem=parsed.get('problem') or original_message,
             channel='',
-            topic_name=''
+            topic_name='',
+            actor_override=actor_override,
+            user_info_override={
+                'department': parsed.get('department', ''),
+                'name': parsed.get('name', ''),
+                'workplace': parsed.get('workplace', '')
+            }
         )
 
         print("✅ Кнопка 'Готово' успешно обработана!")
@@ -975,6 +1049,12 @@ def handle_ticket_not_relevant(call):
     try:
         original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
         ticket_number = extract_ticket_number_from_text(original_message)
+        parsed = _parse_ticket_text_fields(original_message)
+        actor_override = {
+            'name': call.from_user.first_name or call.from_user.username or str(call.from_user.id),
+            'username': call.from_user.username or str(call.from_user.id),
+            'role': 'staff'
+        }
         # Убираем кнопки с оригинального сообщения
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
@@ -996,7 +1076,13 @@ def handle_ticket_not_relevant(call):
         log_ticket_event(
             event_type='ticket_not_relevant',
             ticket_number=ticket_number,
-            problem=original_message
+            problem=parsed.get('problem') or original_message,
+            actor_override=actor_override,
+            user_info_override={
+                'department': parsed.get('department', ''),
+                'name': parsed.get('name', ''),
+                'workplace': parsed.get('workplace', '')
+            }
         )
 
         print("✅ Кнопка 'Не актуально' успешно обработана!")
@@ -1908,8 +1994,16 @@ def handle_channel_messages(message):
             print("❌ Сообщение не является ответом")
 
         if message.reply_to_message and message.from_user.id in SUPPORT_STAFF_IDS:
-            text = message.text.lower()
+            text = (message.text or '').lower()
             original_message_id = message.reply_to_message.message_id
+            original_ticket_text = message.reply_to_message.text or message.reply_to_message.caption or ''
+            ticket_number = extract_ticket_number_from_text(original_ticket_text)
+            parsed = _parse_ticket_text_fields(original_ticket_text)
+            actor_override = {
+                'name': message.from_user.first_name or message.from_user.username or str(message.from_user.id),
+                'username': message.from_user.username or str(message.from_user.id),
+                'role': 'staff'
+            }
 
             if "в работе" in text or "в процессе" in text or "решена" in text or "готово" in text:
                 print("➡ Пересылаем в IN_PROGRESS_THREAD")
@@ -1926,6 +2020,19 @@ def handle_channel_messages(message):
                     f"💬 Статус по заявки на помощь: {safe_text}",
                     message_thread_id=IN_PROGRESS_THREAD_ID,
                     parse_mode='HTML'
+                )
+
+                # Аналитика: фиксируем обновление статуса от техпода (polling, нет Flask session).
+                log_ticket_event(
+                    event_type='ticket_status_update_by_staff',
+                    ticket_number=ticket_number,
+                    problem=parsed.get('problem') or original_ticket_text,
+                    actor_override=actor_override,
+                    user_info_override={
+                        'department': parsed.get('department', ''),
+                        'name': parsed.get('name', ''),
+                        'workplace': parsed.get('workplace', '')
+                    }
                 )
         else:
             print("❌ Не прошли проверки (нет reply_to_message или ID не в SUPPORT_STAFF_IDS)")
@@ -2270,7 +2377,7 @@ def trainer_results(result_id):
 # ============================================
 
 @app.route('/admin/trainer')
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer():
     """Админка: список сценариев тренажера"""
     stats = trainer_mgr.get_statistics()
@@ -2312,7 +2419,7 @@ def admin_trainer():
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_create():
     """Создание нового сценария"""
     levels = trainer_mgr.get_all_levels()
@@ -2359,7 +2466,7 @@ def admin_trainer_create():
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/edit', methods=['GET', 'POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_edit(scenario_id):
     """Редактирование сценария"""
     scenario = trainer_mgr.get_scenario(scenario_id)
@@ -2495,7 +2602,7 @@ def admin_trainer_edit(scenario_id):
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/delete', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_delete(scenario_id):
     """Удаление сценария"""
     # Получаем информацию о сценарии перед удалением
@@ -2523,7 +2630,7 @@ def admin_trainer_delete(scenario_id):
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_create_step(scenario_id):
     """Создание шага сценария"""
     data = {
@@ -2543,7 +2650,7 @@ def admin_trainer_create_step(scenario_id):
 
 
 @app.route('/admin/trainer/step/<int:step_id>/delete', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_delete_step(step_id):
     """Удаление шага"""
     result = trainer_mgr.delete_step(step_id)
@@ -2557,7 +2664,7 @@ def admin_trainer_delete_step(step_id):
 
 
 @app.route('/admin/trainer/step/<int:step_id>/answer/create', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_create_answer(step_id):
     """Создание варианта ответа"""
     data = {
@@ -2579,7 +2686,7 @@ def admin_trainer_create_answer(step_id):
 
 
 @app.route('/admin/trainer/answer/<int:answer_id>/delete', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_delete_answer(answer_id):
     """Удаление варианта ответа"""
     result = trainer_mgr.delete_answer(answer_id)
@@ -2593,7 +2700,7 @@ def admin_trainer_delete_answer(answer_id):
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/visual')
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_visual(scenario_id):
     """Визуальный редактор сценария (No-Code)"""
     scenario = trainer_mgr.get_scenario(scenario_id)
@@ -2612,7 +2719,7 @@ def admin_trainer_visual(scenario_id):
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/visual/save', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_visual_save(scenario_id):
     """Сохранение визуальной структуры сценария"""
     import json
@@ -2739,7 +2846,7 @@ def admin_trainer_visual_save(scenario_id):
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/visual/load')
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_visual_load(scenario_id):
     """Загрузка визуальной структуры сценария с синхронизацией из БД"""
     import json
@@ -2831,7 +2938,7 @@ def admin_trainer_visual_load(scenario_id):
 
 
 @app.route('/admin/trainer/stats')
-@AdminAuth.login_required
+@AdminAuth.trainer_view_required
 def admin_trainer_stats():
     """Статистика тренажера"""
     stats = trainer_mgr.get_statistics()
@@ -2843,7 +2950,7 @@ def admin_trainer_stats():
 # ============================================
 
 @app.route('/admin/trainer/tags', methods=['GET', 'POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_tags():
     """Получить все теги или создать новый"""
     if request.method == 'GET':
@@ -2876,7 +2983,7 @@ def admin_trainer_tags():
 
 
 @app.route('/admin/trainer/tags/<int:tag_id>', methods=['PUT', 'DELETE'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_tag_detail(tag_id):
     """Обновить или удалить тег"""
     if request.method == 'DELETE':
@@ -2890,7 +2997,7 @@ def admin_trainer_tag_detail(tag_id):
 
 
 @app.route('/admin/trainer/export')
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_export():
     """Экспорт статистики в Excel"""
     try:
@@ -2974,7 +3081,7 @@ def admin_trainer_export():
 
 
 @app.route('/admin/trainer/audit')
-@AdminAuth.login_required
+@AdminAuth.trainer_view_required
 def admin_trainer_audit():
     """Журнал изменений (аудит)"""
     page = request.args.get('page', 1, type=int)
@@ -2988,7 +3095,7 @@ def admin_trainer_audit():
 
 
 @app.route('/admin/trainer/audit/export')
-@AdminAuth.login_required
+@AdminAuth.trainer_view_required
 def admin_trainer_audit_export():
     """Экспорт журнала аудита в Excel"""
     try:
@@ -3036,14 +3143,14 @@ def admin_trainer_audit_export():
 # ============================================
 
 @app.route('/admin/trainer/import')
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_import():
     """Страница импорта сценариев"""
     return render_template('admin_trainer_import.html')
 
 
 @app.route('/admin/trainer/import/template')
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_import_template():
     """Скачать шаблон Excel для импорта"""
     import tempfile
@@ -3092,7 +3199,7 @@ def admin_trainer_import_template():
 
 
 @app.route('/admin/trainer/import/preview', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_import_preview():
     """Превью импортируемого файла"""
     import pandas as pd
@@ -3250,7 +3357,7 @@ def admin_trainer_import_preview():
 
 
 @app.route('/admin/trainer/import/confirm', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.trainer_required
 def admin_trainer_import_confirm():
     """Подтвердить и выполнить импорт"""
     try:
@@ -3407,6 +3514,11 @@ def user_login():
                     'workplace': ''
                 }
                 session['authenticated'] = True
+                session['admin_logged_in'] = True
+                session['admin_username'] = username
+                session['admin_role'] = ROLE_SUPER_ADMIN
+                session['admin_permissions'] = ['super_admin']
+                session['admin_token'] = AdminAuth.generate_session_token()
                 session.permanent = True
                 return redirect(url_for('choose_help_type'))
             else:
@@ -3426,6 +3538,14 @@ def user_login():
                 'workplace': ''  # Будет заполнено позже при необходимости
             }
             session['authenticated'] = True
+            # Автоматический вход в админку если есть права
+            ad_permissions = ad_result.get('permissions', [])
+            if ad_permissions:
+                session['admin_logged_in'] = True
+                session['admin_username'] = ad_result.get('username', username)
+                session['admin_role'] = ad_result.get('role', 'user')
+                session['admin_permissions'] = ad_permissions
+                session['admin_token'] = AdminAuth.generate_session_token()
             session.permanent = True
 
             # Переходим к выбору типа помощи
@@ -3462,6 +3582,10 @@ def enter_workplace():
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     """Страница авторизации администратора"""
+    # Если уже залогинен через AD с правами админа — сразу в дашборд
+    if session.get('admin_logged_in') and session.get('admin_permissions'):
+        return redirect(url_for('admin_dashboard'))
+
     if request.method == 'POST':
         # Security Fix: Stricter rate limiting for login attempts to prevent brute force
         ip = get_client_ip()
@@ -3494,6 +3618,7 @@ def admin_login():
             session['admin_logged_in'] = True
             session['admin_username'] = username
             session['admin_role'] = admin_data.get('role', ROLE_EDITOR)
+            session['admin_permissions'] = admin_data.get('permissions', [admin_data.get('role', ROLE_EDITOR)])
             session['admin_token'] = AdminAuth.generate_session_token()
             session.permanent = True  # Use permanent session with timeout
             flash(f'Успешная авторизация. Роль: {ROLE_NAMES.get(admin_data.get("role"), "Редактор")}')
@@ -3524,7 +3649,7 @@ def admin_dashboard():
 
 
 @app.route('/admin/manual/create', methods=['GET', 'POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_create_manual():
     """Создание нового мануала"""
     if request.method == 'POST':
@@ -3584,7 +3709,7 @@ def admin_create_manual():
 
 
 @app.route('/admin/manual/<string:manual_id>/edit')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_edit_manual(manual_id):
     """Страница редактирования мануала - теперь показывает список подпроблем"""
     # Валидация ID
@@ -3606,7 +3731,7 @@ def admin_edit_manual(manual_id):
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/create', methods=['GET', 'POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_create_subproblem(manual_id):
     """Создание новой подпроблемы"""
     # Валидация
@@ -3669,7 +3794,7 @@ def admin_create_subproblem(manual_id):
 
 
 @app.route('/admin/manual/<string:manual_id>/delete', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_delete_manual(manual_id):
     """Удаление мануала"""
     if not admin_manager.validate_manual_id(manual_id):
@@ -3696,7 +3821,7 @@ def admin_delete_manual(manual_id):
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/delete', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_delete_subproblem(manual_id, subproblem_id):
     """Удаление подпроблемы"""
     if not admin_manager.validate_manual_id(manual_id):
@@ -3732,7 +3857,7 @@ def admin_delete_subproblem(manual_id, subproblem_id):
 
 
 @app.route('/admin/manual/<string:manual_id>/edit-simple')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_edit_simple_manual(manual_id):
     """Страница редактирования простого мануала (без подпроблем)"""
     # Валидация ID
@@ -3775,7 +3900,7 @@ def admin_edit_simple_manual(manual_id):
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/edit')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_edit_subproblem(manual_id, subproblem_id):
     """Страница редактирования отдельной подпроблемы"""
     # Валидация ID
@@ -3823,7 +3948,7 @@ def admin_edit_subproblem(manual_id, subproblem_id):
 
 
 @app.route('/admin/manual/<string:manual_id>/update', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_update_manual(manual_id):
     """Обновление мануала (только заголовок, подпроблемы редактируются отдельно)"""
     # Валидация ID
@@ -3857,7 +3982,7 @@ def admin_update_manual(manual_id):
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/update', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_update_subproblem(manual_id, subproblem_id):
     """Обновление отдельной подпроблемы"""
     # Валидация ID
@@ -3912,7 +4037,7 @@ def admin_update_subproblem(manual_id, subproblem_id):
 
 
 @app.route('/admin/delete-photo', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_delete_photo():
     """Удаление фото из мануала"""
     manual_id = request.form.get('manual_id', '')
@@ -3946,7 +4071,7 @@ def admin_delete_photo():
 
 
 @app.route('/admin/delete-step', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_delete_step():
     """Удаление всего шага (фото + описание) из подпроблемы"""
     manual_id = request.form.get('manual_id', '')
@@ -4014,7 +4139,7 @@ def admin_delete_step():
 
 
 @app.route('/admin/delete-video', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_delete_video():
     """Удаление видео из подпроблемы"""
     manual_id = request.form.get('manual_id', '')
@@ -4039,7 +4164,7 @@ def admin_delete_video():
 
 
 @app.route('/admin/upload-photo', methods=['GET', 'POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_upload_photo():
     """Загрузка нового скриншота"""
     if request.method == 'GET':
@@ -4160,7 +4285,7 @@ def admin_upload_photo():
 
 
 @app.route('/admin/add-new-step', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_add_new_step():
     """Добавление нового шага в подпроблему"""
     manual_id = request.form.get('manual_id', '')
@@ -4208,7 +4333,7 @@ def admin_add_new_step():
 
 
 @app.route('/admin/upload-video', methods=['GET', 'POST'])
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_upload_video():
     """Загрузка видео-мануала"""
     if request.method == 'GET':
@@ -4315,7 +4440,7 @@ def admin_upload_video():
 # ============================================
 
 @app.route('/admin/topics')
-@AdminAuth.login_required
+@AdminAuth.topics_required
 def admin_topics():
     """Страница управления тематиками"""
     stats = tm.get_statistics()
@@ -4324,7 +4449,7 @@ def admin_topics():
 
 
 @app.route('/admin/topics/add', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.topics_required
 def admin_add_topic():
     """Добавление новой тематики"""
     try:
@@ -4385,7 +4510,7 @@ def admin_add_topic():
 
 
 @app.route('/admin/topics/delete/<int:topic_id>', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.topics_required
 def admin_delete_topic(topic_id):
     """Удаление тематики"""
     try:
@@ -4422,7 +4547,7 @@ def admin_delete_topic(topic_id):
 
 
 @app.route('/admin/topics/list')
-@AdminAuth.login_required
+@AdminAuth.topics_required
 def admin_list_topics():
     """Список всех тематик"""
     page = request.args.get('page', 1, type=int)
@@ -4448,7 +4573,7 @@ def admin_list_topics():
 
 
 @app.route('/admin/topics/import', methods=['GET'])
-@AdminAuth.login_required
+@AdminAuth.topics_required
 def admin_import_topics():
     """Страница импорта тематик из Excel"""
     stats = tm.get_statistics()
@@ -4456,7 +4581,7 @@ def admin_import_topics():
 
 
 @app.route('/admin/topics/import', methods=['POST'])
-@AdminAuth.login_required
+@AdminAuth.topics_required
 @rate_limit(max_requests=5, window=60)
 def admin_import_topics_upload():
     """Обработка загрузки Excel файла с тематиками"""
@@ -4545,7 +4670,7 @@ def admin_import_topics_upload():
 
 
 @app.route('/admin/topics/export')
-@AdminAuth.login_required
+@AdminAuth.topics_required
 def admin_export_topics():
     """Экспорт всех тематик в Excel"""
     try:
@@ -4983,6 +5108,282 @@ def api_stats_timeline():
             'success': False,
             'error': 'Ошибка получения timeline'
         }), 500
+
+
+@app.route('/api/stats/users')
+@AdminAuth.login_required
+def api_stats_users():
+    """Статистика использования Helper по специалистам (конечным пользователям)."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        limit = request.args.get('limit', 30, type=int)
+        limit = max(1, min(limit, 200))
+
+        def _key(username: str, name: str) -> str:
+            u = (username or '').strip()
+            n = (name or '').strip()
+            return u or n or 'Неизвестно'
+
+        users: dict[str, dict] = {}
+
+        # 1) ticket_events (мануалы/тикеты/фидбек)
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            actor_username,
+                            actor_name,
+                            COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                            SUM(CASE WHEN event_type = 'ticket_created' THEN 1 ELSE 0 END)::int as tickets_created,
+                            SUM(CASE WHEN event_type IN ('manual_opened_video','manual_opened_text') THEN 1 ELSE 0 END)::int as manuals_opened,
+                            SUM(CASE WHEN event_type IN ('video_helped','manual_helped','ticket_solved_by_helper') THEN 1 ELSE 0 END)::int as helped,
+                            SUM(CASE WHEN event_type IN ('video_not_helped','manual_not_helped') THEN 1 ELSE 0 END)::int as not_helped,
+                            COUNT(*)::int as actions
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s
+                          AND actor_role = 'user'
+                          AND event_type IN (
+                            'ticket_created',
+                            'manual_opened_video','manual_opened_text',
+                            'video_helped','video_not_helped',
+                            'manual_helped','manual_not_helped',
+                            'ticket_solved_by_helper'
+                          )
+                        GROUP BY actor_username, actor_name, department
+                    """, (start_at, end_at))
+                    ticket_rows = cur.fetchall()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT
+                        actor_username,
+                        actor_name,
+                        COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                        SUM(CASE WHEN event_type = 'ticket_created' THEN 1 ELSE 0 END) as tickets_created,
+                        SUM(CASE WHEN event_type IN ('manual_opened_video','manual_opened_text') THEN 1 ELSE 0 END) as manuals_opened,
+                        SUM(CASE WHEN event_type IN ('video_helped','manual_helped','ticket_solved_by_helper') THEN 1 ELSE 0 END) as helped,
+                        SUM(CASE WHEN event_type IN ('video_not_helped','manual_not_helped') THEN 1 ELSE 0 END) as not_helped,
+                        COUNT(*) as actions
+                    FROM ticket_events
+                    WHERE created_at BETWEEN ? AND ?
+                      AND actor_role = 'user'
+                      AND event_type IN (
+                        'ticket_created',
+                        'manual_opened_video','manual_opened_text',
+                        'video_helped','video_not_helped',
+                        'manual_helped','manual_not_helped',
+                        'ticket_solved_by_helper'
+                      )
+                    GROUP BY actor_username, actor_name, department
+                """, (start_at, end_at))
+                ticket_rows = cur.fetchall()
+
+        for row in ticket_rows:
+            username = row['actor_username'] if isinstance(row, sqlite3.Row) else row.get('actor_username')
+            name = row['actor_name'] if isinstance(row, sqlite3.Row) else row.get('actor_name')
+            department = row['department'] if isinstance(row, sqlite3.Row) else row.get('department')
+            k = _key(username, name)
+            if k not in users:
+                users[k] = {
+                    'username': (username or '').strip(),
+                    'name': (name or '').strip() or (username or '').strip() or k,
+                    'department': department or 'Не указан',
+                    'searches': 0,
+                    'manuals_opened': 0,
+                    'tickets_created': 0,
+                    'helped': 0,
+                    'not_helped': 0,
+                    'total_actions': 0
+                }
+            u = users[k]
+            u['department'] = u['department'] if u['department'] != 'Не указан' else (department or u['department'])
+            u['tickets_created'] += int(row['tickets_created'] or 0)
+            u['manuals_opened'] += int(row['manuals_opened'] or 0)
+            u['helped'] += int(row['helped'] or 0)
+            u['not_helped'] += int(row['not_helped'] or 0)
+            u['total_actions'] += int(row['actions'] or 0)
+
+        # 2) topic_search_events (поиск тематик)
+        search_rows = []
+        try:
+            if ANALYTICS_USE_POSTGRES:
+                with _pg_connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            SELECT
+                                actor_username,
+                                actor_name,
+                                COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                                COUNT(*)::int as searches
+                            FROM topic_search_events
+                            WHERE created_at BETWEEN %s AND %s
+                              AND actor_role = 'user'
+                            GROUP BY actor_username, actor_name, department
+                        """, (start_at, end_at))
+                        search_rows = cur.fetchall()
+            else:
+                with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT
+                            actor_username,
+                            actor_name,
+                            COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                            COUNT(*) as searches
+                        FROM topic_search_events
+                        WHERE created_at BETWEEN ? AND ?
+                          AND actor_role = 'user'
+                        GROUP BY actor_username, actor_name, department
+                    """, (start_at, end_at))
+                    search_rows = cur.fetchall()
+        except Exception as e:
+            # Не валим весь API если таблица/колонки topic_search_events еще не промигрированы.
+            print(f"[api_stats_users] Warning: topic_search_events query failed: {e}")
+
+        for row in search_rows:
+            username = row['actor_username'] if isinstance(row, sqlite3.Row) else row.get('actor_username')
+            name = row['actor_name'] if isinstance(row, sqlite3.Row) else row.get('actor_name')
+            department = row['department'] if isinstance(row, sqlite3.Row) else row.get('department')
+            k = _key(username, name)
+            if k not in users:
+                users[k] = {
+                    'username': (username or '').strip(),
+                    'name': (name or '').strip() or (username or '').strip() or k,
+                    'department': department or 'Не указан',
+                    'searches': 0,
+                    'manuals_opened': 0,
+                    'tickets_created': 0,
+                    'helped': 0,
+                    'not_helped': 0,
+                    'total_actions': 0
+                }
+            u = users[k]
+            u['department'] = u['department'] if u['department'] != 'Не указан' else (department or u['department'])
+            u['searches'] += int(row['searches'] or 0)
+            u['total_actions'] += int(row['searches'] or 0)
+
+        data = sorted(users.values(), key=lambda x: x.get('total_actions', 0), reverse=True)[:limit]
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        print(f"[api_stats_users] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения статистики по специалистам'}), 500
+
+
+@app.route('/api/stats/departments_usage')
+@AdminAuth.login_required
+def api_stats_departments_usage():
+    """Статистика использования Helper по отделам (поисki + мануалы + заявки)."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        limit = request.args.get('limit', 50, type=int)
+        limit = max(1, min(limit, 200))
+
+        departments: dict[str, dict] = {}
+
+        def _ensure(dep: str) -> dict:
+            dep = (dep or '').strip() or 'Не указан'
+            if dep not in departments:
+                departments[dep] = {
+                    'department': dep,
+                    'searches': 0,
+                    'manuals_opened': 0,
+                    'tickets_created': 0,
+                    'total_actions': 0
+                }
+            return departments[dep]
+
+        # ticket_events
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                            SUM(CASE WHEN event_type = 'ticket_created' THEN 1 ELSE 0 END)::int as tickets_created,
+                            SUM(CASE WHEN event_type IN ('manual_opened_video','manual_opened_text') THEN 1 ELSE 0 END)::int as manuals_opened,
+                            COUNT(*)::int as actions
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s
+                          AND actor_role = 'user'
+                          AND event_type IN ('ticket_created','manual_opened_video','manual_opened_text')
+                        GROUP BY department
+                    """, (start_at, end_at))
+                    rows = cur.fetchall()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT
+                        COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                        SUM(CASE WHEN event_type = 'ticket_created' THEN 1 ELSE 0 END) as tickets_created,
+                        SUM(CASE WHEN event_type IN ('manual_opened_video','manual_opened_text') THEN 1 ELSE 0 END) as manuals_opened,
+                        COUNT(*) as actions
+                    FROM ticket_events
+                    WHERE created_at BETWEEN ? AND ?
+                      AND actor_role = 'user'
+                      AND event_type IN ('ticket_created','manual_opened_video','manual_opened_text')
+                    GROUP BY department
+                """, (start_at, end_at))
+                rows = cur.fetchall()
+
+        for row in rows:
+            dep = row['department']
+            d = _ensure(dep)
+            d['tickets_created'] += int(row['tickets_created'] or 0)
+            d['manuals_opened'] += int(row['manuals_opened'] or 0)
+            d['total_actions'] += int(row['actions'] or 0)
+
+        # topic_search_events
+        rows = []
+        try:
+            if ANALYTICS_USE_POSTGRES:
+                with _pg_connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            SELECT
+                                COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                                COUNT(*)::int as searches
+                            FROM topic_search_events
+                            WHERE created_at BETWEEN %s AND %s
+                              AND actor_role = 'user'
+                            GROUP BY department
+                        """, (start_at, end_at))
+                        rows = cur.fetchall()
+            else:
+                with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT
+                            COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                            COUNT(*) as searches
+                        FROM topic_search_events
+                        WHERE created_at BETWEEN ? AND ?
+                          AND actor_role = 'user'
+                        GROUP BY department
+                    """, (start_at, end_at))
+                    rows = cur.fetchall()
+        except Exception as e:
+            print(f"[api_stats_departments_usage] Warning: topic_search_events query failed: {e}")
+
+        for row in rows:
+            dep = row['department']
+            d = _ensure(dep)
+            d['searches'] += int(row['searches'] or 0)
+            d['total_actions'] += int(row['searches'] or 0)
+
+        data = sorted(departments.values(), key=lambda x: x.get('total_actions', 0), reverse=True)[:limit]
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        print(f"[api_stats_departments_usage] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения статистики по использованию отделов'}), 500
 
 
 @app.route('/api/stats/staff')

@@ -4,11 +4,13 @@
   1. Service bind — подключение через сервисную учётку (svc_apo)
   2. Поиск пользователя в AD
   3. User bind — проверка пароля пользователя
+
+Используем SIMPLE authentication через LDAPS (SSL) — не требует MD4
 """
 import os
 import ssl
 from typing import Optional, Dict, Any
-from ldap3 import Server, Connection, ALL, NTLM, SIMPLE, Tls
+from ldap3 import Server, Connection, ALL, SIMPLE, Tls
 from ldap3.core.exceptions import LDAPException, LDAPBindError
 from dotenv import load_dotenv
 
@@ -37,6 +39,21 @@ class ADAuth:
 
         self.admin_logins = set(u.strip().lower() for u in admins_str.split(',') if u.strip())
         self.super_admin_logins = set(u.strip().lower() for u in super_admins_str.split(',') if u.strip())
+
+    def _get_user_principal(self, username: str) -> str:
+        """
+        Формирует UPN (User Principal Name) для SIMPLE bind
+        Формат: username@domain.suffix (например: svc_apo@cbk.kg)
+        """
+        clean_username = username.split('\\')[-1].split('@')[0]
+        # Формируем UPN из base_dn: DC=cbk,DC=kg -> cbk.kg
+        domain_parts = []
+        for part in self.base_dn.split(','):
+            part = part.strip()
+            if part.upper().startswith('DC='):
+                domain_parts.append(part[3:])
+        domain_suffix = '.'.join(domain_parts)
+        return f"{clean_username}@{domain_suffix}"
 
     def _create_server(self) -> Server:
         """Создаёт объект LDAP-сервера с учётом SSL"""
@@ -67,23 +84,28 @@ class ADAuth:
     def _service_bind(self) -> Optional[Connection]:
         """
         Этап 1: Подключение через сервисную учётку (svc_apo)
+        Используем SIMPLE bind с UPN (user@domain.kg) через LDAPS
         Возвращает Connection или None
         """
         if not self.bind_user or not self.bind_password:
             print("[AD] Сервисная учётка не настроена (LDAP_BIND_USER / LDAP_BIND_PASSWORD)")
             return None
 
+        # Формируем UPN для SIMPLE auth
+        bind_upn = self._get_user_principal(self.bind_user)
+        print(f"[AD] Попытка service bind как: {bind_upn}")
+
         try:
             server = self._create_server()
             conn = Connection(
                 server,
-                user=self.bind_user,
+                user=bind_upn,
                 password=self.bind_password,
-                authentication=NTLM,
+                authentication=SIMPLE,
                 auto_bind=True,
                 read_only=True
             )
-            print(f"[AD] Service bind успешен: {self.bind_user}")
+            print(f"[AD] Service bind успешен: {bind_upn}")
             return conn
         except LDAPBindError as e:
             print(f"[AD] Service bind ОШИБКА (неверные учётные данные svc_apo): {e}")
@@ -147,26 +169,26 @@ class ADAuth:
 
     def _user_bind(self, username: str, password: str) -> bool:
         """
-        Этап 3: Проверка пароля пользователя через отдельный bind
+        Этап 3: Проверка пароля пользователя через отдельный SIMPLE bind
+        Используем UPN формат: username@cbk.kg
         """
-        # Формируем полный логин DOMAIN\\username
-        clean_username = username.split('\\')[-1].split('@')[0]
-        user_dn = f"{self.domain}\\{clean_username}"
+        user_upn = self._get_user_principal(username)
+        print(f"[AD] Попытка user bind как: {user_upn}")
 
         try:
             server = self._create_server()
             conn = Connection(
                 server,
-                user=user_dn,
+                user=user_upn,
                 password=password,
-                authentication=NTLM,
+                authentication=SIMPLE,
                 auto_bind=True
             )
-            print(f"[AD] User bind успешен: {clean_username}")
+            print(f"[AD] User bind успешен: {user_upn}")
             conn.unbind()
             return True
         except LDAPBindError:
-            print(f"[AD] User bind ОШИБКА: неверный пароль для {clean_username}")
+            print(f"[AD] User bind ОШИБКА: неверный пароль для {user_upn}")
             return False
         except LDAPException as e:
             print(f"[AD] User bind LDAP ошибка: {e}")

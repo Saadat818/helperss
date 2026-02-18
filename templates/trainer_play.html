@@ -619,6 +619,47 @@
         }
 
         /* Адаптивность */
+        @media (max-width: 1024px) {
+            .game-container {
+                flex-direction: column;
+                height: auto;
+                min-height: 100vh;
+            }
+
+            .left-panel, .right-panel {
+                width: 100%;
+                flex-direction: row;
+                border-right: none;
+                border-left: none;
+                padding: 10px 16px;
+                gap: 12px;
+            }
+
+            .left-panel {
+                border-bottom: 2px solid #e94560;
+            }
+
+            .right-panel {
+                border-top: 2px solid #5a5a7a;
+                order: 3;
+            }
+
+            .center-panel {
+                flex: 1;
+                min-height: 60vh;
+            }
+
+            .avatar-img {
+                width: 48px;
+                height: 48px;
+            }
+
+            .right-panel svg {
+                width: 48px;
+                height: 48px;
+            }
+        }
+
         @media (max-width: 900px) {
             .left-panel, .right-panel { display: none; }
         }

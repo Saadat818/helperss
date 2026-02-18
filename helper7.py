@@ -2967,7 +2967,22 @@ def admin_trainer_visual_load(scenario_id):
 def admin_trainer_stats():
     """Статистика тренажера"""
     stats = trainer_mgr.get_statistics()
-    return render_template('admin_trainer_stats.html', stats=stats)
+    heatmap = trainer_mgr.get_step_error_heatmap(limit=20)
+    return render_template('admin_trainer_stats.html', stats=stats, heatmap=heatmap)
+
+
+@app.route('/api/admin/trainer/user/<user_id>/results')
+@AdminAuth.login_required
+def admin_trainer_user_results(user_id):
+    """Получить историю прохождений конкретного пользователя"""
+    results = trainer_mgr.get_user_results(user_id)
+    badges = trainer_mgr.get_user_badges(user_id)
+    return jsonify({
+        'success': True,
+        'user_id': user_id,
+        'results': results,
+        'badges': badges
+    })
 
 
 # ============================================

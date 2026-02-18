@@ -1342,6 +1342,71 @@ class TrainerManager:
 
     # ==================== СТАТИСТИКА ====================
 
+    def get_step_error_heatmap(self, limit: int = 20) -> List[Dict]:
+        """Получить тепловую карту ошибок по шагам сценариев"""
+        cursor = self.conn.cursor()
+
+        # Загружаем все результаты с answers_json
+        cursor.execute("""
+            SELECT r.scenario_id, r.answers_json, s.title as scenario_title
+            FROM trainer_results r
+            JOIN trainer_scenarios s ON r.scenario_id = s.id
+            WHERE r.answers_json IS NOT NULL AND r.answers_json != ''
+        """)
+
+        # Агрегируем по (scenario_id, step_num)
+        step_stats = {}  # (scenario_id, step_num) -> {total, correct, wrong, scenario_title}
+
+        for row in cursor.fetchall():
+            try:
+                answers = json.loads(row['answers_json'])
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            scenario_id = row['scenario_id']
+            scenario_title = row['scenario_title']
+
+            for ans in answers:
+                step_num = ans.get('step_num', 0)
+                key = (scenario_id, step_num)
+
+                if key not in step_stats:
+                    step_stats[key] = {
+                        'scenario_id': scenario_id,
+                        'scenario_title': scenario_title,
+                        'step_num': step_num,
+                        'total': 0,
+                        'correct': 0,
+                        'wrong': 0
+                    }
+
+                step_stats[key]['total'] += 1
+                if ans.get('is_correct'):
+                    step_stats[key]['correct'] += 1
+                else:
+                    step_stats[key]['wrong'] += 1
+
+        # Получаем client_message для каждого шага
+        steps_info = {}
+        cursor.execute("SELECT scenario_id, step_num, client_message FROM trainer_steps")
+        for row in cursor.fetchall():
+            steps_info[(row['scenario_id'], row['step_num'])] = row['client_message']
+
+        # Собираем результат (пропускаем step_num=0 — это системный шаг без сообщения клиента)
+        result = []
+        for key, stat in step_stats.items():
+            if stat['total'] == 0 or stat['step_num'] == 0:
+                continue
+            error_rate = round((stat['wrong'] / stat['total']) * 100, 1)
+            stat['error_rate'] = error_rate
+            stat['client_message'] = steps_info.get(key, '')
+            result.append(stat)
+
+        # Сортируем по error_rate DESC
+        result.sort(key=lambda x: x['error_rate'], reverse=True)
+
+        return result[:limit]
+
     def get_statistics(self) -> Dict:
         """Получить общую статистику тренажера"""
         cursor = self.conn.cursor()

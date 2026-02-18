@@ -482,6 +482,24 @@
             text-align: right;
         }
 
+        @media (max-width: 1024px) {
+            .container {
+                padding: 20px;
+            }
+
+            .levels-grid {
+                flex-wrap: wrap !important;
+            }
+
+            .level-card {
+                min-width: calc(50% - 8px);
+            }
+
+            .progress-stats {
+                gap: 20px;
+            }
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 16px;
@@ -566,32 +584,6 @@
             </div>
         </div>
 
-        <!-- Лидерборд -->
-        {% if top_users %}
-        <div class="leaderboard-card">
-            <div class="leaderboard-header">
-                <span class="leaderboard-title">🏆 Рейтинг</span>
-                <span class="leaderboard-subtitle">Top {{ top_users|length }}</span>
-            </div>
-            <div class="leaderboard-list">
-                {% for user in top_users %}
-                <div class="leaderboard-row {% if user.user_id == current_user_id %}is-me{% endif %}">
-                    <div class="lb-rank {% if loop.index == 1 %}gold{% elif loop.index == 2 %}silver{% elif loop.index == 3 %}bronze{% endif %}">
-                        {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
-                    </div>
-                    <div class="lb-user">{{ user.user_id }}</div>
-                    <div class="lb-badges">
-                        {% for badge in user.badges %}
-                        <span title="{{ badge.name }}: {{ badge.description }}" class="lb-badge">{{ badge.icon }}</span>
-                        {% endfor %}
-                    </div>
-                    <div class="lb-score">{{ user.avg_percent | round(1) }}%</div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
         <!-- Уровни -->
         <div class="levels-grid">
             {% for level in levels %}
@@ -643,6 +635,32 @@
                 {% endif %}
             {% endfor %}
         </div>
+
+        <!-- Лидерборд -->
+        {% if top_users %}
+        <div class="leaderboard-card">
+            <div class="leaderboard-header">
+                <span class="leaderboard-title">🏆 Рейтинг</span>
+                <span class="leaderboard-subtitle">Top {{ top_users|length }}</span>
+            </div>
+            <div class="leaderboard-list">
+                {% for user in top_users %}
+                <div class="leaderboard-row {% if user.user_id == current_user_id %}is-me{% endif %}">
+                    <div class="lb-rank {% if loop.index == 1 %}gold{% elif loop.index == 2 %}silver{% elif loop.index == 3 %}bronze{% endif %}">
+                        {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+                    </div>
+                    <div class="lb-user">{{ user.user_id }}</div>
+                    <div class="lb-badges">
+                        {% for badge in user.badges %}
+                        <span title="{{ badge.name }}: {{ badge.description }}" class="lb-badge">{{ badge.icon }}</span>
+                        {% endfor %}
+                    </div>
+                    <div class="lb-score">{{ user.avg_percent | round(1) }}%</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <script>

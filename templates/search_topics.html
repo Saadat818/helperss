@@ -541,9 +541,10 @@
         let activeRequestController = null;
         let highlightedIndex = -1;
 
-        // Устанавливаем "Физ лица" активным по умолчанию
-        const defaultChannel = 'Физ лица';
-        let defaultButton = null;
+	        // По умолчанию выбран "Все каналы" (data-channel="").
+	        // Это соответствует запросу: при заходе на /search_topics сразу активен фильтр "Все каналы".
+	        const defaultChannel = '';
+	        let defaultButton = null;
 
         channelButtons.forEach(button => {
             if (button.getAttribute('data-channel') === defaultChannel) {
@@ -552,11 +553,12 @@
             }
         });
 
-        // Устанавливаем канал в скрытое поле
-        selectedChannelInput.value = defaultChannel;
+	        // Устанавливаем канал в скрытое поле
+	        selectedChannelInput.value = defaultChannel;
 
-        // Показываем начальное состояние - загружаем тематики "Физ лица"
-        loadChannelTopics(defaultChannel);
+	        // Показываем начальное состояние - загружаем тематики из всех каналов
+	        updateSearchMeta('Все каналы');
+	        loadAllTopics();
 
         // Функция поиска тематик
         function updateSearchMeta(text) {

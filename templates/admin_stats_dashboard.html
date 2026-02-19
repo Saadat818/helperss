@@ -586,6 +586,32 @@
                 </div>
             </div>
         </div>
+
+        <div class="two-column">
+            <!-- Использование по специалистам -->
+            <div class="departments-table">
+                <h2>👤 Использование Helper по специалистам</h2>
+                <div id="usersTable">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+
+            <!-- Использование по отделам (поиски + мануалы + заявки) -->
+            <div class="departments-table">
+                <h2>🏢 Использование Helper по отделам</h2>
+                <div id="departmentsUsageTable">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика по техподдержке -->
+        <div class="departments-table" style="margin-top: 30px; border-left-color: #6f42c1;">
+            <h2>🛠️ Техподдержка: кто больше помог</h2>
+            <div id="staffTable">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -612,11 +638,14 @@
 
             // Загружаем все данные параллельно
             try {
-                const [summary, timeline, problems, departments] = await Promise.all([
+                const [summary, timeline, problems, departments, users, deptUsage, staff] = await Promise.all([
                     fetch(`/api/stats/summary?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/timeline?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/top_problems?days=${days}&limit=10`).then(r => r.json()),
-                    fetch(`/api/stats/departments?days=${days}`).then(r => r.json())
+                    fetch(`/api/stats/departments?days=${days}`).then(r => r.json()),
+                    fetch(`/api/stats/users?days=${days}&limit=20`).then(r => r.json()),
+                    fetch(`/api/stats/departments_usage?days=${days}&limit=30`).then(r => r.json()),
+                    fetch(`/api/stats/staff?days=${days}`).then(r => r.json())
                 ]);
 
                 if (summary.success) {
@@ -633,6 +662,24 @@
 
                 if (departments.success) {
                     updateDepartments(departments.data);
+                }
+
+                if (users.success) {
+                    updateUsers(users.data);
+                } else {
+                    document.getElementById('usersTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(users.error || 'не удалось загрузить')}</div>`;
+                }
+
+                if (deptUsage.success) {
+                    updateDepartmentsUsage(deptUsage.data);
+                } else {
+                    document.getElementById('departmentsUsageTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(deptUsage.error || 'не удалось загрузить')}</div>`;
+                }
+
+                if (staff.success) {
+                    updateStaff(staff.data);
+                } else {
+                    document.getElementById('staffTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(staff.error || 'не удалось загрузить')}</div>`;
                 }
 
             } catch (error) {
@@ -817,6 +864,125 @@
                 </table>
             `;
 
+            container.innerHTML = html;
+        }
+
+        function updateUsers(data) {
+            const container = document.getElementById('usersTable');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="loading">Нет данных за выбранный период</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Специалист</th>
+                            <th>Отдел</th>
+                            <th style="text-align:center;">Поиски</th>
+                            <th style="text-align:center;">Мануалы</th>
+                            <th style="text-align:center;">Заявки</th>
+                            <th style="text-align:center;">Всего</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.forEach(u => {
+                const displayName = (u.username && u.username.trim())
+                    ? `${escapeHtml(u.name || u.username)} (${escapeHtml(u.username)})`
+                    : escapeHtml(u.name || 'Неизвестно');
+                html += `
+                    <tr>
+                        <td>${displayName}</td>
+                        <td>${escapeHtml(u.department || 'Не указан')}</td>
+                        <td style="text-align:center;">${u.searches ?? 0}</td>
+                        <td style="text-align:center;">${u.manuals_opened ?? 0}</td>
+                        <td style="text-align:center;">${u.tickets_created ?? 0}</td>
+                        <td style="text-align:center;"><strong>${u.total_actions ?? 0}</strong></td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+            container.innerHTML = html;
+        }
+
+        function updateDepartmentsUsage(data) {
+            const container = document.getElementById('departmentsUsageTable');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="loading">Нет данных за выбранный период</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Отдел</th>
+                            <th style="text-align:center;">Поиски</th>
+                            <th style="text-align:center;">Мануалы</th>
+                            <th style="text-align:center;">Заявки</th>
+                            <th style="text-align:center;">Всего</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            data.forEach(d => {
+                html += `
+                    <tr>
+                        <td>${escapeHtml(d.department || 'Не указан')}</td>
+                        <td style="text-align:center;">${d.searches ?? 0}</td>
+                        <td style="text-align:center;">${d.manuals_opened ?? 0}</td>
+                        <td style="text-align:center;">${d.tickets_created ?? 0}</td>
+                        <td style="text-align:center;"><strong>${d.total_actions ?? 0}</strong></td>
+                    </tr>
+                `;
+            });
+            html += `
+                    </tbody>
+                </table>
+            `;
+            container.innerHTML = html;
+        }
+
+        function updateStaff(data) {
+            const container = document.getElementById('staffTable');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="loading">Нет данных за выбранный период</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Сотрудник</th>
+                            <th style="text-align:center;">Решено</th>
+                            <th style="text-align:center;">Не актуально</th>
+                            <th style="text-align:center;">Всего действий</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            data.forEach(s => {
+                html += `
+                    <tr>
+                        <td>${escapeHtml(s.staff || 'Неизвестно')}</td>
+                        <td style="text-align:center; color:#28a745;">${s.resolved ?? 0}</td>
+                        <td style="text-align:center; color:#dc3545;">${s.not_relevant ?? 0}</td>
+                        <td style="text-align:center;"><strong>${s.total_actions ?? 0}</strong></td>
+                    </tr>
+                `;
+            });
+            html += `
+                    </tbody>
+                </table>
+            `;
             container.innerHTML = html;
         }
 

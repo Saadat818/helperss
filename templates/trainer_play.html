@@ -816,6 +816,14 @@
     </div>
 
     <script>
+        // Экранирование HTML для защиты от XSS
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
         const scenarioId = {{ scenario.id }};
         const totalSteps = {{ total_steps }};
         const timerSeconds = {{ scenario.timer_seconds or 15 }};
@@ -1165,7 +1173,7 @@
                             item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.1); font-size:13px; color:#e8e8e8; transition:background 0.2s;';
                             item.onmouseenter = () => item.style.background = 'rgba(233,69,96,0.2)';
                             item.onmouseleave = () => item.style.background = '';
-                            item.innerHTML = `<strong>${r.topic}</strong> <span style="color:#a8a8a8; font-size:11px;">${r.channel || ''}</span>`;
+                            item.innerHTML = `<strong>${escapeHtml(r.topic)}</strong> <span style="color:#a8a8a8; font-size:11px;">${escapeHtml(r.channel || '')}</span>`;
                             item.onclick = () => selectTopicPlay(r);
                             resultsDiv.appendChild(item);
                         });
@@ -1209,7 +1217,7 @@
                 const correctNames = correctTopics.map(t => t.topic).join(', ');
                 feedbackDiv.style.background = 'rgba(244,67,54,0.2)';
                 feedbackDiv.style.border = '1px solid rgba(244,67,54,0.5)';
-                feedbackDiv.innerHTML = `<div style="color:#f44336; font-weight:600; font-size:15px; margin-bottom:4px;">✕ Неверно</div><div style="color:#a8a8a8; font-size:13px;">Правильная тематика: <strong style="color:#fff;">${correctNames}</strong></div>`;
+                feedbackDiv.innerHTML = `<div style="color:#f44336; font-weight:600; font-size:15px; margin-bottom:4px;">✕ Неверно</div><div style="color:#a8a8a8; font-size:13px;">Правильная тематика: <strong style="color:#fff;">${escapeHtml(correctNames)}</strong></div>`;
             }
             feedbackDiv.style.display = 'block';
 
@@ -1258,13 +1266,13 @@
                 let html = `<div class="rec-step">Шаг ${answer.step}</div>`;
 
                 if (answer.feedback) {
-                    html += `<div class="rec-feedback">${answer.feedback}</div>`;
+                    html += `<div class="rec-feedback">${escapeHtml(answer.feedback)}</div>`;
                 } else {
-                    html += `<div class="rec-feedback">Ваш ответ: "${answer.answer_text}"</div>`;
+                    html += `<div class="rec-feedback">Ваш ответ: "${escapeHtml(answer.answer_text)}"</div>`;
                 }
 
                 if (answer.knowledge_link) {
-                    html += `<a href="${answer.knowledge_link}" target="_blank" class="rec-link">📚 Изучить в Базе Знаний</a>`;
+                    html += `<a href="${escapeHtml(answer.knowledge_link)}" target="_blank" class="rec-link">📚 Изучить в Базе Знаний</a>`;
                 }
 
                 item.innerHTML = html;
@@ -1295,7 +1303,7 @@
 
             if (tips.length > 0) {
                 recTips.style.display = 'block';
-                recTipsList.innerHTML = tips.map(t => `<li>${t}</li>`).join('');
+                recTipsList.innerHTML = tips.map(t => `<li>${escapeHtml(t)}</li>`).join('');
             } else {
                 recTips.style.display = 'none';
             }
@@ -1355,8 +1363,8 @@
 
                     const label = fieldLabels[key] || key;
                     field.innerHTML = `
-                        <span class="client-field-label">${label}</span>
-                        <span class="client-field-value">${value}</span>
+                        <span class="client-field-label">${escapeHtml(label)}</span>
+                        <span class="client-field-value">${escapeHtml(value)}</span>
                     `;
                     clientCardBody.appendChild(field);
                 }

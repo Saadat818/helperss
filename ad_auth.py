@@ -12,6 +12,7 @@ import ssl
 from typing import Optional, Dict, Any
 from ldap3 import Server, Connection, ALL, SIMPLE, Tls
 from ldap3.core.exceptions import LDAPException, LDAPBindError
+from ldap3.utils.conv import escape_filter_chars
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,6 +29,11 @@ class ADAuth:
         self.use_ssl = os.getenv('AD_USE_SSL', 'true').lower() == 'true'
         self.admin_group = os.getenv('AD_ADMIN_GROUP', '')
         self.dev_mode = os.getenv('DEV_MODE', 'false').lower() == 'true'
+
+        # Путь к CA-сертификату AD сервера для проверки SSL
+        # Если указан — используется CERT_REQUIRED (безопасно)
+        # Если не указан — CERT_NONE с предупреждением (MiTM уязвимость)
+        self.ca_cert_file = os.getenv('AD_CA_CERT', '')
 
         # Сервисная учётка для bind
         self.bind_user = os.getenv('LDAP_BIND_USER', '')
@@ -63,10 +69,22 @@ class ADAuth:
         """Создаёт объект LDAP-сервера с учётом SSL"""
         if self.use_ssl:
             # Для LDAPS — настраиваем TLS
-            tls_config = Tls(
-                validate=ssl.CERT_NONE,  # На этапе тестирования не проверяем сертификат
-                version=ssl.PROTOCOL_TLSv1_2
-            )
+            if self.ca_cert_file and os.path.isfile(self.ca_cert_file):
+                # Безопасный режим: проверяем сертификат AD сервера
+                tls_config = Tls(
+                    validate=ssl.CERT_REQUIRED,
+                    ca_certs_file=self.ca_cert_file,
+                    version=ssl.PROTOCOL_TLSv1_2
+                )
+                print("[AD] TLS: используется CA-сертификат, проверка включена (CERT_REQUIRED)")
+            else:
+                # Небезопасный режим: без проверки сертификата (MiTM уязвимость!)
+                tls_config = Tls(
+                    validate=ssl.CERT_NONE,
+                    version=ssl.PROTOCOL_TLSv1_2
+                )
+                print("[AD] ⚠ ВНИМАНИЕ: SSL без проверки сертификата (CERT_NONE)!")
+                print("[AD] ⚠ Для защиты от MiTM укажите AD_CA_CERT=/path/to/ca.pem в .env")
             server = Server(
                 self.server_uri,
                 port=self.port,
@@ -128,7 +146,8 @@ class ADAuth:
         # Очищаем username от домена если есть
         clean_username = username.split('\\')[-1].split('@')[0]
 
-        search_filter = f"(sAMAccountName={clean_username})"
+        safe_username = escape_filter_chars(clean_username)
+        search_filter = f"(sAMAccountName={safe_username})"
         try:
             conn.search(
                 search_base=self.base_dn,

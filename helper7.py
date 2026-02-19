@@ -17,6 +17,7 @@ from html import escape as html_escape
 from functools import wraps
 from time import time
 from collections import defaultdict
+from urllib.parse import urlparse
 
 # Загружаем переменные окружения ПЕРЕД импортом admin_manager
 load_dotenv()
@@ -155,10 +156,119 @@ def add_security_headers(response):
     return response
 
 
+def safe_redirect(fallback_endpoint='index'):
+    """
+    Безопасный redirect по request.referrer.
+    Проверяет что referrer ведёт на тот же хост (защита от Open Redirect).
+    Если referrer невалидный — редирект на fallback_endpoint.
+    """
+    referrer = request.referrer
+    if referrer:
+        parsed = urlparse(referrer)
+        # Проверяем что referrer ведёт на наш хост
+        if parsed.netloc == '' or parsed.netloc == request.host:
+            return redirect(referrer)
+    return redirect(url_for(fallback_endpoint))
+
+
+# ============================================
+# ТРЕКИНГ ОНЛАЙН-ПОЛЬЗОВАТЕЛЕЙ
+# ============================================
+# Словарь: { "username_or_ip": { "last_seen": timestamp, "username": str, "ip": str, "path": str } }
+import threading as _thr
+_online_users = {}
+_online_lock = _thr.Lock()
+_ONLINE_TIMEOUT = 300  # 5 минут — считаем пользователя онлайн
+
+
+def _track_user_activity():
+    """Обновляет информацию об активности текущего пользователя."""
+    try:
+        if request.path.startswith('/static/'):
+            return
+
+        ip = get_client_ip()
+        username = ''
+        display_name = ''
+
+        if session.get('admin_logged_in'):
+            username = session.get('admin_username', '')
+            display_name = username
+        elif session.get('authenticated') and session.get('user_info'):
+            user_info = session.get('user_info', {})
+            username = user_info.get('username', '')
+            display_name = user_info.get('name', username)
+
+        # Ключ — username если залогинен, иначе IP
+        key = username if username else f"guest_{ip}"
+
+        with _online_lock:
+            _online_users[key] = {
+                'last_seen': time(),
+                'username': username,
+                'display_name': display_name,
+                'ip': ip,
+                'path': request.path,
+                'is_admin': bool(session.get('admin_logged_in')),
+            }
+
+            # Чистим устаревших (старше 5 минут)
+            now = time()
+            stale_keys = [k for k, v in _online_users.items() if now - v['last_seen'] > _ONLINE_TIMEOUT]
+            for k in stale_keys:
+                del _online_users[k]
+    except Exception:
+        pass
+
+
+def get_online_stats():
+    """Возвращает статистику онлайн-пользователей."""
+    now = time()
+    with _online_lock:
+        active = {k: v for k, v in _online_users.items() if now - v['last_seen'] <= _ONLINE_TIMEOUT}
+
+    users_list = []
+    total_online = 0
+    guests = 0
+    logged_in = 0
+    admins_online = 0
+
+    for key, info in active.items():
+        total_online += 1
+        if info['username']:
+            logged_in += 1
+            if info['is_admin']:
+                admins_online += 1
+        else:
+            guests += 1
+
+        users_list.append({
+            'key': key,
+            'username': info['username'] or 'Гость',
+            'display_name': info['display_name'] or 'Гость',
+            'ip': info['ip'],
+            'path': info['path'],
+            'is_admin': info['is_admin'],
+            'seconds_ago': int(now - info['last_seen']),
+        })
+
+    # Сортируем: сначала последние активные
+    users_list.sort(key=lambda x: x['seconds_ago'])
+
+    return {
+        'total_online': total_online,
+        'logged_in': logged_in,
+        'guests': guests,
+        'admins_online': admins_online,
+        'users': users_list,
+    }
+
+
 @app.before_request
 def mark_request_start():
-    """Отмечает старт запроса для расчета времени выполнения."""
+    """Отмечает старт запроса и трекает активность пользователя."""
     g.request_started_at = time()
+    _track_user_activity()
 
 
 @app.after_request
@@ -1821,7 +1931,8 @@ def api_admin_check_password():
         return jsonify({'success': False, 'error': 'Неверный пароль'})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        print(f"[API] Ошибка проверки пароля: {e}")
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'})
 
 
 @app.route('/api/search_topic', methods=['POST'])
@@ -2778,7 +2889,7 @@ def admin_trainer_delete_step(step_id):
     else:
         flash(f'Ошибка: {result.get("error")}')
 
-    return redirect(request.referrer or url_for('admin_trainer'))
+    return safe_redirect('admin_trainer')
 
 
 @app.route('/admin/trainer/step/<int:step_id>/answer/create', methods=['POST'])
@@ -2800,7 +2911,7 @@ def admin_trainer_create_answer(step_id):
     else:
         flash(f'Ошибка: {result.get("error")}')
 
-    return redirect(request.referrer or url_for('admin_trainer'))
+    return safe_redirect('admin_trainer')
 
 
 @app.route('/admin/trainer/answer/<int:answer_id>/delete', methods=['POST'])
@@ -2814,7 +2925,7 @@ def admin_trainer_delete_answer(answer_id):
     else:
         flash(f'Ошибка: {result.get("error")}')
 
-    return redirect(request.referrer or url_for('admin_trainer'))
+    return safe_redirect('admin_trainer')
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/visual')
@@ -2974,7 +3085,8 @@ def admin_trainer_visual_save(scenario_id):
         return jsonify({'success': True, 'message': 'Сценарий сохранен'})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        print(f"[API] Ошибка сохранения сценария: {e}")
+        return jsonify({'success': False, 'error': 'Ошибка сохранения сценария'})
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/visual/load')
@@ -3066,7 +3178,8 @@ def admin_trainer_visual_load(scenario_id):
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        print(f"[API] Ошибка загрузки визуального редактора: {e}")
+        return jsonify({'success': False, 'error': 'Ошибка загрузки данных'})
 
 
 @app.route('/admin/trainer/stats')
@@ -3311,7 +3424,8 @@ def trainer_submit_feedback():
         result = trainer_mgr.add_feedback(user_id, message, level_code)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"[API] Ошибка отправки отзыва: {e}")
+        return jsonify({'success': False, 'error': 'Ошибка отправки отзыва'}), 500
 
 
 @app.route('/admin/trainer/feedback')
@@ -3659,7 +3773,7 @@ def admin_trainer_import_confirm():
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Ошибка импорта сценария'})
 
 
 # ============================================
@@ -3708,11 +3822,29 @@ def user_login():
                     'workplace': ''
                 }
                 session['authenticated'] = True
-                session['admin_logged_in'] = True
-                session['admin_username'] = username
-                session['admin_role'] = ROLE_SUPER_ADMIN
-                session['admin_permissions'] = ['super_admin']
-                session['admin_token'] = AdminAuth.generate_session_token()
+
+                # Определяем роли из .env (как в AD режиме)
+                from ad_auth import ad_auth
+                lower_user = username.lower()
+                test_permissions = []
+                if lower_user in ad_auth.super_admin_logins:
+                    test_permissions.append('super_admin')
+                if lower_user in ad_auth.admins_manuals:
+                    test_permissions.append('admin_manuals')
+                if lower_user in ad_auth.admins_topics:
+                    test_permissions.append('admin_topics')
+                if lower_user in ad_auth.admins_trainer:
+                    test_permissions.append('admin_trainer')
+                if lower_user in ad_auth.trainer_viewers:
+                    test_permissions.append('trainer_viewer')
+
+                if test_permissions:
+                    session['admin_logged_in'] = True
+                    session['admin_username'] = username
+                    session['admin_role'] = 'super_admin' if 'super_admin' in test_permissions else test_permissions[0]
+                    session['admin_permissions'] = test_permissions
+                    session['admin_token'] = AdminAuth.generate_session_token()
+
                 session.permanent = True
                 return redirect(url_for('choose_help_type'))
             else:
@@ -3799,12 +3931,33 @@ def admin_login():
         TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 
         if TEST_MODE and password in ['admin', '123', 'test']:
+            # Определяем роли из .env
+            from ad_auth import ad_auth
+            lower_user = username.lower()
+            test_permissions = []
+            if lower_user in ad_auth.super_admin_logins:
+                test_permissions.append('super_admin')
+            if lower_user in ad_auth.admins_manuals:
+                test_permissions.append('admin_manuals')
+            if lower_user in ad_auth.admins_topics:
+                test_permissions.append('admin_topics')
+            if lower_user in ad_auth.admins_trainer:
+                test_permissions.append('admin_trainer')
+            if lower_user in ad_auth.trainer_viewers:
+                test_permissions.append('trainer_viewer')
+
+            if not test_permissions:
+                flash('У вас нет прав администратора')
+                return redirect(url_for('admin_login'))
+
             session['admin_logged_in'] = True
             session['admin_username'] = username
-            session['admin_role'] = ROLE_SUPER_ADMIN
+            session['admin_role'] = 'super_admin' if 'super_admin' in test_permissions else test_permissions[0]
+            session['admin_permissions'] = test_permissions
             session['admin_token'] = AdminAuth.generate_session_token()
             session.permanent = True
-            flash(f'Успешная авторизация (тестовый режим). Роль: Супер-Админ')
+            role_names = ', '.join(test_permissions)
+            flash(f'Успешная авторизация (тестовый режим). Права: {role_names}')
             return redirect(url_for('admin_dashboard'))
 
         admin_data = AdminAuth.verify_admin(username, password)
@@ -5142,6 +5295,83 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
 def admin_stats_dashboard():
     """Страница статистики с dashboard"""
     return render_template('admin_stats_dashboard.html')
+
+
+@app.route('/api/stats/online')
+@AdminAuth.super_admin_required
+def api_stats_online():
+    """API: онлайн-пользователи и статистика за сегодня (только super_admin)"""
+    try:
+        online = get_online_stats()
+
+        # Уникальные пользователи за сегодня из audit_logs
+        today_start = datetime.now().strftime('%Y-%m-%d 00:00:00')
+        today_end = datetime.now().strftime('%Y-%m-%d 23:59:59')
+        today_users = []
+        total_requests_today = 0
+
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    # Уникальные пользователи за сегодня
+                    cur.execute("""
+                        SELECT actor_username, actor_name, actor_type, ip_address,
+                               MIN(created_at) as first_seen,
+                               MAX(created_at) as last_seen,
+                               COUNT(*)::int as requests
+                        FROM audit_logs
+                        WHERE created_at BETWEEN %s AND %s
+                          AND actor_type != 'guest'
+                          AND actor_username != ''
+                        GROUP BY actor_username, actor_name, actor_type, ip_address
+                        ORDER BY last_seen DESC
+                    """, (today_start, today_end))
+                    today_users = [dict(row) for row in cur.fetchall()]
+
+                    # Общее количество запросов за сегодня
+                    cur.execute("""
+                        SELECT COUNT(*)::int as total
+                        FROM audit_logs
+                        WHERE created_at BETWEEN %s AND %s
+                    """, (today_start, today_end))
+                    total_requests_today = int((cur.fetchone() or {}).get('total', 0))
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT actor_username, actor_name, actor_type, ip_address,
+                           MIN(created_at) as first_seen,
+                           MAX(created_at) as last_seen,
+                           COUNT(*) as requests
+                    FROM audit_logs
+                    WHERE created_at BETWEEN ? AND ?
+                      AND actor_type != 'guest'
+                      AND actor_username != ''
+                    GROUP BY actor_username, actor_name, actor_type, ip_address
+                    ORDER BY last_seen DESC
+                """, (today_start, today_end))
+                today_users = [dict(row) for row in cur.fetchall()]
+
+                cur.execute("""
+                    SELECT COUNT(*) as total
+                    FROM audit_logs
+                    WHERE created_at BETWEEN ? AND ?
+                """, (today_start, today_end))
+                total_requests_today = int((cur.fetchone() or {})['total'] or 0)
+
+        return jsonify({
+            'success': True,
+            'online': online,
+            'today': {
+                'unique_users': len(today_users),
+                'total_requests': total_requests_today,
+                'users': today_users
+            }
+        })
+    except Exception as e:
+        print(f"[API] Ошибка получения online статистики: {e}")
+        return jsonify({'success': False, 'error': 'Ошибка загрузки данных'}), 500
 
 
 @app.route('/api/stats/summary')

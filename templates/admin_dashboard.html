@@ -399,6 +399,109 @@
             {% endif %}
         {% endwith %}
 
+        <!-- Виджет онлайн-статистики (только для super_admin) -->
+        {% if 'super_admin' in session.get('admin_permissions', []) %}
+        <div id="onlineWidget" style="margin-bottom: 25px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                <div class="stat-card" style="padding: 16px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 700; color: #00a651;" id="statOnline">—</div>
+                    <div style="font-size: 12px; color: #b5b5b5; margin-top: 4px;">🟢 Сейчас онлайн</div>
+                </div>
+                <div class="stat-card" style="padding: 16px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 700; color: #4fc3f7;" id="statTodayUsers">—</div>
+                    <div style="font-size: 12px; color: #b5b5b5; margin-top: 4px;">👤 Сегодня заходили</div>
+                </div>
+                <div class="stat-card" style="padding: 16px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 700; color: #ffa726;" id="statTodayRequests">—</div>
+                    <div style="font-size: 12px; color: #b5b5b5; margin-top: 4px;">📊 Запросов сегодня</div>
+                </div>
+                <div class="stat-card" style="padding: 16px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 700; color: #e94b5a;" id="statAdminsOnline">—</div>
+                    <div style="font-size: 12px; color: #b5b5b5; margin-top: 4px;">🛡️ Админов онлайн</div>
+                </div>
+            </div>
+
+            <!-- Список онлайн-пользователей (сворачиваемый) -->
+            <details style="background: #141414; border: 1px solid #242424; border-radius: 14px; padding: 0;">
+                <summary style="padding: 14px 18px; cursor: pointer; color: #b5b5b5; font-size: 13px; font-weight: 600; user-select: none;">
+                    👁️ Подробности — кто онлайн и кто заходил сегодня
+                </summary>
+                <div style="padding: 0 18px 14px;">
+                    <div style="margin-bottom: 12px;">
+                        <div style="font-size: 13px; font-weight: 600; color: #00a651; margin-bottom: 8px;">🟢 Онлайн сейчас:</div>
+                        <div id="onlineList" style="font-size: 12px; color: #b5b5b5;">Загрузка...</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 13px; font-weight: 600; color: #4fc3f7; margin-bottom: 8px;">📋 Заходили сегодня:</div>
+                        <div id="todayList" style="font-size: 12px; color: #b5b5b5;">Загрузка...</div>
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <script>
+        function loadOnlineStats() {
+            fetch('/api/stats/online')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) return;
+
+                    document.getElementById('statOnline').textContent = data.online.total_online;
+                    document.getElementById('statTodayUsers').textContent = data.today.unique_users;
+                    document.getElementById('statTodayRequests').textContent = data.today.total_requests;
+                    document.getElementById('statAdminsOnline').textContent = data.online.admins_online;
+
+                    // Онлайн список
+                    const onlineEl = document.getElementById('onlineList');
+                    if (data.online.users.length === 0) {
+                        onlineEl.innerHTML = '<span style="color:#666;">Никого нет</span>';
+                    } else {
+                        onlineEl.innerHTML = data.online.users.map(u => {
+                            const name = escapeHtml(u.display_name || u.username);
+                            const badge = u.is_admin ? ' <span style="color:#ffa726;font-size:10px;">ADMIN</span>' : '';
+                            const ago = u.seconds_ago < 60 ? 'только что' : Math.floor(u.seconds_ago / 60) + ' мин назад';
+                            return `<div style="padding:3px 0;border-bottom:1px solid #1e1e1e;">
+                                <strong style="color:#e8e8e8;">${name}</strong>${badge}
+                                <span style="color:#666;margin-left:8px;">${escapeHtml(u.ip)}</span>
+                                <span style="color:#444;margin-left:8px;">${escapeHtml(u.path)}</span>
+                                <span style="float:right;color:#555;">${ago}</span>
+                            </div>`;
+                        }).join('');
+                    }
+
+                    // Сегодня список
+                    const todayEl = document.getElementById('todayList');
+                    if (data.today.users.length === 0) {
+                        todayEl.innerHTML = '<span style="color:#666;">Нет данных</span>';
+                    } else {
+                        todayEl.innerHTML = data.today.users.map(u => {
+                            const name = escapeHtml(u.actor_name || u.actor_username);
+                            const badge = u.actor_type === 'admin' ? ' <span style="color:#ffa726;font-size:10px;">ADMIN</span>' : '';
+                            return `<div style="padding:3px 0;border-bottom:1px solid #1e1e1e;">
+                                <strong style="color:#e8e8e8;">${name}</strong>${badge}
+                                <span style="color:#666;margin-left:8px;">${escapeHtml(u.ip_address)}</span>
+                                <span style="color:#555;margin-left:8px;">${u.requests} запр.</span>
+                                <span style="float:right;color:#555;font-size:11px;">${escapeHtml(u.first_seen || '').slice(11, 16)} — ${escapeHtml(u.last_seen || '').slice(11, 16)}</span>
+                            </div>`;
+                        }).join('');
+                    }
+                })
+                .catch(err => console.log('Online stats error:', err));
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        // Загружаем сразу и обновляем каждые 30 сек
+        loadOnlineStats();
+        setInterval(loadOnlineStats, 30000);
+        </script>
+        {% endif %}
+
         {% if manuals %}
             <div class="manuals-grid">
                 {% for manual_id, manual in manuals.items() %}

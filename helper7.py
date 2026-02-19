@@ -2,6 +2,8 @@ import os
 import sqlite3
 import threading
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 from typing import Any
 from datetime import datetime, timedelta
 from markupsafe import escape as m_escape
@@ -12,7 +14,6 @@ import telebot
 import werkzeug.routing
 import traceback
 import re
-import json
 from html import escape as html_escape
 from functools import wraps
 from time import time
@@ -21,6 +22,32 @@ from urllib.parse import urlparse
 
 # Загружаем переменные окружения ПЕРЕД импортом admin_manager
 load_dotenv()
+
+# ============================================
+# АУДИТ-ЛОГ В ФАЙЛ (RotatingFileHandler)
+# ============================================
+AUDIT_LOG_FILE = os.getenv('AUDIT_LOG_FILE', 'audit.log')
+AUDIT_LOG_MAX_BYTES = 10 * 1024 * 1024  # 10 МБ максимум на файл
+AUDIT_LOG_BACKUP_COUNT = 5  # Хранить 5 ротированных файлов (итого ~50 МБ макс)
+
+_audit_file_logger = logging.getLogger('audit_file')
+_audit_file_logger.setLevel(logging.INFO)
+_audit_file_logger.propagate = False  # Не дублировать в stdout
+
+_audit_handler = RotatingFileHandler(
+    AUDIT_LOG_FILE,
+    maxBytes=AUDIT_LOG_MAX_BYTES,
+    backupCount=AUDIT_LOG_BACKUP_COUNT,
+    encoding='utf-8'
+)
+_audit_handler.setFormatter(logging.Formatter('%(message)s'))
+_audit_file_logger.addHandler(_audit_handler)
+
+# Ограничиваем права: только владелец читает/пишет (защита от утечки логов)
+try:
+    os.chmod(AUDIT_LOG_FILE, 0o600)
+except OSError:
+    pass
 
 from flask_wtf.csrf import CSRFProtect
 from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER, ALL_ADMIN_ROLES
@@ -680,6 +707,19 @@ def write_audit_log(action: str, status_code: int, details: dict | None = None):
                         record['action'], record['details_json']
                     ))
                     conn.commit()
+
+        # Дублируем в файл (без sensitive данных — details уже прошёл _sanitize_audit_payload)
+        _audit_file_logger.info(
+            "%s | %s | %-6s | %s | %s | %s | %s | %d",
+            record['created_at'],
+            record['ip_address'],
+            record['actor_type'],
+            record['actor_username'] or '-',
+            record['method'],
+            record['path'],
+            record['action'],
+            record['status_code']
+        )
     except Exception as e:
         print(f"[audit_log] Ошибка записи: {e}")
 

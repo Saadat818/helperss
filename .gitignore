@@ -46,3 +46,5 @@ docx_extracted/
 *.bak
 tz_content.txt
 app.log
+audit.log
+audit.log.*

@@ -176,6 +176,7 @@
             margin-top: 30px;
             max-height: 500px;
             overflow-y: auto;
+            overflow-x: hidden;
         }
 
         .topic-results::-webkit-scrollbar {
@@ -225,6 +226,8 @@
             background: linear-gradient(180deg, var(--card), var(--card2));
             text-align: left;
             width: 100%;
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         .topic-item:hover {
@@ -560,13 +563,14 @@
         let activeRequestController = null;
         let highlightedIndex = -1;
 
-        // Состояние пагинации для "Все каналы"
-        let allTopicsOffset = 0;
-        const ALL_TOPICS_LIMIT = 200;
-        let allTopicsHasMore = false;
-        let allTopicsLoading = false;
-        let allTopicsTotal = 0;
-        let isAllTopicsMode = false; // true когда показываем "Все каналы"
+        // Состояние пагинации (общее для "Все каналы" и каналов)
+        let paginationOffset = 0;
+        const TOPICS_PAGE_LIMIT = 200;
+        let paginationHasMore = false;
+        let paginationLoading = false;
+        let paginationTotal = 0;
+        let paginationMode = ''; // 'all' | 'channel' | '' (выключено)
+        let paginationChannel = ''; // текущий канал при mode='channel'
 
 	        // По умолчанию выбран "Звонки Физ лиц" (самый популярный канал).
 	        const defaultChannel = 'Звонки Физ лиц';
@@ -648,7 +652,7 @@
                 return;
             }
 
-            isAllTopicsMode = false; // Отключаем lazy loading при поиске
+            paginationMode = ''; // Отключаем lazy loading при поиске
             topicResults.innerHTML = '<div class="loading">🔍 Поиск тематик...</div>';
             updateSearchMeta('Выполняется поиск...');
 
@@ -793,7 +797,6 @@
 
                 // Если канал выбран (не "Все каналы"), показываем все тематики
                 if (channel) {
-                    isAllTopicsMode = false;
                     loadChannelTopics(channel);
                 } else {
                     // "Все каналы" - если есть текст в поле поиска, запускаем поиск, иначе все тематики
@@ -809,22 +812,32 @@
 
         // Функция загрузки всех тематик с пагинацией (ленивая загрузка)
         async function loadAllTopics() {
-            // Сбрасываем состояние пагинации
-            allTopicsOffset = 0;
-            allTopicsHasMore = false;
-            allTopicsLoading = false;
-            allTopicsTotal = 0;
-            isAllTopicsMode = true;
-
+            resetPagination('all', '');
             topicResults.innerHTML = '<div class="loading">📂 Загрузка тематик...</div>';
-
-            await loadAllTopicsBatch(false);
+            await loadTopicsBatch(false);
         }
 
-        // Загрузка порции тематик (append = true — дозагрузка при скролле)
-        async function loadAllTopicsBatch(append) {
-            if (allTopicsLoading) return;
-            allTopicsLoading = true;
+        // Функция загрузки тематик канала с пагинацией
+        async function loadChannelTopics(channel) {
+            resetPagination('channel', channel);
+            topicResults.innerHTML = '<div class="loading">📂 Загрузка тематик канала...</div>';
+            await loadTopicsBatch(false);
+        }
+
+        // Сброс состояния пагинации
+        function resetPagination(mode, channel) {
+            paginationOffset = 0;
+            paginationHasMore = false;
+            paginationLoading = false;
+            paginationTotal = 0;
+            paginationMode = mode;
+            paginationChannel = channel || '';
+        }
+
+        // Универсальная загрузка порции тематик (append = true — дозагрузка при скролле)
+        async function loadTopicsBatch(append) {
+            if (paginationLoading) return;
+            paginationLoading = true;
 
             // Показываем индикатор загрузки внизу при дозагрузке
             if (append) {
@@ -837,7 +850,16 @@
             }
 
             try {
-                const response = await fetch('/api/get_all_topics?limit=' + ALL_TOPICS_LIMIT + '&offset=' + allTopicsOffset, {
+                // Формируем URL в зависимости от режима
+                let url;
+                if (paginationMode === 'all') {
+                    url = '/api/get_all_topics?limit=' + TOPICS_PAGE_LIMIT + '&offset=' + paginationOffset;
+                } else {
+                    url = '/api/get_channel_topics?channel=' + encodeURIComponent(paginationChannel) +
+                          '&limit=' + TOPICS_PAGE_LIMIT + '&offset=' + paginationOffset;
+                }
+
+                const response = await fetch(url, {
                     method: 'GET',
                     headers: {'Content-Type': 'application/json'}
                 });
@@ -845,17 +867,20 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    allTopicsTotal = data.total || 0;
-                    allTopicsHasMore = data.has_more || false;
+                    paginationTotal = data.total || 0;
+                    paginationHasMore = data.has_more || false;
 
                     if (!append) {
                         // Первая загрузка — очищаем и показываем
                         if (data.results.length > 0) {
                             displayTopics(data.results, '');
                         } else {
-                            updateSearchMeta('Тематики не найдены');
-                            topicResults.innerHTML = '<div class="no-results">❌ Тематики не найдены</div>';
-                            allTopicsLoading = false;
+                            const label = paginationMode === 'channel'
+                                ? 'Для канала нет тематик'
+                                : 'Тематики не найдены';
+                            updateSearchMeta(label);
+                            topicResults.innerHTML = '<div class="no-results">❌ ' + label + '</div>';
+                            paginationLoading = false;
                             return;
                         }
                     } else {
@@ -864,14 +889,18 @@
                         appendTopics(data.results, '');
                     }
 
-                    allTopicsOffset += data.results.length;
+                    paginationOffset += data.results.length;
 
                     // Обновляем мету
-                    const loaded = Math.min(allTopicsOffset, allTopicsTotal);
-                    updateSearchMeta('Показано: ' + loaded + ' из ' + allTopicsTotal + ' тематик');
+                    const loaded = Math.min(paginationOffset, paginationTotal);
+                    if (paginationMode === 'channel') {
+                        updateSearchMeta('Канал: ' + paginationChannel + ' | Показано: ' + loaded + ' из ' + paginationTotal);
+                    } else {
+                        updateSearchMeta('Показано: ' + loaded + ' из ' + paginationTotal + ' тематик');
+                    }
 
                     // Если есть ещё — показываем подсказку внизу
-                    if (allTopicsHasMore) {
+                    if (paginationHasMore) {
                         addLoadMoreHint();
                     }
                 } else {
@@ -889,7 +918,7 @@
                 }
             }
 
-            allTopicsLoading = false;
+            paginationLoading = false;
         }
 
         // Удаляет индикатор загрузки/подсказку внизу
@@ -945,54 +974,16 @@
             });
         }
 
-        // Scroll listener для автоподгрузки
+        // Scroll listener для автоподгрузки (работает для "Все каналы" и для каналов)
         topicResults.addEventListener('scroll', function() {
-            if (!isAllTopicsMode || !allTopicsHasMore || allTopicsLoading) return;
+            if (!paginationMode || !paginationHasMore || paginationLoading) return;
 
             // Если пользователь прокрутил до конца (за 300px до конца) — подгружаем ещё
             const scrollBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
             if (scrollBottom < 300) {
-                loadAllTopicsBatch(true);
+                loadTopicsBatch(true);
             }
         });
-
-        // Функция загрузки всех тематик канала
-        async function loadChannelTopics(channel) {
-            isAllTopicsMode = false; // Отключаем lazy loading при загрузке канала
-            topicResults.innerHTML = '<div class="loading">📂 Загрузка тематик канала...</div>';
-
-            try {
-                const response = await fetch('/api/search_topic', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({
-                        query: '',  // Пустой запрос = все тематики канала
-                        channel: channel
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success && data.results.length > 0) {
-                    updateSearchMeta('Канал: ' + channel + ' | Тематик: ' + data.results.length);
-                    displayTopics(data.results, '');
-                } else {
-                    updateSearchMeta('Для канала нет тематик');
-                    topicResults.innerHTML = `
-                        <div class="no-results">
-                            <p>❌ Тематики для этого канала не найдены</p>
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки тематик:', error);
-                updateSearchMeta('Ошибка загрузки тематик');
-                topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
-            }
-        }
 
         // Функции админ-панели
         function showAdminModal() {

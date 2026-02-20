@@ -1962,6 +1962,65 @@ def get_all_topics_api():
             'error': 'Внутренняя ошибка сервера'
         })
 
+@app.route('/api/get_channel_topics', methods=['GET'])
+@csrf.exempt  # Exempted but protected by rate limiting
+@rate_limit(max_requests=60, window=60)
+def get_channel_topics_api():
+    """API для получения тематик канала с пагинацией"""
+    try:
+        channel = request.args.get('channel', '', type=str).strip()
+        limit = request.args.get('limit', 200, type=int)
+        offset = request.args.get('offset', 0, type=int)
+
+        if not channel or len(channel) > 200:
+            return jsonify({'success': False, 'error': 'Не указан канал'}), 400
+
+        # Валидация параметров
+        if limit < 1 or limit > 500:
+            limit = 200
+        if offset < 0:
+            offset = 0
+
+        # Получаем общее количество тематик в канале
+        total_count = tm.get_channel_topics_count(channel)
+
+        # Получаем порцию тематик
+        topics = tm.get_topics_by_channel(channel, limit=limit, offset=offset)
+
+        formatted_results = []
+        for topic in topics:
+            formatted_results.append({
+                'id': topic['id'],
+                'topic': topic['full_topic'],
+                'channel': topic['channel'],
+                'similarity': 100,
+                'sr1': topic.get('sr1', ''),
+                'sr2': topic.get('sr2', ''),
+                'sr3': topic.get('sr3', ''),
+                'sr4': topic.get('sr4', '')
+            })
+
+        has_more = (offset + limit) < total_count
+
+        return jsonify({
+            'success': True,
+            'count': len(formatted_results),
+            'total': total_count,
+            'channel': channel,
+            'offset': offset,
+            'limit': limit,
+            'has_more': has_more,
+            'results': formatted_results
+        })
+
+    except Exception as e:
+        print(f"[get_channel_topics_api] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Внутренняя ошибка сервера'
+        })
+
 @app.route('/api/admin/check-password', methods=['POST'])
 @rate_limit(max_requests=10, window=60)
 def api_admin_check_password():

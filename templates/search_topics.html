@@ -541,9 +541,8 @@
         let activeRequestController = null;
         let highlightedIndex = -1;
 
-	        // По умолчанию выбран "Все каналы" (data-channel="").
-	        // Это соответствует запросу: при заходе на /search_topics сразу активен фильтр "Все каналы".
-	        const defaultChannel = '';
+	        // По умолчанию выбран "Звонки Физ лиц" (самый популярный канал).
+	        const defaultChannel = 'Звонки Физ лиц';
 	        let defaultButton = null;
 
         channelButtons.forEach(button => {
@@ -553,12 +552,27 @@
             }
         });
 
-	        // Устанавливаем канал в скрытое поле
-	        selectedChannelInput.value = defaultChannel;
+        // Если канал не найден в списке — fallback на "Все каналы"
+        if (!defaultButton) {
+            channelButtons.forEach(button => {
+                if (button.getAttribute('data-channel') === '') {
+                    button.classList.add('active');
+                    defaultButton = button;
+                }
+            });
+        }
 
-	        // Показываем начальное состояние - загружаем тематики из всех каналов
-	        updateSearchMeta('Все каналы');
-	        loadAllTopics();
+	        // Устанавливаем канал в скрытое поле
+	        selectedChannelInput.value = defaultButton ? defaultButton.getAttribute('data-channel') : '';
+
+	        // Загружаем тематики выбранного канала
+	        if (selectedChannelInput.value) {
+	            updateSearchMeta('Канал: ' + selectedChannelInput.value);
+	            loadChannelTopics(selectedChannelInput.value);
+	        } else {
+	            updateSearchMeta('Все каналы');
+	            loadAllTopics();
+	        }
 
         // Функция поиска тематик
         function updateSearchMeta(text) {

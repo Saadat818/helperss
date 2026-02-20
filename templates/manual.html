@@ -299,6 +299,11 @@
     </style>
 </head>
 <body>
+    {% if problem_id %}
+    <a href="{{ url_for('select_problem', problem_id=problem_id) }}" class="back-link">
+        ⬅️ Назад
+    </a>
+    {% endif %}
     <div class="container">
         <h1>{{ manual_title | e }}</h1>
 

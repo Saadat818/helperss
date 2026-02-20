@@ -1407,7 +1407,8 @@ def show_manual_steps():
         manual_title=manual_title,
         photo_urls_with_captions=safe_photos,
         video_data=None,  # Не показываем видео
-        skip_video_feedback=True  # Флаг чтобы не показывать опрос по видео
+        skip_video_feedback=True,  # Флаг чтобы не показывать опрос по видео
+        problem_id=problem_id
     )
 
 @app.route('/')
@@ -1611,7 +1612,8 @@ def select_problem(problem_id):
             manual=safe_manual_data,
             manual_title=manual_title,
             photo_urls_with_captions=safe_photos,
-            video_data=video_data
+            video_data=video_data,
+            problem_id=safe_problem_id
         )
 
 @app.route('/show_manual/<string:subproblem_id>')
@@ -1692,7 +1694,8 @@ def show_manual(subproblem_id):
         manual=safe_manual_data,
         manual_title=manual_title,
         photo_urls_with_captions=safe_photos,
-        video_data=safe_video
+        video_data=safe_video,
+        problem_id=problem_id
     )
 
 
@@ -4000,6 +4003,40 @@ def admin_login():
             flash(f'Успешная авторизация (тестовый режим). Права: {role_names}')
             return redirect(url_for('admin_dashboard'))
 
+        # Проверка через AD (основной способ)
+        from ad_auth import ad_auth
+        if ad_auth.is_configured():
+            ad_result = ad_auth.verify_credentials(username, password)
+            if ad_result:
+                ad_permissions = ad_result.get('permissions', [])
+                if ad_permissions:
+                    session['admin_logged_in'] = True
+                    session['admin_username'] = ad_result.get('username', username)
+                    session['admin_role'] = ad_result.get('role', 'user')
+                    session['admin_permissions'] = ad_permissions
+                    session['admin_token'] = AdminAuth.generate_session_token()
+                    session.permanent = True
+                    # Также ставим user_info чтобы сессия была полной
+                    if not session.get('authenticated'):
+                        session['user_info'] = {
+                            'username': ad_result.get('username', username),
+                            'name': ad_result.get('display_name', username),
+                            'department': ad_result.get('department', ''),
+                            'email': ad_result.get('email', ''),
+                            'workplace': ''
+                        }
+                        session['authenticated'] = True
+                    role_names = ', '.join(ad_permissions)
+                    flash(f'Успешная авторизация (AD). Права: {role_names}')
+                    return redirect(url_for('admin_dashboard'))
+                else:
+                    flash('У вас нет прав администратора')
+                    return redirect(url_for('admin_login'))
+            # AD проверка не прошла — пароль неверный
+            flash('Неверный логин или пароль')
+            return redirect(url_for('admin_login'))
+
+        # Fallback: проверка через admins.json (если AD не настроен)
         admin_data = AdminAuth.verify_admin(username, password)
         if admin_data:
             session['admin_logged_in'] = True
@@ -4007,7 +4044,7 @@ def admin_login():
             session['admin_role'] = admin_data.get('role', ROLE_EDITOR)
             session['admin_permissions'] = admin_data.get('permissions', [admin_data.get('role', ROLE_EDITOR)])
             session['admin_token'] = AdminAuth.generate_session_token()
-            session.permanent = True  # Use permanent session with timeout
+            session.permanent = True
             flash(f'Успешная авторизация. Роль: {ROLE_NAMES.get(admin_data.get("role"), "Редактор")}')
             return redirect(url_for('admin_dashboard'))
         else:

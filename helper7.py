@@ -5762,7 +5762,6 @@ def api_stats_users():
                             COUNT(*)::int as actions
                         FROM ticket_events
                         WHERE created_at BETWEEN %s AND %s
-                          AND actor_role = 'user'
                           AND event_type IN (
                             'ticket_created',
                             'manual_opened_video','manual_opened_text',
@@ -5789,7 +5788,6 @@ def api_stats_users():
                         COUNT(*) as actions
                     FROM ticket_events
                     WHERE created_at BETWEEN ? AND ?
-                      AND actor_role = 'user'
                       AND event_type IN (
                         'ticket_created',
                         'manual_opened_video','manual_opened_text',
@@ -5840,7 +5838,6 @@ def api_stats_users():
                                 COUNT(*)::int as searches
                             FROM topic_search_events
                             WHERE created_at BETWEEN %s AND %s
-                              AND actor_role = 'user'
                             GROUP BY actor_username, actor_name, department
                         """, (start_at, end_at))
                         search_rows = cur.fetchall()
@@ -5856,7 +5853,6 @@ def api_stats_users():
                             COUNT(*) as searches
                         FROM topic_search_events
                         WHERE created_at BETWEEN ? AND ?
-                          AND actor_role = 'user'
                         GROUP BY actor_username, actor_name, department
                     """, (start_at, end_at))
                     search_rows = cur.fetchall()
@@ -5929,7 +5925,6 @@ def api_stats_departments_usage():
                             COUNT(*)::int as actions
                         FROM ticket_events
                         WHERE created_at BETWEEN %s AND %s
-                          AND actor_role = 'user'
                           AND event_type IN ('ticket_created','manual_opened_video','manual_opened_text')
                         GROUP BY department
                     """, (start_at, end_at))
@@ -5946,7 +5941,6 @@ def api_stats_departments_usage():
                         COUNT(*) as actions
                     FROM ticket_events
                     WHERE created_at BETWEEN ? AND ?
-                      AND actor_role = 'user'
                       AND event_type IN ('ticket_created','manual_opened_video','manual_opened_text')
                     GROUP BY department
                 """, (start_at, end_at))
@@ -5971,7 +5965,6 @@ def api_stats_departments_usage():
                                 COUNT(*)::int as searches
                             FROM topic_search_events
                             WHERE created_at BETWEEN %s AND %s
-                              AND actor_role = 'user'
                             GROUP BY department
                         """, (start_at, end_at))
                         rows = cur.fetchall()
@@ -5985,7 +5978,6 @@ def api_stats_departments_usage():
                             COUNT(*) as searches
                         FROM topic_search_events
                         WHERE created_at BETWEEN ? AND ?
-                          AND actor_role = 'user'
                         GROUP BY department
                     """, (start_at, end_at))
                     rows = cur.fetchall()

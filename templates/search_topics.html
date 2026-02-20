@@ -196,6 +196,25 @@
             background: var(--green);
         }
 
+        .load-more-indicator {
+            text-align: center;
+            padding: 15px;
+            color: var(--text-secondary, #888);
+            font-size: 14px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .load-more-hint {
+            animation: none;
+            opacity: 0.7;
+            font-size: 13px;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
         .topic-item {
             padding: 20px 22px;
             margin-bottom: 12px;
@@ -541,6 +560,14 @@
         let activeRequestController = null;
         let highlightedIndex = -1;
 
+        // Состояние пагинации для "Все каналы"
+        let allTopicsOffset = 0;
+        const ALL_TOPICS_LIMIT = 200;
+        let allTopicsHasMore = false;
+        let allTopicsLoading = false;
+        let allTopicsTotal = 0;
+        let isAllTopicsMode = false; // true когда показываем "Все каналы"
+
 	        // По умолчанию выбран "Звонки Физ лиц" (самый популярный канал).
 	        const defaultChannel = 'Звонки Физ лиц';
 	        let defaultButton = null;
@@ -621,6 +648,7 @@
                 return;
             }
 
+            isAllTopicsMode = false; // Отключаем lazy loading при поиске
             topicResults.innerHTML = '<div class="loading">🔍 Поиск тематик...</div>';
             updateSearchMeta('Выполняется поиск...');
 
@@ -765,6 +793,7 @@
 
                 // Если канал выбран (не "Все каналы"), показываем все тематики
                 if (channel) {
+                    isAllTopicsMode = false;
                     loadChannelTopics(channel);
                 } else {
                     // "Все каналы" - если есть текст в поле поиска, запускаем поиск, иначе все тематики
@@ -778,34 +807,158 @@
             });
         });
 
-        // Функция загрузки всех тематик из всех каналов
+        // Функция загрузки всех тематик с пагинацией (ленивая загрузка)
         async function loadAllTopics() {
-            topicResults.innerHTML = '<div class="loading">📂 Загрузка всех тематик...</div>';
+            // Сбрасываем состояние пагинации
+            allTopicsOffset = 0;
+            allTopicsHasMore = false;
+            allTopicsLoading = false;
+            allTopicsTotal = 0;
+            isAllTopicsMode = true;
+
+            topicResults.innerHTML = '<div class="loading">📂 Загрузка тематик...</div>';
+
+            await loadAllTopicsBatch(false);
+        }
+
+        // Загрузка порции тематик (append = true — дозагрузка при скролле)
+        async function loadAllTopicsBatch(append) {
+            if (allTopicsLoading) return;
+            allTopicsLoading = true;
+
+            // Показываем индикатор загрузки внизу при дозагрузке
+            if (append) {
+                removeLoadMoreIndicator();
+                const loader = document.createElement('div');
+                loader.className = 'load-more-indicator';
+                loader.id = 'loadMoreIndicator';
+                loader.innerHTML = '⏳ Загрузка ещё тематик...';
+                topicResults.appendChild(loader);
+            }
 
             try {
-                const response = await fetch('/api/get_all_topics', {
+                const response = await fetch('/api/get_all_topics?limit=' + ALL_TOPICS_LIMIT + '&offset=' + allTopicsOffset, {
                     method: 'GET',
                     headers: {'Content-Type': 'application/json'}
                 });
 
                 const data = await response.json();
 
-                if (data.success && data.results.length > 0) {
-                    updateSearchMeta('Показано тематик: ' + data.results.length);
-                    displayTopics(data.results, '');
+                if (data.success) {
+                    allTopicsTotal = data.total || 0;
+                    allTopicsHasMore = data.has_more || false;
+
+                    if (!append) {
+                        // Первая загрузка — очищаем и показываем
+                        if (data.results.length > 0) {
+                            displayTopics(data.results, '');
+                        } else {
+                            updateSearchMeta('Тематики не найдены');
+                            topicResults.innerHTML = '<div class="no-results">❌ Тематики не найдены</div>';
+                            allTopicsLoading = false;
+                            return;
+                        }
+                    } else {
+                        // Дозагрузка — добавляем к существующим
+                        removeLoadMoreIndicator();
+                        appendTopics(data.results, '');
+                    }
+
+                    allTopicsOffset += data.results.length;
+
+                    // Обновляем мету
+                    const loaded = Math.min(allTopicsOffset, allTopicsTotal);
+                    updateSearchMeta('Показано: ' + loaded + ' из ' + allTopicsTotal + ' тематик');
+
+                    // Если есть ещё — показываем подсказку внизу
+                    if (allTopicsHasMore) {
+                        addLoadMoreHint();
+                    }
                 } else {
-                    updateSearchMeta('Тематики не найдены');
-                    topicResults.innerHTML = '<div class="no-results">❌ Тематики не найдены</div>';
+                    if (!append) {
+                        updateSearchMeta('Ошибка загрузки тематик');
+                        topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
+                    }
                 }
             } catch (error) {
                 console.error('Ошибка загрузки тематик:', error);
-                updateSearchMeta('Ошибка загрузки тематик');
-                topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
+                removeLoadMoreIndicator();
+                if (!append) {
+                    updateSearchMeta('Ошибка загрузки тематик');
+                    topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
+                }
             }
+
+            allTopicsLoading = false;
         }
+
+        // Удаляет индикатор загрузки/подсказку внизу
+        function removeLoadMoreIndicator() {
+            const existing = document.getElementById('loadMoreIndicator');
+            if (existing) existing.remove();
+        }
+
+        // Подсказка внизу списка что есть ещё
+        function addLoadMoreHint() {
+            removeLoadMoreIndicator();
+            const hint = document.createElement('div');
+            hint.className = 'load-more-indicator load-more-hint';
+            hint.id = 'loadMoreIndicator';
+            hint.innerHTML = '⬇️ Прокрутите вниз для загрузки ещё тематик';
+            topicResults.appendChild(hint);
+        }
+
+        // Добавить тематики к уже отображённым (для дозагрузки)
+        function appendTopics(topics, query) {
+            topics.forEach(function(topic, idx) {
+                var topicDiv = document.createElement('div');
+                topicDiv.className = 'topic-item';
+                topicDiv.setAttribute('data-topic-id', topic.id);
+                topicDiv.setAttribute('data-topic-name', topic.topic);
+                topicDiv.setAttribute('data-similarity', topic.similarity);
+
+                var hierarchy = [];
+                if (topic.sr1) hierarchy.push(topic.sr1);
+                if (topic.sr2) hierarchy.push(topic.sr2);
+                if (topic.sr3) hierarchy.push(topic.sr3);
+                if (topic.sr4) hierarchy.push(topic.sr4);
+
+                var topicName = hierarchy.length > 0 ? hierarchy.join('/') : topic.topic;
+                var channelName = topic.channel || 'Неизвестный канал';
+
+                var contentHTML = '<div class="topic-header">' +
+                    '<div style="flex: 1;">' +
+                        '<div class="topic-name">' + highlightText(topicName, query) + '</div>' +
+                        '<div class="topic-channel-badge">📂 ' + escapeHtml(channelName) + '</div>' +
+                    '</div>' +
+                    '<span class="topic-similarity">' + topic.similarity + '%</span>' +
+                '</div>';
+
+                topicDiv.innerHTML = contentHTML;
+                topicDiv.addEventListener('click', function() {
+                    const items = Array.from(topicResults.querySelectorAll('.topic-item'));
+                    highlightedIndex = Array.from(topicResults.querySelectorAll('.topic-item')).indexOf(topicDiv);
+                    applyKeyboardHighlight(items);
+                });
+
+                topicResults.appendChild(topicDiv);
+            });
+        }
+
+        // Scroll listener для автоподгрузки
+        topicResults.addEventListener('scroll', function() {
+            if (!isAllTopicsMode || !allTopicsHasMore || allTopicsLoading) return;
+
+            // Если пользователь прокрутил до конца (за 300px до конца) — подгружаем ещё
+            const scrollBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
+            if (scrollBottom < 300) {
+                loadAllTopicsBatch(true);
+            }
+        });
 
         // Функция загрузки всех тематик канала
         async function loadChannelTopics(channel) {
+            isAllTopicsMode = false; // Отключаем lazy loading при загрузке канала
             topicResults.innerHTML = '<div class="loading">📂 Загрузка тематик канала...</div>';
 
             try {

@@ -1909,12 +1909,25 @@ def go_home():
 
 @app.route('/api/get_all_topics', methods=['GET'])
 @csrf.exempt  # Exempted but protected by rate limiting
-@rate_limit(max_requests=30, window=60)  # Security Fix: Add rate limiting
+@rate_limit(max_requests=60, window=60)  # Увеличен лимит для пагинации
 def get_all_topics_api():
-    """API для получения всех тематик"""
+    """API для получения всех тематик с пагинацией"""
     try:
-        # Получаем все тематики без жесткого лимита
-        topics = tm.get_all_topics()
+        # Параметры пагинации
+        limit = request.args.get('limit', 200, type=int)
+        offset = request.args.get('offset', 0, type=int)
+
+        # Валидация параметров
+        if limit < 1 or limit > 500:
+            limit = 200
+        if offset < 0:
+            offset = 0
+
+        # Получаем общее количество тематик
+        total_count = tm.get_topics_count()
+
+        # Получаем порцию тематик
+        topics = tm.get_all_topics(limit=limit, offset=offset)
 
         formatted_results = []
         for topic in topics:
@@ -1929,9 +1942,15 @@ def get_all_topics_api():
                 'sr4': topic.get('sr4', '')
             })
 
+        has_more = (offset + limit) < total_count
+
         return jsonify({
             'success': True,
             'count': len(formatted_results),
+            'total': total_count,
+            'offset': offset,
+            'limit': limit,
+            'has_more': has_more,
             'results': formatted_results
         })
 

@@ -625,19 +625,31 @@ class TopicsManager:
 
         return results
     
-    def get_all_topics(self, limit: int = None) -> List[Dict]:
-        """Получить все тематики"""
+    def get_all_topics(self, limit: int = None, offset: int = None) -> List[Dict]:
+        """Получить все тематики с поддержкой пагинации"""
         cursor = self.conn.cursor()
         query = "SELECT * FROM topics ORDER BY channel, sr1, sr2, sr3, sr4"
+        params = []
         if limit:
             # Fix SQL Injection: use parameterized query
             if not isinstance(limit, int) or limit < 1:
                 limit = 100
             query += " LIMIT ?"
-            cursor.execute(query, (limit,))
+            params.append(limit)
+        if offset is not None and isinstance(offset, int) and offset >= 0:
+            query += " OFFSET ?"
+            params.append(offset)
+        if params:
+            cursor.execute(query, tuple(params))
         else:
             cursor.execute(query)
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_topics_count(self) -> int:
+        """Получить общее количество тематик"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM topics")
+        return cursor.fetchone()[0]
 
     def get_topics_by_channel(self, channel: str, limit: int = None) -> List[Dict]:
         """Получить все тематики для конкретного канала"""

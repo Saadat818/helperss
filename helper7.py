@@ -1952,21 +1952,62 @@ def api_admin_check_password():
         password = data.get('password', '')
         section = data.get('section', '')
 
-        # В тестовом режиме принимаем упрощенные пароли (как в /admin/login)
+        # Берём username из сессии (пользователь уже залогинен)
+        username = ''
+        if session.get('user_info'):
+            username = session['user_info'].get('username', '')
+        if not username:
+            username = session.get('admin_username', '')
+
+        # В тестовом режиме принимаем упрощенные пароли
         TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
         if TEST_MODE and password in ['admin', '123', 'test']:
+            from ad_auth import ad_auth
+            lower_user = username.lower() if username else ''
+            test_permissions = []
+            if lower_user in ad_auth.super_admin_logins:
+                test_permissions.append('super_admin')
+            if lower_user in ad_auth.admins_manuals:
+                test_permissions.append('admin_manuals')
+            if lower_user in ad_auth.admins_topics:
+                test_permissions.append('admin_topics')
+            if lower_user in ad_auth.admins_trainer:
+                test_permissions.append('admin_trainer')
+            if lower_user in ad_auth.trainer_viewers:
+                test_permissions.append('trainer_viewer')
+
+            if not test_permissions:
+                return jsonify({'success': False, 'error': 'У вас нет прав администратора'})
+
             session['admin_logged_in'] = True
-            session['admin_username'] = os.getenv('ADMIN_USERNAME', 'admin')
-            session['admin_role'] = ROLE_SUPER_ADMIN
+            session['admin_username'] = username
+            session['admin_role'] = 'super_admin' if 'super_admin' in test_permissions else test_permissions[0]
+            session['admin_permissions'] = test_permissions
             session['admin_token'] = AdminAuth.generate_session_token()
             return jsonify({'success': True})
 
-        # Проверяем пароль через AdminAuth с username из .env
+        # Проверка через AD (основной способ)
+        from ad_auth import ad_auth
+        if ad_auth.is_configured() and username:
+            ad_result = ad_auth.verify_credentials(username, password)
+            if ad_result:
+                ad_permissions = ad_result.get('permissions', [])
+                if ad_permissions:
+                    session['admin_logged_in'] = True
+                    session['admin_username'] = ad_result.get('username', username)
+                    session['admin_role'] = ad_result.get('role', 'user')
+                    session['admin_permissions'] = ad_permissions
+                    session['admin_token'] = AdminAuth.generate_session_token()
+                    return jsonify({'success': True})
+                else:
+                    return jsonify({'success': False, 'error': 'У вас нет прав администратора'})
+            return jsonify({'success': False, 'error': 'Неверный пароль'})
+
+        # Fallback: проверка через admins.json (если AD не настроен)
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
         admin_data = AdminAuth.verify_admin(admin_username, password)
 
         if admin_data:
-            # Успешная авторизация - сохраняем в сессию
             session['admin_user'] = admin_data
             session['admin_logged_in'] = True
             return jsonify({'success': True})

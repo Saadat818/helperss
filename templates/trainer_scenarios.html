@@ -375,12 +375,19 @@
         </div>
         {% endif %}
 
+        <!-- Фильтр по статусу -->
+        <div class="categories-filter">
+            <button class="category-btn active" onclick="filterStatus('all', this)">Все</button>
+            <button class="category-btn" onclick="filterStatus('passed', this)">✅ Пройдено</button>
+            <button class="category-btn" onclick="filterStatus('not-passed', this)">⬜ Не пройдено</button>
+        </div>
+
         <!-- Список сценариев -->
         {% if scenarios %}
         <div class="scenarios-list">
             {% for scenario in scenarios %}
                 {% set user_result = user_results.get(scenario.id) %}
-                <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}" class="scenario-card">
+                <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}" class="scenario-card" data-status="{% if user_result %}passed{% else %}not-passed{% endif %}">
                     <div class="scenario-number">{{ loop.index }}</div>
                     <div class="scenario-info">
                         <div class="scenario-title">{{ scenario.title }}</div>
@@ -389,7 +396,7 @@
                             <span class="scenario-meta-item">{{ scenario.category_icon }} {{ scenario.category_name }}</span>
                             {% endif %}
                             <span class="scenario-meta-item">⏱ {{ scenario.estimated_time }} мин</span>
-                            <span class="scenario-meta-item">💎 {{ scenario.total_points }} баллов</span>
+                            <span class="scenario-meta-item">💎 {% if user_result %}{{ [user_result.score, user_result.max_score] | min }}/{{ user_result.max_score }}{% else %}0/{{ scenario.total_points }}{% endif %}</span>
                         </div>
                     </div>
                     {% if user_result %}
@@ -575,6 +582,21 @@
         document.getElementById('feedbackModal').addEventListener('click', function(e) {
             if (e.target === this) closeFeedback();
         });
+
+        function filterStatus(status, btn) {
+            // Update active button
+            document.querySelectorAll('.categories-filter:last-of-type .category-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Filter cards
+            document.querySelectorAll('.scenario-card').forEach(card => {
+                if (status === 'all') {
+                    card.style.display = '';
+                } else {
+                    card.style.display = card.dataset.status === status ? '' : 'none';
+                }
+            });
+        }
     </script>
 </body>
 </html>

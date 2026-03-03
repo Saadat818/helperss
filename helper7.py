@@ -2042,11 +2042,31 @@ def trainer_play(scenario_id):
         except:
             pass
 
+    # Парсим аватары
+    avatar_images = {}
+    if scenario.get('avatar_images'):
+        try:
+            avatar_images = json.loads(scenario['avatar_images'])
+        except:
+            pass
+
+    # Парсим имя клиента
+    client_name = 'Максим'
+    if scenario.get('client_info_json'):
+        try:
+            ci = json.loads(scenario['client_info_json'])
+            if ci.get('name'):
+                client_name = ci['name']
+        except:
+            pass
+
     return render_template('trainer_play.html',
                          scenario=scenario,
                          total_steps=total_steps,
                          preview_mode=preview_mode,
-                         correct_topics=correct_topics)
+                         correct_topics=correct_topics,
+                         avatar_images=avatar_images,
+                         client_name=client_name)
 
 
 @app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
@@ -2482,6 +2502,29 @@ def admin_trainer_edit(scenario_id):
         editor = user_info.get('username') or user_info.get('name', 'admin')
         trainer_mgr.save_version_snapshot(scenario_id, changed_by=editor)
 
+        # Обработка аватаров (5 эмоций)
+        avatar_images = {}
+        if scenario.get('avatar_images'):
+            try:
+                avatar_images = json.loads(scenario['avatar_images'])
+            except:
+                pass
+
+        emotion_keys = ['angry', 'irritated', 'neutral', 'satisfied', 'delighted']
+        for emo in emotion_keys:
+            file = request.files.get(f'avatar_{emo}')
+            if file and file.filename:
+                import os
+                from werkzeug.utils import secure_filename
+                ext = os.path.splitext(file.filename)[1].lower()
+                if ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                    fname = f"scenario_{scenario_id}_{emo}{ext}"
+                    fpath = os.path.join('static', 'uploads', 'avatars', fname)
+                    file.save(fpath)
+                    avatar_images[emo] = f"uploads/avatars/{fname}"
+
+        data['avatar_images'] = json.dumps(avatar_images, ensure_ascii=False) if avatar_images else ''
+
         result = trainer_mgr.update_scenario(scenario_id, data)
 
         if result['success']:
@@ -2568,6 +2611,14 @@ def admin_trainer_edit(scenario_id):
     # Получаем историю версий
     version_history = trainer_mgr.get_scenario_version_history(scenario_id)
 
+    # Парсим аватары
+    avatar_images = {}
+    if scenario.get('avatar_images'):
+        try:
+            avatar_images = json.loads(scenario['avatar_images'])
+        except:
+            pass
+
     return render_template('admin_trainer_edit.html',
                          scenario=scenario,
                          levels=levels,
@@ -2578,7 +2629,8 @@ def admin_trainer_edit(scenario_id):
                          tags=tags,
                          scenario_tag_ids=scenario_tag_ids,
                          correct_topics=correct_topics,
-                         version_history=version_history)
+                         version_history=version_history,
+                         avatar_images=avatar_images)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/versions')
@@ -3218,11 +3270,25 @@ def admin_trainer_feedback():
 
 
 @app.route('/api/admin/trainer/feedback/<int:feedback_id>/read', methods=['POST'])
+@csrf.exempt
 @AdminAuth.login_required
 def admin_trainer_feedback_mark_read(feedback_id):
     """API: пометить обратную связь как прочитанную"""
     result = trainer_mgr.mark_feedback_read(feedback_id)
     return jsonify(result)
+
+
+@app.route('/api/trainer/my-feedback')
+def trainer_my_feedback():
+    """API: получить обратную связь текущего пользователя"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+    try:
+        user_id = session['user_info'].get('username', 'anonymous')
+        feedback_list = trainer_mgr.get_user_feedback(user_id)
+        return jsonify({'success': True, 'feedback': feedback_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================

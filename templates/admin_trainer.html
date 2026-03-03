@@ -154,6 +154,7 @@
             padding: 14px 16px;
             text-align: left;
             border-bottom: 1px solid #2a2a3e;
+            vertical-align: middle;
         }
 
         .scenarios-table th {
@@ -225,6 +226,12 @@
         .actions-cell {
             display: flex;
             gap: 8px;
+        }
+
+        .actions-cell .actions-wrap {
+            display: flex;
+            gap: 8px;
+            white-space: nowrap;
         }
 
         .alert {
@@ -335,7 +342,7 @@
                 <a href="{{ url_for('admin_trainer_feedback') }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
                 <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
                 <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📊 Статистика</a>
-                <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a>
+                {# <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a> #}
                 <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">+ Создать сценарий</a>
             </div>
         </div>
@@ -454,8 +461,10 @@
                         {% endif %}
                     </td>
                     <td class="actions-cell">
-                        <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="btn btn-primary btn-sm">Редактировать</a>
-                        <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ scenario.id }}, '{{ scenario.title | e }}')">Удалить</button>
+                        <div class="actions-wrap">
+                            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="btn btn-primary btn-sm">Редактировать</a>
+                            <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ scenario.id }}, '{{ scenario.title | e }}')">Удалить</button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

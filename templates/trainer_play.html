@@ -676,8 +676,12 @@
     <div class="game-container">
         <!-- Левая панель - Клиент -->
         <div class="left-panel">
-            <img src="{{ url_for('static', filename='images/maxim_avatar.png') }}" alt="Максим" class="avatar-img" id="clientImg">
-            <div class="avatar-name">Максим</div>
+            {% if avatar_images and avatar_images.get('neutral') %}
+            <img src="{{ url_for('static', filename=avatar_images.get('neutral')) }}" alt="{{ client_name }}" class="avatar-img" id="clientImg">
+            {% else %}
+            <img src="{{ url_for('static', filename='images/maxim_avatar.png') }}" alt="{{ client_name }}" class="avatar-img" id="clientImg">
+            {% endif %}
+            <div class="avatar-name">{{ client_name }}</div>
             <div class="avatar-role">Клиент</div>
 
             <div class="emotion-container">
@@ -831,6 +835,8 @@
         let timeLeft = timerSeconds;
         let emotionTimer = null;
         let answersHistory = [];
+        let answerLocked = false;
+        let resultSaved = false;
 
         const dialogArea = document.getElementById('dialogArea');
         const answersList = document.getElementById('answersList');
@@ -843,6 +849,9 @@
         const currentStepEl = document.getElementById('currentStep');
         const pointsInfo = document.getElementById('pointsInfo');
         const clientImg = document.getElementById('clientImg');
+        const avatarImages = {{ avatar_images | tojson }};
+        const hasCustomAvatars = avatarImages && Object.keys(avatarImages).length >= 3;
+        const staticBase = '{{ url_for("static", filename="") }}';
         const clientCard = document.getElementById('clientCard');
         const clientCardBody = document.getElementById('clientCardBody');
 
@@ -912,6 +921,7 @@
         }
 
         function showAnswers(answers) {
+            answerLocked = false;
             answersList.innerHTML = '';
 
             if (!answers || answers.length === 0) {
@@ -929,6 +939,8 @@
         }
 
         async function selectAnswer(answer) {
+            if (answerLocked) return;
+            answerLocked = true;
             stopTimer();
             stopEmotionTimer();
 
@@ -1038,26 +1050,36 @@
             emotionBar.style.width = emotion + '%';
             emotionValue.textContent = emotion + '%';
 
+            let emoKey, emoFace, emoBarClass, emoValClass;
             if (emotion >= 70) {
-                emotionBar.className = 'emotion-bar danger';
-                emotionValue.className = 'emotion-value danger';
-                emotionFace.textContent = '😡';
-                clientImg.style.filter = 'hue-rotate(-30deg) saturate(1.5)';
+                emoKey = 'angry'; emoFace = '😡';
+                emoBarClass = 'emotion-bar danger'; emoValClass = 'emotion-value danger';
             } else if (emotion >= 40) {
-                emotionBar.className = 'emotion-bar warning';
-                emotionValue.className = 'emotion-value warning';
-                emotionFace.textContent = '😤';
-                clientImg.style.filter = 'hue-rotate(-15deg)';
+                emoKey = 'irritated'; emoFace = '😤';
+                emoBarClass = 'emotion-bar warning'; emoValClass = 'emotion-value warning';
             } else if (emotion >= 20) {
-                emotionBar.className = 'emotion-bar';
-                emotionValue.className = 'emotion-value';
-                emotionFace.textContent = '😐';
+                emoKey = 'neutral'; emoFace = '😐';
+                emoBarClass = 'emotion-bar'; emoValClass = 'emotion-value';
+            } else if (emotion >= 5) {
+                emoKey = 'satisfied'; emoFace = '😊';
+                emoBarClass = 'emotion-bar'; emoValClass = 'emotion-value';
+            } else {
+                emoKey = 'delighted'; emoFace = '🤩';
+                emoBarClass = 'emotion-bar'; emoValClass = 'emotion-value';
+            }
+
+            emotionBar.className = emoBarClass;
+            emotionValue.className = emoValClass;
+            emotionFace.textContent = emoFace;
+
+            if (hasCustomAvatars && avatarImages[emoKey]) {
+                clientImg.src = staticBase + avatarImages[emoKey];
                 clientImg.style.filter = '';
             } else {
-                emotionBar.className = 'emotion-bar';
-                emotionValue.className = 'emotion-value';
-                emotionFace.textContent = '😊';
-                clientImg.style.filter = '';
+                // Fallback: CSS-фильтр для Максима
+                if (emotion >= 70) clientImg.style.filter = 'hue-rotate(-30deg) saturate(1.5)';
+                else if (emotion >= 40) clientImg.style.filter = 'hue-rotate(-15deg)';
+                else clientImg.style.filter = '';
             }
         }
 
@@ -1307,6 +1329,8 @@
                 console.log('[Preview Mode] Results not saved');
                 return;
             }
+            if (resultSaved) return;
+            resultSaved = true;
 
             try {
                 const payload = {

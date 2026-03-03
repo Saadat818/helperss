@@ -204,6 +204,9 @@ class TrainerManager:
         # Миграция: таблица обратной связи
         self._migrate_feedback_table()
 
+        # Миграция: аватары сценариев
+        self._migrate_avatar_images()
+
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
         cursor = self.conn.cursor()
@@ -387,6 +390,15 @@ class TrainerManager:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_feedback_created ON trainer_feedback(created_at)")
         self.conn.commit()
+
+    def _migrate_avatar_images(self):
+        """Миграция: добавление колонки avatar_images к сценариям"""
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_scenarios)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'avatar_images' not in columns:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN avatar_images TEXT DEFAULT ''")
+            self.conn.commit()
 
     def _init_default_data(self):
         """Инициализация начальных данных (уровни, категории)"""
@@ -1182,7 +1194,7 @@ class TrainerManager:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
                             'estimated_time', 'total_points', 'is_active', 'order_num',
                             'timer_seconds', 'initial_loyalty', 'client_info_json',
-                            'correct_topics']
+                            'correct_topics', 'avatar_images']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -1696,6 +1708,17 @@ class TrainerManager:
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def get_user_feedback(self, user_id: str) -> List[Dict]:
+        """Получить обратную связь конкретного пользователя"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, user_id, message, level_code, created_at, is_read
+            FROM trainer_feedback
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+        """, (user_id,))
+        return [dict(row) for row in cursor.fetchall()]
 
     def get_unread_feedback_count(self) -> int:
         """Получить количество непрочитанных сообщений"""

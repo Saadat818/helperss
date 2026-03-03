@@ -606,7 +606,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" id="scenarioForm">
+        <form method="POST" id="scenarioForm" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <!-- Basic Info Section -->
@@ -789,6 +789,38 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Аватары клиента (5 эмоций) -->
+            {% if scenario %}
+            <div class="form-section">
+                <h2>Аватар клиента</h2>
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                    Загрузите изображения для каждой эмоции. Если не загружены — используется стандартный аватар (Максим).
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
+                    {% set emotions = [
+                        ('angry', '😡 Гнев', 'Раздражение 70-100%'),
+                        ('irritated', '😤 Раздражение', 'Раздражение 40-70%'),
+                        ('neutral', '😐 Нейтрально', 'Раздражение 20-40%'),
+                        ('satisfied', '😊 Удовлетворение', 'Раздражение 5-20%'),
+                        ('delighted', '🤩 Восторг', 'Раздражение 0-5%')
+                    ] %}
+                    {% for emo_key, emo_label, emo_hint in emotions %}
+                    <div style="background: #16213e; border: 1px solid #2a2a3e; border-radius: 10px; padding: 12px; text-align: center;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #e0e0e0;">{{ emo_label }}</div>
+                        <div style="font-size: 11px; color: #888; margin-bottom: 10px;">{{ emo_hint }}</div>
+                        {% if avatar_images and avatar_images.get(emo_key) %}
+                        <img src="{{ url_for('static', filename=avatar_images[emo_key]) }}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e;">
+                        {% else %}
+                        <div style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
+                        {% endif %}
+                        <input type="file" name="avatar_{{ emo_key }}" accept="image/*"
+                               style="font-size: 11px; color: #999; width: 100%;">
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
 
             {% if scenario %}
             <!-- Steps Section (only for existing scenarios) -->

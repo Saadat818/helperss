@@ -1457,7 +1457,6 @@ class TrainerManager:
             FROM trainer_results
             GROUP BY user_id
             ORDER BY avg_percent DESC, completions DESC
-            LIMIT 10
         """)
         top_users = [dict(row) for row in cursor.fetchall()]
 
@@ -1502,80 +1501,75 @@ class TrainerManager:
         no_gameover_count = row[5] or 0
         levels_touched = row[6] or 0
 
-        badges = []
+        # Бейджи в порядке приоритета (от крутого к простому)
+        # Показываем максимум 3
+        all_badges = []
 
-        # Новичок — у всех кто прошёл хотя бы 1
-        badges.append({
-            'code': 'newbie',
-            'name': 'Новичок',
-            'icon': '🌱',
-            'description': 'Первое прохождение тренажёра'
-        })
-
-        # Укротитель гнева — avg final_loyalty >= 80%
-        if avg_loyalty >= 80:
-            badges.append({
-                'code': 'anger_tamer',
-                'name': 'Укротитель гнева',
-                'icon': '😤→😊',
-                'description': 'Средняя лояльность клиента >= 80%'
-            })
-
-        # Flash — 0 таймаутов при >= 5 прохождениях
-        if total >= 5 and no_timeout_count == total:
-            badges.append({
-                'code': 'flash',
-                'name': 'Flash',
-                'icon': '⚡',
-                'description': '0 таймаутов при >= 5 прохождениях'
-            })
-
-        # Знаток Мвики — >= 3 прохождений с результатом >= 90%
-        if excellent_count >= 3:
-            badges.append({
-                'code': 'expert',
-                'name': 'Знаток Мвики',
-                'icon': '📖',
-                'description': '>= 3 прохождений с результатом >= 90%'
-            })
-
-        # Перфекционист — хотя бы 1 прохождение на 100%
         if perfect_count >= 1:
-            badges.append({
+            all_badges.append({
                 'code': 'perfectionist',
                 'name': 'Перфекционист',
                 'icon': '💎',
-                'description': 'Хотя бы 1 прохождение на 100%'
+                'description': 'Набрал 100% хотя бы в 1 сценарии'
             })
 
-        # Марафонец — >= 10 прохождений
-        if total >= 10:
-            badges.append({
-                'code': 'marathon',
-                'name': 'Марафонец',
-                'icon': '🏃',
-                'description': '>= 10 прохождений'
-            })
-
-        # Покоритель уровней — >= 3 разных уровней
-        if levels_touched >= 3:
-            badges.append({
-                'code': 'level_conqueror',
-                'name': 'Покоритель уровней',
-                'icon': '🏔️',
-                'description': 'Прошёл сценарии на >= 3 разных уровнях'
-            })
-
-        # Стальные нервы — >= 5 прохождений без game_over
         if no_gameover_count >= 5:
-            badges.append({
+            all_badges.append({
                 'code': 'steel_nerves',
                 'name': 'Стальные нервы',
                 'icon': '🧘',
-                'description': '>= 5 прохождений без game over'
+                'description': '5+ сценариев без Game Over'
             })
 
-        return badges
+        if total >= 5 and no_timeout_count == total:
+            all_badges.append({
+                'code': 'flash',
+                'name': 'Flash',
+                'icon': '⚡',
+                'description': '5+ сценариев без единого таймаута'
+            })
+
+        if avg_loyalty >= 80:
+            all_badges.append({
+                'code': 'anger_tamer',
+                'name': 'Укротитель',
+                'icon': '😊',
+                'description': 'Средняя лояльность клиента 80%+'
+            })
+
+        if excellent_count >= 3:
+            all_badges.append({
+                'code': 'expert',
+                'name': 'Знаток',
+                'icon': '📖',
+                'description': '3+ сценария с результатом 90%+'
+            })
+
+        if total >= 10:
+            all_badges.append({
+                'code': 'marathon',
+                'name': 'Марафонец',
+                'icon': '🏃',
+                'description': '10+ пройденных сценариев'
+            })
+
+        if levels_touched >= 3:
+            all_badges.append({
+                'code': 'level_conqueror',
+                'name': 'Покоритель',
+                'icon': '🏔️',
+                'description': 'Прошёл сценарии на 3+ уровнях'
+            })
+
+        if not all_badges:
+            all_badges.append({
+                'code': 'newbie',
+                'name': 'Новичок',
+                'icon': '🌱',
+                'description': 'Первое прохождение тренажёра'
+            })
+
+        return all_badges[:3]
 
     def get_scenario_statistics(self, scenario_id: int) -> Dict:
         """Получить статистику по конкретному сценарию"""

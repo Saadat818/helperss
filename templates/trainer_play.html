@@ -708,7 +708,7 @@
             <div class="top-bar">
                 <div class="scenario-title">{{ scenario.title }}</div>
                 <div class="top-stats">
-                    <div class="score-badge">⭐ <span id="scoreValue">0</span></div>
+                    <div class="score-badge">⭐ <span id="scoreValue">0</span>/<span id="maxScoreValue">{{ scenario.total_points }}</span></div>
                     <div class="timer-badge" id="timerBadge">⏱️ <span id="timerValue">{{ scenario.timer_seconds or 15 }}</span>с</div>
                 </div>
                 <a href="{{ url_for('trainer_menu') }}" class="exit-btn">✕ Выход</a>

@@ -460,18 +460,35 @@
         .lb-badges {
             flex: 1;
             display: flex;
-            gap: 4px;
+            gap: 6px;
             flex-wrap: wrap;
         }
 
         .lb-badge {
             cursor: help;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 11px;
+            background: rgba(255,255,255,0.06);
+            padding: 2px 8px 2px 4px;
+            border-radius: 10px;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .lb-badge-icon {
             font-size: 1.1em;
-            transition: transform 0.15s;
+        }
+
+        .lb-badge-name {
+            color: var(--muted);
+            font-weight: 500;
         }
 
         .lb-badge:hover {
-            transform: scale(1.3);
+            background: rgba(255,255,255,0.12);
+            transform: translateY(-1px);
         }
 
         .lb-score {
@@ -480,6 +497,61 @@
             color: var(--greenLight);
             min-width: 55px;
             text-align: right;
+        }
+
+        .lb-completions {
+            font-size: 12px;
+            color: var(--muted);
+            min-width: 30px;
+            text-align: center;
+        }
+
+        .lb-pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+
+        .lb-page-btn {
+            width: 34px;
+            height: 34px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.03);
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .lb-page-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: var(--text);
+        }
+
+        .lb-page-btn.active {
+            background: var(--green);
+            color: #fff;
+            border-color: var(--green);
+        }
+
+        .lb-page-btn.nav {
+            width: auto;
+            padding: 0 10px;
+            font-size: 12px;
+        }
+
+        .lb-me-row {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed rgba(255,255,255,0.1);
         }
 
         @media (max-width: 1024px) {
@@ -564,14 +636,13 @@
             <div class="progress-header">
                 <div class="progress-title">Ваш прогресс</div>
                 <div class="progress-stats">
+                    {% for level in levels %}
+                    {% set lp = progress.levels.get(level.code, {}) %}
                     <div class="stat-item">
-                        <div class="stat-value">{{ progress.total_completed }}</div>
-                        <div class="stat-label">Пройдено</div>
+                        <div class="stat-value">{{ lp.get('completed', 0) }}/{{ lp.get('total', 0) }}</div>
+                        <div class="stat-label">{{ level.icon }} {{ level.name }}</div>
                     </div>
-                    <div class="stat-item">
-                        <div class="stat-value">{{ progress.total_scenarios }}</div>
-                        <div class="stat-label">Всего</div>
-                    </div>
+                    {% endfor %}
                     <div class="stat-item">
                         <div class="stat-value">{{ progress.average_score }}%</div>
                         <div class="stat-label">Средний балл</div>
@@ -641,24 +712,10 @@
         <div class="leaderboard-card">
             <div class="leaderboard-header">
                 <span class="leaderboard-title">🏆 Рейтинг</span>
-                <span class="leaderboard-subtitle">Top {{ top_users|length }}</span>
+                <span class="leaderboard-subtitle" id="lbSubtitle">{{ top_users|length }} участников</span>
             </div>
-            <div class="leaderboard-list">
-                {% for user in top_users %}
-                <div class="leaderboard-row {% if user.user_id == current_user_id %}is-me{% endif %}">
-                    <div class="lb-rank {% if loop.index == 1 %}gold{% elif loop.index == 2 %}silver{% elif loop.index == 3 %}bronze{% endif %}">
-                        {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
-                    </div>
-                    <div class="lb-user">{{ user.user_id }}</div>
-                    <div class="lb-badges">
-                        {% for badge in user.badges %}
-                        <span title="{{ badge.name }}: {{ badge.description }}" class="lb-badge">{{ badge.icon }}</span>
-                        {% endfor %}
-                    </div>
-                    <div class="lb-score">{{ user.avg_percent | round(1) }}%</div>
-                </div>
-                {% endfor %}
-            </div>
+            <div class="leaderboard-list" id="lbList"></div>
+            <div class="lb-pagination" id="lbPagination"></div>
         </div>
         {% endif %}
     </div>
@@ -710,6 +767,88 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') hideAdminModal();
         });
+
+        // === Лидерборд с пагинацией ===
+        const allUsers = {{ top_users | tojson }};
+        const currentUserId = {{ current_user_id | tojson }};
+        const PER_PAGE = 10;
+        let currentPage = 1;
+        const totalPages = Math.ceil(allUsers.length / PER_PAGE);
+
+        function getRankIcon(rank) {
+            if (rank === 1) return '🥇';
+            if (rank === 2) return '🥈';
+            if (rank === 3) return '🥉';
+            return rank;
+        }
+
+        function getRankClass(rank) {
+            if (rank === 1) return 'gold';
+            if (rank === 2) return 'silver';
+            if (rank === 3) return 'bronze';
+            return '';
+        }
+
+        function renderLeaderboard(page) {
+            currentPage = page;
+            const list = document.getElementById('lbList');
+            const start = (page - 1) * PER_PAGE;
+            const end = Math.min(start + PER_PAGE, allUsers.length);
+            const pageUsers = allUsers.slice(start, end);
+
+            let html = '';
+            pageUsers.forEach((user, i) => {
+                const rank = start + i + 1;
+                const isMe = user.user_id === currentUserId;
+                html += `<div class="leaderboard-row ${isMe ? 'is-me' : ''}">
+                    <div class="lb-rank ${getRankClass(rank)}">${getRankIcon(rank)}</div>
+                    <div class="lb-user">${user.user_id}</div>
+                    <div class="lb-badges">
+                        ${user.badges.map(b => `<span title="${b.description}" class="lb-badge"><span class="lb-badge-icon">${b.icon}</span><span class="lb-badge-name">${b.name}</span></span>`).join('')}
+                    </div>
+                    <div class="lb-completions" title="Пройдено сценариев">${user.completions} прох.</div>
+                    <div class="lb-score" title="Средний балл">${user.avg_percent.toFixed(1)}%</div>
+                </div>`;
+            });
+
+            // Показать "Вы" если текущий пользователь не на этой странице
+            const myIndex = allUsers.findIndex(u => u.user_id === currentUserId);
+            if (myIndex !== -1 && (myIndex < start || myIndex >= end)) {
+                const me = allUsers[myIndex];
+                const myRank = myIndex + 1;
+                html += `<div class="leaderboard-row is-me lb-me-row">
+                    <div class="lb-rank ${getRankClass(myRank)}">${getRankIcon(myRank)}</div>
+                    <div class="lb-user">${me.user_id} (вы)</div>
+                    <div class="lb-badges">
+                        ${me.badges.map(b => `<span title="${b.description}" class="lb-badge"><span class="lb-badge-icon">${b.icon}</span><span class="lb-badge-name">${b.name}</span></span>`).join('')}
+                    </div>
+                    <div class="lb-completions" title="Пройдено сценариев">${me.completions} прох.</div>
+                    <div class="lb-score" title="Средний балл">${me.avg_percent.toFixed(1)}%</div>
+                </div>`;
+            }
+
+            list.innerHTML = html;
+            renderPagination();
+        }
+
+        function renderPagination() {
+            const pag = document.getElementById('lbPagination');
+            if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+            let html = '';
+            if (currentPage > 1) {
+                html += `<button class="lb-page-btn nav" onclick="renderLeaderboard(${currentPage - 1})">‹</button>`;
+            }
+            for (let p = 1; p <= totalPages; p++) {
+                html += `<button class="lb-page-btn ${p === currentPage ? 'active' : ''}" onclick="renderLeaderboard(${p})">${p}</button>`;
+            }
+            if (currentPage < totalPages) {
+                html += `<button class="lb-page-btn nav" onclick="renderLeaderboard(${currentPage + 1})">›</button>`;
+            }
+            pag.innerHTML = html;
+        }
+
+        if (allUsers.length > 0) renderLeaderboard(1);
     </script>
 </body>
 </html>

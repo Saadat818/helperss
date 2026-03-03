@@ -559,7 +559,7 @@
                         html += '<div class="result-title">' + (r.scenario_title || 'Сценарий #' + r.scenario_id) + '</div>';
                         html += '<div class="result-meta">';
                         html += '<span>' + date + '</span>';
-                        html += '<span class="result-percent" style="color:' + pColor + '">' + r.percent + '%</span>';
+                        html += '<span class="result-percent" style="color:' + pColor + '">' + r.score + '/' + r.max_score + ' (' + r.percent + '%)</span>';
                         html += '<span>' + (r.grade || '') + '</span>';
                         if (r.is_game_over) html += '<span class="result-gameover">GAME OVER</span>';
                         html += '</div></div>';

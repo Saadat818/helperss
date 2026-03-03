@@ -401,7 +401,7 @@
                     </div>
                     {% if user_result %}
                         <div class="scenario-status {{ user_result.grade }}">
-                            {{ user_result.percent }}%
+                            {{ [user_result.score, user_result.max_score] | min }}/{{ user_result.max_score }}
                         </div>
                     {% else %}
                         <div class="scenario-status not-started">

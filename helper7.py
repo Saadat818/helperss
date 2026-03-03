@@ -2834,24 +2834,10 @@ def admin_trainer_visual_save(scenario_id):
 
             result = trainer_mgr.create_step(scenario_id, step_data)
             if result['success']:
-                step_id = result['step_id']
+                step_id = result['id']
                 node_to_step[node['id']] = step_id
 
-                # Создаём ответы из поля answers узла client
-                node_answers = node.get('answers', [])
-                for answer in node_answers:
-                    answer_data = {
-                        'answer_text': answer.get('text', 'Ответ оператора'),
-                        'is_correct': 1 if answer.get('isCorrect', False) else 0,
-                        'is_partial': 1 if answer.get('isPartial', False) else 0,
-                        'points': answer.get('points', 0),
-                        'feedback': answer.get('feedback', ''),
-                        'mood_impact': answer.get('moodImpact', 0),
-                        'knowledge_link': answer.get('knowledgeLink', '')
-                    }
-                    trainer_mgr.create_answer(step_id, answer_data)
-
-        # Также обрабатываем отдельные узлы типа "answer" (для обратной совместимости)
+        # Обрабатываем отдельные узлы типа "answer" (ответы — отдельные узлы-дерево)
         answer_nodes = [n for n in nodes if n.get('type') == 'answer']
 
         for answer_node in answer_nodes:
@@ -2866,16 +2852,13 @@ def admin_trainer_visual_save(scenario_id):
                 step_id = node_to_step.get(parent_node_id)
 
                 if step_id:
-                    is_correct = answer_node.get('isCorrect', False)
-                    mood_impact = answer_node.get('moodImpact', 0)
-
                     answer_data = {
                         'answer_text': answer_node.get('label', 'Ответ оператора'),
-                        'is_correct': 1 if is_correct else 0,
-                        'is_partial': 0,
-                        'points': 10 if is_correct else 0,
+                        'is_correct': 1 if answer_node.get('isCorrect', False) else 0,
+                        'is_partial': 1 if answer_node.get('isPartial', False) else 0,
+                        'points': answer_node.get('points', 0),
                         'feedback': answer_node.get('feedback', ''),
-                        'mood_impact': mood_impact,
+                        'mood_impact': answer_node.get('moodImpact', 0),
                         'knowledge_link': answer_node.get('knowledgeLink', '')
                     }
 
@@ -2963,7 +2946,7 @@ def admin_trainer_visual_load(scenario_id):
             # Используем сохраненную позицию или дефолтную
             pos = saved_positions.get(step_id, {'x': 200, 'y': y_offset})
 
-            # Узел реплики клиента с полными данными
+            # Узел реплики клиента (без answers — они отдельные узлы)
             nodes.append({
                 'id': step_id,
                 'type': 'client',
@@ -2974,40 +2957,55 @@ def admin_trainer_visual_load(scenario_id):
                 'stepId': step['id'],
                 'stepNum': step.get('step_num', 1),
                 'clientName': step.get('client_name', 'Клиент'),
-                'answers': []  # Будет заполнено ниже
+                'answers': []
             })
 
-            # Узлы ответов
+            # Ответы — отдельные узлы типа "answer"
             answers = trainer_mgr.get_step_answers(step['id'])
             answer_x = pos['x'] + 300
             answer_y_offset = 0
-            node_answers = []
 
             for answer in answers:
                 answer_id = f"answer_{answer['id']}"
                 ans_pos = saved_positions.get(answer_id, {'x': answer_x, 'y': pos['y'] + answer_y_offset})
 
-                # Добавляем ответ в список ответов узла клиента
-                node_answers.append({
-                    'id': answer['id'],
-                    'text': answer.get('answer_text', ''),
+                nodes.append({
+                    'id': answer_id,
+                    'type': 'answer',
+                    'x': ans_pos['x'],
+                    'y': ans_pos['y'],
+                    'label': answer.get('answer_text', ''),
                     'isCorrect': bool(answer.get('is_correct', 0)),
                     'isPartial': bool(answer.get('is_partial', 0)),
                     'points': answer.get('points', 0),
-                    'moodImpact': answer.get('mood_impact', 0)
+                    'moodImpact': answer.get('mood_impact', 0),
+                    'feedback': answer.get('feedback', ''),
+                    'knowledgeLink': answer.get('knowledge_link', '')
                 })
 
-                answer_y_offset += 80
+                # Связь: реплика клиента → ответ
+                connections.append({
+                    'id': f"conn_{step_id}_{answer_id}",
+                    'fromId': step_id,
+                    'toId': answer_id
+                })
 
-            # Обновляем ответы в узле клиента
-            nodes[-1]['answers'] = node_answers
+                answer_y_offset += 100
 
-            y_offset += 200
+            y_offset += max(200, len(answers) * 100 + 50)
+
+        # Добавляем сохранённые connections (например client→client переходы)
+        # которых нет в сгенерированных из БД
+        generated_conn_keys = {(c['fromId'], c['toId']) for c in connections}
+        for sc in saved_connections:
+            key = (sc.get('fromId'), sc.get('toId'))
+            if key not in generated_conn_keys:
+                connections.append(sc)
 
         return jsonify({
             'success': True,
             'nodes': nodes,
-            'connections': saved_connections if saved_connections else []
+            'connections': connections
         })
 
     except Exception as e:

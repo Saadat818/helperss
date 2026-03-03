@@ -812,7 +812,7 @@
         const panelContent = document.getElementById('panelContent');
         const panelEmpty = document.getElementById('panelEmpty');
 
-        // Initialize with existing steps
+        // Initialize with existing steps — ответы как отдельные узлы
         {% for step in steps %}
         nodes.push({
             id: 'step_{{ step.id }}',
@@ -821,26 +821,41 @@
             y: 100,
             data: {
                 stepId: {{ step.id }},
-                stepNum: {{ step.step_num }},
-                message: {{ step.client_message | tojson }},
-                avatar: {{ step.client_avatar | tojson }},
-                clientName: {{ step.client_name | tojson }},
-                mood: {{ step.initial_mood | tojson if step.initial_mood else '"neutral"' }},
-                answers: [
-                    {% for answer in step.answers %}
-                    {
-                        id: {{ answer.id }},
-                        text: {{ answer.answer_text | tojson }},
-                        isCorrect: {{ 'true' if answer.is_correct else 'false' }},
-                        isPartial: {{ 'true' if answer.is_partial else 'false' }},
-                        points: {{ answer.points }},
-                        moodImpact: {{ answer.mood_impact or 0 }}
-                    }{{ ',' if not loop.last else '' }}
-                    {% endfor %}
-                ]
+                stepNum: {{ step.step_num or 1 }},
+                message: {{ (step.client_message or '') | tojson }},
+                avatar: {{ (step.client_avatar or '👤') | tojson }},
+                clientName: {{ (step.client_name or 'Клиент') | tojson }},
+                mood: {{ (step.initial_mood or 'neutral') | tojson }},
+                answers: []
             }
         });
         nodeIdCounter = Math.max(nodeIdCounter, {{ step.id }} + 1);
+
+        // Ответы — отдельные узлы
+        {% set step_x = loop.index * 250 %}
+        {% for answer in step.answers %}
+        nodes.push({
+            id: 'answer_{{ answer.id }}',
+            type: 'answer',
+            x: {{ step_x + 300 }},
+            y: {{ 100 + loop.index0 * 100 }},
+            data: {
+                answerId: {{ answer.id }},
+                text: {{ answer.answer_text | tojson }},
+                isCorrect: {{ 'true' if answer.is_correct else 'false' }},
+                isPartial: {{ 'true' if answer.is_partial else 'false' }},
+                points: {{ answer.points or 0 }},
+                moodImpact: {{ answer.mood_impact or 0 }},
+                feedback: {{ (answer.feedback or '') | tojson }},
+                knowledgeLink: ''
+            }
+        });
+        connections.push({
+            from: 'step_{{ step.id }}',
+            to: 'answer_{{ answer.id }}'
+        });
+        nodeIdCounter = Math.max(nodeIdCounter, {{ answer.id }} + 1);
+        {% endfor %}
         {% endfor %}
 
         // Try to load saved visual data first, fallback to generated data
@@ -849,28 +864,45 @@
                 const response = await fetch(`/admin/trainer/scenario/${scenarioId}/visual/load`);
                 const result = await response.json();
 
+                console.log('Visual load result:', JSON.stringify(result).substring(0, 500));
+
                 if (result.success && result.nodes && result.nodes.length > 0) {
-                    // Use saved visual data
-                    nodes = result.nodes.map(n => ({
-                        id: n.id,
-                        type: n.type,
-                        x: n.x,
-                        y: n.y,
-                        data: {
-                            message: n.label || '',
-                            mood: n.mood || 'neutral',
-                            answers: n.answers || [],
-                            condition: n.condition || '',
-                            endType: n.endType || 'success',
-                            stepId: n.stepId,
-                            stepNum: n.stepNum,
-                            clientName: n.clientName || 'Клиент',
-                            isCorrect: n.isCorrect || false,
-                            moodImpact: n.moodImpact || 0,
-                            feedback: n.feedback || '',
-                            knowledgeLink: n.knowledgeLink || ''
+                    // Use saved visual data — ответы приходят как отдельные узлы
+                    nodes = result.nodes.map(n => {
+                        if (n.type === 'answer') {
+                            return {
+                                id: n.id,
+                                type: 'answer',
+                                x: n.x,
+                                y: n.y,
+                                data: {
+                                    text: n.label || '',
+                                    isCorrect: n.isCorrect || false,
+                                    isPartial: n.isPartial || false,
+                                    points: n.points || 0,
+                                    moodImpact: n.moodImpact || 0,
+                                    feedback: n.feedback || '',
+                                    knowledgeLink: n.knowledgeLink || ''
+                                }
+                            };
                         }
-                    }));
+                        return {
+                            id: n.id,
+                            type: n.type,
+                            x: n.x,
+                            y: n.y,
+                            data: {
+                                message: n.label || '',
+                                mood: n.mood || 'neutral',
+                                answers: [],
+                                condition: n.condition || '',
+                                endType: n.endType || 'success',
+                                stepId: n.stepId,
+                                stepNum: n.stepNum,
+                                clientName: n.clientName || 'Клиент'
+                            }
+                        };
+                    });
 
                     connections = result.connections.map(c => ({
                         from: c.fromId,
@@ -884,9 +916,10 @@
                     });
                 }
             } catch (e) {
-                console.log('Using initial data from steps');
+                console.log('loadVisualData error:', e);
             }
 
+            console.log('Rendering nodes:', nodes.length, 'connections:', connections.length);
             renderNodes();
             updateConnections();
         }
@@ -983,15 +1016,9 @@
             newNode.x += 50;  // Offset
             newNode.y += 50;
 
-            // Clear IDs from answers if copying client node
-            if (newNode.data && newNode.data.answers) {
-                newNode.data.answers = newNode.data.answers.map(a => ({
-                    ...a,
-                    id: null
-                }));
-            }
             if (newNode.data) {
                 newNode.data.stepId = null;
+                newNode.data.answerId = null;
             }
 
             nodes.push(newNode);
@@ -1150,16 +1177,6 @@
                     <span>${headerText}</span>
                 </div>
                 <div class="node-body">${escapeHtml(bodyText).substring(0, 150)}${bodyText.length > 150 ? '...' : ''}</div>
-                ${node.type === 'client' && node.data.answers && node.data.answers.length > 0 ? `
-                    <div class="node-answers">
-                        ${node.data.answers.slice(0, 3).map(a => `
-                            <div class="node-answer-item ${a.isCorrect ? 'correct' : a.isPartial ? 'partial' : 'wrong'}">
-                                ${escapeHtml(a.text).substring(0, 30)}...
-                            </div>
-                        `).join('')}
-                        ${node.data.answers.length > 3 ? `<div style="font-size: 11px; color: #999;">+${node.data.answers.length - 3} ещё</div>` : ''}
-                    </div>
-                ` : ''}
                 <div class="node-footer">
                     <span class="node-step-num">${footerText}</span>
                     <button class="node-delete" onclick="deleteNode('${node.id}')">Удалить</button>
@@ -1341,35 +1358,6 @@
 
             switch(node.type) {
                 case 'client':
-                    const answers = node.data.answers || [];
-                    let answersHtml = answers.map((a, idx) => `
-                        <div class="answer-edit-item" data-idx="${idx}">
-                            <div class="answer-edit-header">
-                                <span class="answer-num">#${idx + 1}</span>
-                                <button class="answer-delete-btn" onclick="deleteAnswer(${idx})">✕</button>
-                            </div>
-                            <textarea class="prop-textarea answer-text" placeholder="Текст ответа" onchange="updateAnswer(${idx}, 'text', this.value)">${escapeHtml(a.text || '')}</textarea>
-                            <div class="answer-options">
-                                <label class="answer-option">
-                                    <input type="radio" name="answer_type_${idx}" value="correct" ${a.isCorrect ? 'checked' : ''} onchange="setAnswerType(${idx}, 'correct')">
-                                    <span class="option-correct">Верный</span>
-                                </label>
-                                <label class="answer-option">
-                                    <input type="radio" name="answer_type_${idx}" value="partial" ${a.isPartial ? 'checked' : ''} onchange="setAnswerType(${idx}, 'partial')">
-                                    <span class="option-partial">Частично</span>
-                                </label>
-                                <label class="answer-option">
-                                    <input type="radio" name="answer_type_${idx}" value="wrong" ${!a.isCorrect && !a.isPartial ? 'checked' : ''} onchange="setAnswerType(${idx}, 'wrong')">
-                                    <span class="option-wrong">Неверный</span>
-                                </label>
-                            </div>
-                            <div class="answer-points">
-                                <label>Баллы: <input type="number" class="prop-input-small" value="${a.points || 0}" onchange="updateAnswer(${idx}, 'points', parseInt(this.value))"></label>
-                                <label>Влияние: <input type="number" class="prop-input-small" value="${a.moodImpact || 0}" onchange="updateAnswer(${idx}, 'moodImpact', parseInt(this.value))"></label>
-                            </div>
-                        </div>
-                    `).join('');
-
                     html = `
                         <div class="prop-group">
                             <label class="prop-label">Сообщение клиента</label>
@@ -1389,13 +1377,7 @@
                                 <option value="delight" ${node.data.mood === 'delight' ? 'selected' : ''}>Восторг</option>
                             </select>
                         </div>
-                        <div class="prop-group">
-                            <label class="prop-label">Варианты ответов (${answers.length})</label>
-                            <div class="answers-list">
-                                ${answersHtml}
-                            </div>
-                            <button class="btn-add-answer" onclick="addAnswer()">+ Добавить ответ</button>
-                        </div>
+                        <p style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 10px;">Добавляйте ответы через кнопку "Ответ" в тулбаре и соединяйте стрелками</p>
                     `;
                     break;
                 case 'condition':
@@ -1478,65 +1460,7 @@
             selectNode(selectedNode);
         }
 
-        // Answer management functions
-        function addAnswer() {
-            if (!selectedNode || selectedNode.type !== 'client') return;
-            if (!selectedNode.data.answers) selectedNode.data.answers = [];
-
-            selectedNode.data.answers.push({
-                id: null,
-                text: 'Новый ответ',
-                isCorrect: false,
-                isPartial: false,
-                points: 0,
-                moodImpact: 0
-            });
-
-            saveState();
-            renderNodes();
-            showProperties(selectedNode);
-        }
-
-        function deleteAnswer(idx) {
-            if (!selectedNode || !selectedNode.data.answers) return;
-            if (!confirm('Удалить этот ответ?')) return;
-
-            selectedNode.data.answers.splice(idx, 1);
-            saveState();
-            renderNodes();
-            showProperties(selectedNode);
-        }
-
-        function updateAnswer(idx, key, value) {
-            if (!selectedNode || !selectedNode.data.answers || !selectedNode.data.answers[idx]) return;
-            selectedNode.data.answers[idx][key] = value;
-            saveState();
-            renderNodes();
-        }
-
-        function setAnswerType(idx, type) {
-            if (!selectedNode || !selectedNode.data.answers || !selectedNode.data.answers[idx]) return;
-
-            const answer = selectedNode.data.answers[idx];
-            answer.isCorrect = (type === 'correct');
-            answer.isPartial = (type === 'partial');
-
-            // Автоматически назначаем баллы
-            if (type === 'correct') {
-                answer.points = 10;
-                answer.moodImpact = 10;
-            } else if (type === 'partial') {
-                answer.points = 5;
-                answer.moodImpact = 0;
-            } else {
-                answer.points = 0;
-                answer.moodImpact = -10;
-            }
-
-            saveState();
-            renderNodes();
-            showProperties(selectedNode);
-        }
+        // Answer management — ответы теперь отдельные узлы, управляются через тулбар
 
         // Add new node
         function addNode(type) {
@@ -1642,19 +1566,34 @@
         // Save scenario
         async function saveScenario() {
             // Prepare nodes data for API
-            const nodesData = nodes.map(n => ({
-                id: n.id,
-                type: n.type,
-                x: n.x,
-                y: n.y,
-                label: n.data.message || n.data.condition || '',
-                mood: n.data.mood || 'neutral',
-                isCorrect: n.data.isCorrect || false,
-                moodImpact: n.data.moodImpact || 0,
-                feedback: n.data.feedback || '',
-                knowledgeLink: n.data.knowledgeLink || '',
-                answers: n.data.answers || []
-            }));
+            const nodesData = nodes.map(n => {
+                if (n.type === 'answer') {
+                    return {
+                        id: n.id,
+                        type: 'answer',
+                        x: n.x,
+                        y: n.y,
+                        label: n.data.text || '',
+                        isCorrect: n.data.isCorrect || false,
+                        isPartial: n.data.isPartial || false,
+                        points: n.data.points || 0,
+                        moodImpact: n.data.moodImpact || 0,
+                        feedback: n.data.feedback || '',
+                        knowledgeLink: n.data.knowledgeLink || ''
+                    };
+                }
+                return {
+                    id: n.id,
+                    type: n.type,
+                    x: n.x,
+                    y: n.y,
+                    label: n.data.message || n.data.condition || '',
+                    mood: n.data.mood || 'neutral',
+                    clientName: n.data.clientName || 'Клиент',
+                    endType: n.data.endType || 'success',
+                    answers: []
+                };
+            });
 
             // Prepare connections data
             const connectionsData = connections.map(c => ({

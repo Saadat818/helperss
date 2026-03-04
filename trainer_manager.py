@@ -400,6 +400,14 @@ class TrainerManager:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN avatar_images TEXT DEFAULT ''")
             self.conn.commit()
 
+        # Поле next_step_id для ветвления диалога
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_answers)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'next_step_id' not in columns:
+            cursor.execute("ALTER TABLE trainer_answers ADD COLUMN next_step_id INTEGER")
+            self.conn.commit()
+
     def _init_default_data(self):
         """Инициализация начальных данных (уровни, категории)"""
         cursor = self.conn.cursor()
@@ -932,6 +940,17 @@ class TrainerManager:
             return step
         return None
 
+    def get_step_by_id(self, step_id: int) -> Optional[Dict]:
+        """Получить шаг по ID (для ветвления диалога)"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM trainer_steps WHERE id = ?", (step_id,))
+        row = cursor.fetchone()
+        if row:
+            step = dict(row)
+            step['answers'] = self.get_step_answers(step['id'])
+            return step
+        return None
+
     def get_steps_count(self, scenario_id: int) -> int:
         """Получить количество шагов в сценарии"""
         cursor = self.conn.cursor()
@@ -1300,8 +1319,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num, mood_impact, knowledge_link)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num, mood_impact, knowledge_link, next_step_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 step_id,
                 data.get('answer_text', ''),
@@ -1311,7 +1330,8 @@ class TrainerManager:
                 data.get('feedback', ''),
                 data.get('order_num', 0),
                 data.get('mood_impact', 0),
-                data.get('knowledge_link')
+                data.get('knowledge_link'),
+                data.get('next_step_id')
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
@@ -1321,7 +1341,7 @@ class TrainerManager:
     def update_answer(self, answer_id: int, data: Dict) -> Dict:
         """Обновить вариант ответа"""
         try:
-            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num', 'mood_impact', 'knowledge_link']
+            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num', 'mood_impact', 'knowledge_link', 'next_step_id']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:

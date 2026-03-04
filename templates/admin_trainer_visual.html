@@ -144,6 +144,13 @@
             opacity: 0.7;
         }
 
+        .connection-line.branch-line {
+            stroke: #2196F3;
+            stroke-width: 2.5;
+            stroke-dasharray: 8, 4;
+            marker-end: url(#arrowhead-branch);
+        }
+
         /* Nodes */
         .node {
             position: absolute;
@@ -682,6 +689,9 @@
                     <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                         <polygon points="0 0, 10 3.5, 0 7" fill="#e94560" />
                     </marker>
+                    <marker id="arrowhead-branch" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#2196F3" />
+                    </marker>
                 </defs>
             </svg>
             <!-- Nodes will be added here dynamically -->
@@ -906,7 +916,8 @@
 
                     connections = result.connections.map(c => ({
                         from: c.fromId,
-                        to: c.toId
+                        to: c.toId,
+                        type: c.type || null
                     }));
 
                     // Update node counter
@@ -1291,9 +1302,14 @@
                 const toNode = nodes.find(n => n.id === toNodeId);
 
                 if (toNode && toNode.id !== creatingConnection.fromNode.id) {
+                    // Автоматически помечаем answer→client как branch
+                    const fromType = creatingConnection.fromNode.type;
+                    const toType = toNode.type;
+                    const connType = (fromType === 'answer' && toType === 'client') ? 'branch' : null;
                     connections.push({
                         from: creatingConnection.fromNode.id,
-                        to: toNode.id
+                        to: toNode.id,
+                        type: connType
                     });
                     saveState();
                     updateConnections();
@@ -1331,13 +1347,34 @@
                 const y2 = toNode.y + toEl.offsetHeight / 2;
 
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                line.classList.add('connection-line');
                 line.setAttribute('d', createCurvePath(x1, y1, x2, y2));
+
+                // Стрелки ветвления (answer→client) — синие пунктирные
+                const isBranch = conn.type === 'branch' || (fromNode.type === 'answer' && toNode.type === 'client');
+                if (isBranch) {
+                    line.classList.add('connection-line', 'branch-line');
+                } else {
+                    line.classList.add('connection-line');
+                }
+
                 connectionsSvg.appendChild(line);
             });
         }
 
         // Node selection
+        function getNextStepLabel(answerNode) {
+            // Ищем connection от этого answer к client-узлу
+            const branchConn = connections.find(c => c.from === answerNode.id && nodes.find(n => n.id === c.to && n.type === 'client'));
+            if (branchConn) {
+                const targetNode = nodes.find(n => n.id === branchConn.to);
+                if (targetNode) {
+                    const msg = (targetNode.data.message || '').substring(0, 40);
+                    return `Шаг ${targetNode.data.stepNum || '?'}: ${msg}...`;
+                }
+            }
+            return 'Следующий по порядку';
+        }
+
         function selectNode(node, e) {
             if (e) e.stopPropagation();
 
@@ -1433,6 +1470,11 @@
                         <div class="prop-group">
                             <label class="prop-label">Ссылка на Базу Знаний</label>
                             <input class="prop-input" placeholder="https://..." value="${escapeHtml(node.data.knowledgeLink || '')}" onchange="updateNodeData('knowledgeLink', this.value)">
+                        </div>
+                        <div class="prop-group">
+                            <label class="prop-label">Следующий шаг (ветвление)</label>
+                            <div class="prop-input" style="background: #f5f5f5; color: #666; cursor: default;">${getNextStepLabel(node)}</div>
+                            <small style="color: #999;">Определяется стрелкой от ответа к шагу клиента</small>
                         </div>
                     `;
                     break;
@@ -1599,7 +1641,8 @@
             const connectionsData = connections.map(c => ({
                 id: `conn_${c.from}_${c.to}`,
                 fromId: c.from,
-                toId: c.to
+                toId: c.to,
+                type: c.type || null
             }));
 
             const data = {

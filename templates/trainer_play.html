@@ -910,6 +910,30 @@
             }
         }
 
+        async function loadStepById(stepId) {
+            try {
+                const response = await fetch(`/api/trainer/step_by_id/${stepId}`);
+                const data = await response.json();
+
+                if (!data.success) {
+                    console.error('Error loading step by id:', data.error);
+                    showSuccess();
+                    return;
+                }
+
+                currentStepNum = data.step.step_num;
+                currentStepEl.textContent = currentStepNum;
+
+                addBubble(data.step.client_message, 'client');
+                showAnswers(data.step.answers);
+                startTimer();
+                startEmotionTimer();
+                scrollToBottom();
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
         function addBubble(text, type, isWrong = false, isPartial = false) {
             const bubble = document.createElement('div');
             let classes = `speech-bubble ${type}`;
@@ -943,6 +967,7 @@
             answerLocked = true;
             stopTimer();
             stopEmotionTimer();
+            let lastNextStepId = null;
 
             document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.add('disabled'));
 
@@ -961,6 +986,7 @@
                 const result = await response.json();
 
                 if (result.success) {
+                    lastNextStepId = result.next_step_id || null;
                     const isWrong = !result.is_correct && !result.is_partial;
                     const isPartial = result.is_partial;
                     addBubble(answer.answer_text, 'operator', isWrong, isPartial);
@@ -1001,7 +1027,10 @@
             scrollToBottom();
 
             setTimeout(() => {
-                if (currentStepNum < totalSteps) {
+                // Ветвление: если у ответа есть next_step_id — грузим по ID
+                if (lastNextStepId) {
+                    loadStepById(lastNextStepId);
+                } else if (currentStepNum < totalSteps) {
                     loadStep(currentStepNum + 1);
                 } else {
                     showSuccess();

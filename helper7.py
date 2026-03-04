@@ -2118,6 +2118,43 @@ def trainer_get_step(scenario_id, step_num):
     })
 
 
+@app.route('/api/trainer/step_by_id/<int:step_id>')
+@rate_limit(max_requests=120, window=60)
+def trainer_get_step_by_id(step_id):
+    """API: получить шаг по ID (для ветвления диалога)"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    step = trainer_mgr.get_step_by_id(step_id)
+    if not step:
+        return jsonify({'success': False, 'error': 'Шаг не найден'})
+
+    scenario = trainer_mgr.get_scenario(step['scenario_id'])
+
+    # Не отправляем информацию о правильности ответов
+    safe_answers = []
+    for answer in step.get('answers', []):
+        safe_answers.append({
+            'id': answer['id'],
+            'answer_text': answer['answer_text'],
+            'order_num': answer['order_num']
+        })
+
+    return jsonify({
+        'success': True,
+        'step': {
+            'id': step['id'],
+            'step_num': step['step_num'],
+            'client_message': step['client_message'],
+            'client_avatar': step['client_avatar'],
+            'client_name': step['client_name'],
+            'initial_mood': step.get('initial_mood', 'neutral'),
+            'answers': safe_answers
+        },
+        'timer_seconds': scenario.get('timer_seconds', 15) if scenario else 15
+    })
+
+
 @app.route('/api/trainer/answer', methods=['POST'])
 @rate_limit(max_requests=60, window=60)
 def trainer_submit_answer():
@@ -2180,7 +2217,8 @@ def trainer_submit_answer():
             'new_mood': new_mood,
             'new_loyalty': new_loyalty,
             'knowledge_link': selected_answer.get('knowledge_link'),
-            'is_game_over': is_game_over
+            'is_game_over': is_game_over,
+            'next_step_id': selected_answer.get('next_step_id')
         })
 
     except Exception as e:
@@ -2566,7 +2604,8 @@ def admin_trainer_edit(scenario_id):
                         'points': request.form.get(f'answer_{answer_id}_points', 0, type=int),
                         'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip(),
                         'mood_impact': request.form.get(f'answer_{answer_id}_mood_impact', 0, type=int),
-                        'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None
+                        'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None,
+                        'next_step_id': request.form.get(f'answer_{answer_id}_next_step_id', type=int) or None
                     })
 
             flash('Сценарий успешно обновлен!')
@@ -2839,11 +2878,13 @@ def admin_trainer_visual_save(scenario_id):
 
         # Обрабатываем отдельные узлы типа "answer" (ответы — отдельные узлы-дерево)
         answer_nodes = [n for n in nodes if n.get('type') == 'answer']
+        # Маппинг временных ID answer-узлов к реальным ID в БД
+        node_to_answer = {}
 
         for answer_node in answer_nodes:
             # Находим связь от клиентского узла к этому ответу
             parent_connection = next(
-                (c for c in connections if c.get('toId') == answer_node['id']),
+                (c for c in connections if c.get('toId') == answer_node['id'] and node_to_step.get(c.get('fromId'))),
                 None
             )
 
@@ -2862,7 +2903,18 @@ def admin_trainer_visual_save(scenario_id):
                         'knowledge_link': answer_node.get('knowledgeLink', '')
                     }
 
-                    trainer_mgr.create_answer(step_id, answer_data)
+                    result = trainer_mgr.create_answer(step_id, answer_data)
+                    if result.get('success'):
+                        node_to_answer[answer_node['id']] = result['id']
+
+        # Второй проход: связи answer→client = next_step_id (ветвление)
+        for conn in connections:
+            from_id = conn.get('fromId', '')
+            to_id = conn.get('toId', '')
+            answer_db_id = node_to_answer.get(from_id)
+            target_step_id = node_to_step.get(to_id)
+            if answer_db_id and target_step_id:
+                trainer_mgr.update_answer(answer_db_id, {'next_step_id': target_step_id})
 
         # Сохраняем визуальную структуру для последующего восстановления
         visual_data = {
@@ -2989,6 +3041,17 @@ def admin_trainer_visual_load(scenario_id):
                     'fromId': step_id,
                     'toId': answer_id
                 })
+
+                # Связь ветвления: ответ → следующий шаг клиента
+                next_sid = answer.get('next_step_id')
+                if next_sid:
+                    target_step_id = f"step_{next_sid}"
+                    connections.append({
+                        'id': f"branch_{answer_id}_{target_step_id}",
+                        'fromId': answer_id,
+                        'toId': target_step_id,
+                        'type': 'branch'
+                    })
 
                 answer_y_offset += 100
 

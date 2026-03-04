@@ -965,6 +965,17 @@
                                         <input type="text" name="answer_{{ answer.id }}_knowledge_link"
                                                value="{{ answer.knowledge_link or '' }}" placeholder="https://...">
                                     </div>
+                                    <div class="form-group" style="max-width: 200px;">
+                                        <label>Следующий шаг</label>
+                                        <select name="answer_{{ answer.id }}_next_step_id">
+                                            <option value="">По порядку</option>
+                                            {% for s in steps %}
+                                            <option value="{{ s.id }}" {% if answer.next_step_id == s.id %}selected{% endif %}>
+                                                Шаг {{ s.step_num }}: {{ s.client_message[:30] }}{% if s.client_message|length > 30 %}...{% endif %}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                             {% endfor %}

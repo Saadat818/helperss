@@ -837,6 +837,17 @@
         let answersHistory = [];
         let answerLocked = false;
         let resultSaved = false;
+        let silenceCount = 0;  // сколько раз клиент реагировал на молчание
+
+        // Реплики клиента при молчании специалиста
+        const silenceMessages = [
+            "Алло? Вы меня слышите?",
+            "Эй, меня кто-нибудь слышит?",
+            "Что вы молчите?!",
+            "Ответьте мне наконец!",
+            "Вы вообще там?! Я жду!",
+            "Это просто невозможно! Почему вы молчите?!"
+        ];
 
         const dialogArea = document.getElementById('dialogArea');
         const answersList = document.getElementById('answersList');
@@ -877,6 +888,7 @@
         async function loadStep(stepNum) {
             currentStepNum = stepNum;
             currentStepEl.textContent = stepNum;
+            silenceCount = 0;  // сброс счётчика молчания на каждом новом шаге
 
             try {
                 const response = await fetch(`/api/trainer/step/${scenarioId}/${stepNum}`);
@@ -911,6 +923,7 @@
         }
 
         async function loadStepById(stepId) {
+            silenceCount = 0;  // сброс счётчика молчания на каждом новом шаге
             try {
                 const response = await fetch(`/api/trainer/step_by_id/${stepId}`);
                 const data = await response.json();
@@ -1068,10 +1081,18 @@
 
             if (emotion >= 100) { showGameOver(); return; }
 
+            // Клиент реагирует на молчание — не переходим к следующему шагу
+            const silenceMsg = silenceMessages[Math.min(silenceCount, silenceMessages.length - 1)];
+            silenceCount++;
+
             setTimeout(() => {
-                if (currentStepNum < totalSteps) loadStep(currentStepNum + 1);
-                else showSuccess();
-            }, 1500);
+                addBubble(silenceMsg, 'client');
+                scrollToBottom();
+                if (emotion >= 100) { showGameOver(); return; }
+                // Перезапускаем таймер — специалист ещё может ответить
+                startTimer();
+                startEmotionTimer();
+            }, 1000);
         }
 
         function updateEmotion(change) {

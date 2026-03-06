@@ -803,6 +803,14 @@
                                value="{{ scenario.initial_loyalty if scenario else 100 }}">
                         <div class="form-hint">От 50 до 200%. При 0% клиент "бросает трубку" (Game Over).</div>
                     </div>
+
+                    <div class="form-group">
+                        <label for="silence_messages">Реплики молчания клиента (при таймауте)</label>
+                        <textarea id="silence_messages" name="silence_messages" rows="4"
+                                  placeholder="Каждая реплика с новой строки. Например:&#10;Алло? Вы там?&#10;Что вы молчите?!&#10;Ответьте мне наконец!"
+                                  style="width:100%; background:#1a1a2e; border:1px solid #2a2a3e; color:#fff; padding:8px; border-radius:6px; resize:vertical;">{{ scenario.silence_messages if scenario and scenario.silence_messages else '' }}</textarea>
+                        <div class="form-hint">Реплики показываются по порядку при каждом таймауте. Если не заполнено — используются стандартные фразы.</div>
+                    </div>
                 </div>
             </div>
 

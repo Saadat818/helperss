@@ -2532,7 +2532,8 @@ def admin_trainer_edit(scenario_id):
             'timer_seconds': request.form.get('timer_seconds', 15, type=int),
             'initial_loyalty': request.form.get('initial_loyalty', 100, type=int),
             'client_info_json': client_info_json,
-            'correct_topics': correct_topics_val
+            'correct_topics': correct_topics_val,
+            'silence_messages': request.form.get('silence_messages', '').strip()
         }
 
         # Сохраняем снимок текущей версии перед обновлением

@@ -227,6 +227,11 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN client_info_json TEXT")
 
+        try:
+            cursor.execute("SELECT silence_messages FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN silence_messages TEXT DEFAULT ''")
+
         # Проверяем и добавляем новые колонки в trainer_steps
         try:
             cursor.execute("SELECT initial_mood FROM trainer_steps LIMIT 1")
@@ -1018,12 +1023,12 @@ class TrainerManager:
             result['total_completed'] += completed
             result['total_scenarios'] += total
 
-        # Общий средний балл
+        # Общий средний балл (percent ограничен 100)
         cursor.execute("""
-            SELECT AVG(percent) FROM trainer_results WHERE user_id = ?
+            SELECT AVG(MIN(percent, 100)) FROM trainer_results WHERE user_id = ?
         """, (user_id,))
         avg_row = cursor.fetchone()
-        result['average_score'] = round(avg_row[0] or 0, 1)
+        result['average_score'] = min(100, round(avg_row[0] or 0, 1))
 
         return result
 
@@ -1084,7 +1089,7 @@ class TrainerManager:
                     final_loyalty: int = None, is_game_over: bool = False, timeout_count: int = 0,
                     selected_topic_id: int = None, selected_topic_name: str = None) -> Dict:
         """Сохранить результат прохождения"""
-        percent = round((score / max_score) * 100) if max_score > 0 else 0
+        percent = min(100, round((score / max_score) * 100)) if max_score > 0 else 0
         grade = self.calculate_grade(percent)
 
         # Получаем текущую версию сценария
@@ -1213,7 +1218,7 @@ class TrainerManager:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
                             'estimated_time', 'total_points', 'is_active', 'order_num',
                             'timer_seconds', 'initial_loyalty', 'client_info_json',
-                            'correct_topics', 'avatar_images']
+                            'correct_topics', 'avatar_images', 'silence_messages']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:

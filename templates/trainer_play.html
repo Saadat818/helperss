@@ -838,16 +838,20 @@
         let answerLocked = false;
         let resultSaved = false;
         let silenceCount = 0;  // сколько раз клиент реагировал на молчание
+        let timeoutCount = 0;  // общее число таймаутов за сессию
 
-        // Реплики клиента при молчании специалиста
-        const silenceMessages = [
-            "Алло? Вы меня слышите?",
-            "Эй, меня кто-нибудь слышит?",
-            "Что вы молчите?!",
-            "Ответьте мне наконец!",
-            "Вы вообще там?! Я жду!",
-            "Это просто невозможно! Почему вы молчите?!"
-        ];
+        // Реплики клиента при молчании специалиста — из сценария или стандартные
+        const silenceMessagesRaw = {{ (scenario.silence_messages or '') | tojson }};
+        const silenceMessages = silenceMessagesRaw
+            ? silenceMessagesRaw.split('\n').map(s => s.trim()).filter(s => s.length > 0)
+            : [
+                "Алло? Вы меня слышите?",
+                "Эй, меня кто-нибудь слышит?",
+                "Что вы молчите?!",
+                "Ответьте мне наконец!",
+                "Вы вообще там?! Я жду!",
+                "Это просто невозможно! Почему вы молчите?!"
+              ];
 
         const dialogArea = document.getElementById('dialogArea');
         const answersList = document.getElementById('answersList');
@@ -1076,8 +1080,26 @@
         function handleTimeout() {
             stopTimer();
             stopEmotionTimer();
+            // Блокируем кнопки на время показа реплики молчания
+            answerLocked = true;
+            document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.add('disabled'));
+
             updateEmotion(20);
             addBubble("...", 'operator', true);
+
+            // Фиксируем таймаут в истории для аналитики
+            timeoutCount++;
+            answersHistory.push({
+                step_num: currentStepNum,
+                answer_id: null,
+                answer_text: '...',
+                is_correct: false,
+                is_partial: false,
+                is_timeout: true,
+                points: 0,
+                feedback: 'Время вышло — ответ не выбран',
+                knowledge_link: null
+            });
 
             if (emotion >= 100) { showGameOver(); return; }
 
@@ -1088,8 +1110,9 @@
             setTimeout(() => {
                 addBubble(silenceMsg, 'client');
                 scrollToBottom();
-                if (emotion >= 100) { showGameOver(); return; }
-                // Перезапускаем таймер — специалист ещё может ответить
+                // Разблокируем кнопки и перезапускаем таймер
+                answerLocked = false;
+                document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.remove('disabled'));
                 startTimer();
                 startEmotionTimer();
             }, 1000);
@@ -1388,7 +1411,8 @@
                     score: score,
                     answers: answersHistory,
                     is_game_over: isGameOver,
-                    final_loyalty: 100 - emotion
+                    final_loyalty: 100 - emotion,
+                    timeout_count: timeoutCount
                 };
 
                 if (selectedTopicId) {

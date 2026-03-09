@@ -1286,12 +1286,14 @@
         function startDrag(e, node) {
             if (e.target.classList.contains('conn-point') || e.target.classList.contains('node-delete')) return;
 
+            e.preventDefault();
             draggingNode = node;
-            const rect = document.getElementById(node.id).getBoundingClientRect();
             const containerRect = canvasContainer.getBoundingClientRect();
 
-            dragOffset.x = e.clientX - rect.left + canvasContainer.scrollLeft;
-            dragOffset.y = e.clientY - rect.top + canvasContainer.scrollTop;
+            // Смещение мыши относительно левого-верхнего угла узла в canvas-координатах
+            // Учитываем zoom: canvas-координаты = экранные / zoom
+            dragOffset.x = (e.clientX - containerRect.left + canvasContainer.scrollLeft) / zoom - node.x;
+            dragOffset.y = (e.clientY - containerRect.top + canvasContainer.scrollTop) / zoom - node.y;
 
             document.addEventListener('mousemove', onDrag);
             document.addEventListener('mouseup', stopDrag);
@@ -1301,8 +1303,9 @@
             if (!draggingNode) return;
 
             const containerRect = canvasContainer.getBoundingClientRect();
-            const x = e.clientX - containerRect.left + canvasContainer.scrollLeft - dragOffset.x + 100;
-            const y = e.clientY - containerRect.top + canvasContainer.scrollTop - dragOffset.y + 50;
+            // Переводим экранные координаты в canvas-координаты и вычитаем начальное смещение
+            const x = (e.clientX - containerRect.left + canvasContainer.scrollLeft) / zoom - dragOffset.x;
+            const y = (e.clientY - containerRect.top + canvasContainer.scrollTop) / zoom - dragOffset.y;
 
             draggingNode.x = Math.max(0, x);
             draggingNode.y = Math.max(0, y);
@@ -1315,6 +1318,9 @@
         }
 
         function stopDrag() {
+            if (draggingNode) {
+                saveState(); // Фиксируем позицию в истории после перетаскивания
+            }
             draggingNode = null;
             document.removeEventListener('mousemove', onDrag);
             document.removeEventListener('mouseup', stopDrag);

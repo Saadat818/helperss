@@ -3254,7 +3254,7 @@ def admin_trainer_export():
                 from openpyxl.utils import get_column_letter
 
                 matrix_data = trainer_mgr.get_completion_matrix(passing_percent=70)
-                ws = writer.book.create_sheet('Пройдено / Не пройдено')
+                ws = writer.book.create_sheet('Пройдено - Не пройдено')
 
                 # Цвета
                 fill_passed      = PatternFill('solid', fgColor='C8E6C9')  # зелёный

@@ -3244,6 +3244,165 @@ def admin_trainer_export():
                 levels_df.columns = ['Уровень', 'Код', 'Сценариев', 'Прохождений', 'Средний балл (%)']
                 levels_df.to_excel(writer, sheet_name='По уровням', index=False)
 
+            # Лист 5: Матрица "Пройдено / Не пройдено" по уровням
+            try:
+                from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+                from openpyxl.utils import get_column_letter
+
+                matrix_data = trainer_mgr.get_completion_matrix(passing_percent=70)
+                ws = writer.book.create_sheet('Пройдено / Не пройдено')
+
+                # Цвета
+                fill_passed      = PatternFill('solid', fgColor='C8E6C9')  # зелёный
+                fill_failed      = PatternFill('solid', fgColor='FFCDD2')  # красный
+                fill_not_started = PatternFill('solid', fgColor='F5F5F5')  # серый
+                fill_header      = PatternFill('solid', fgColor='1A237E')  # тёмно-синий
+                fill_level       = PatternFill('solid', fgColor='3949AB')  # синий уровень
+                fill_summary     = PatternFill('solid', fgColor='E8EAF6')  # светло-синий
+
+                font_white  = Font(color='FFFFFF', bold=True)
+                font_bold   = Font(bold=True)
+                font_passed = Font(color='1B5E20', bold=True)
+                font_failed = Font(color='B71C1C')
+                font_grey   = Font(color='9E9E9E')
+
+                thin = Side(style='thin', color='DDDDDD')
+                border = Border(left=thin, right=thin, top=thin, bottom=thin)
+                center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+                levels    = matrix_data['levels']
+                users     = matrix_data['users']
+                matrix    = matrix_data['matrix']
+                summary   = matrix_data['summary']
+                passing_p = matrix_data['passing_percent']
+
+                # === Строка 1: Заголовок ===
+                total_cols = 1 + sum(len(lv['scenarios']) for lv in levels) + 2  # сотрудник + сценарии + итого пройдено + %
+                ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
+                title_cell = ws.cell(row=1, column=1,
+                    value=f'Матрица прохождения сценариев (порог: {passing_p}%)')
+                title_cell.fill = fill_header
+                title_cell.font = Font(color='FFFFFF', bold=True, size=12)
+                title_cell.alignment = center
+
+                # === Строка 2: Группировка по уровням ===
+                col = 2
+                ws.cell(row=2, column=1, value='Сотрудник').fill = fill_header
+                ws.cell(row=2, column=1).font = font_white
+                ws.cell(row=2, column=1).alignment = center
+
+                level_col_ranges = []  # для итогов по уровням
+                for lv in levels:
+                    n = len(lv['scenarios'])
+                    if n == 0:
+                        continue
+                    ws.merge_cells(start_row=2, start_column=col, end_row=2, end_column=col + n - 1)
+                    lv_cell = ws.cell(row=2, column=col, value=lv['name'])
+                    lv_cell.fill = fill_level
+                    lv_cell.font = font_white
+                    lv_cell.alignment = center
+                    level_col_ranges.append({'level': lv, 'start_col': col, 'end_col': col + n - 1})
+                    col += n
+
+                ws.cell(row=2, column=col, value='Пройдено').fill = fill_header
+                ws.cell(row=2, column=col).font = font_white
+                ws.cell(row=2, column=col).alignment = center
+                ws.cell(row=2, column=col + 1, value='% выполнения').fill = fill_header
+                ws.cell(row=2, column=col + 1).font = font_white
+                ws.cell(row=2, column=col + 1).alignment = center
+
+                # === Строка 3: Названия сценариев ===
+                ws.cell(row=3, column=1).fill = fill_header
+                col = 2
+                for lv in levels:
+                    for sc in lv['scenarios']:
+                        sc_cell = ws.cell(row=3, column=col, value=sc['title'])
+                        sc_cell.fill = fill_summary
+                        sc_cell.font = font_bold
+                        sc_cell.alignment = center
+                        col += 1
+                ws.cell(row=3, column=col).fill = fill_summary
+                ws.cell(row=3, column=col + 1).fill = fill_summary
+
+                # Фиксируем ширину первого столбца
+                ws.column_dimensions['A'].width = 20
+                for c in range(2, total_cols + 1):
+                    ws.column_dimensions[get_column_letter(c)].width = 14
+
+                # === Строки данных: по одной на пользователя ===
+                for row_idx, uid in enumerate(users):
+                    data_row = 4 + row_idx
+                    # Имя пользователя
+                    name_cell = ws.cell(row=data_row, column=1, value=uid)
+                    name_cell.font = font_bold
+                    name_cell.alignment = Alignment(vertical='center')
+                    name_cell.border = border
+
+                    col = 2
+                    for lv in levels:
+                        for sc in lv['scenarios']:
+                            cell_data = matrix[uid].get(sc['id'], {'status': 'not_started', 'best_percent': None, 'attempts': 0})
+                            status = cell_data['status']
+                            pct    = cell_data['best_percent']
+                            att    = cell_data['attempts']
+
+                            if status == 'passed':
+                                text  = f'✓ {pct}%'
+                                fill  = fill_passed
+                                fnt   = font_passed
+                            elif status == 'failed':
+                                text  = f'✗ {pct}%\n({att} поп.)'
+                                fill  = fill_failed
+                                fnt   = font_failed
+                            else:
+                                text  = '—'
+                                fill  = fill_not_started
+                                fnt   = font_grey
+
+                            cell = ws.cell(row=data_row, column=col, value=text)
+                            cell.fill = fill
+                            cell.font = fnt
+                            cell.alignment = center
+                            cell.border = border
+                            col += 1
+
+                    # Итог по пользователю
+                    sm = summary[uid]
+                    total_cell = ws.cell(row=data_row, column=col,
+                        value=f'{sm["passed"]}/{sm["total"]}')
+                    total_cell.font = font_bold
+                    total_cell.alignment = center
+                    total_cell.border = border
+
+                    pct_cell = ws.cell(row=data_row, column=col + 1,
+                        value=f'{sm["percent_done"]}%')
+                    pct_cell.alignment = center
+                    pct_cell.border = border
+                    if sm['percent_done'] == 100:
+                        pct_cell.fill = fill_passed
+                        pct_cell.font = font_passed
+                    elif sm['percent_done'] >= 50:
+                        pct_cell.fill = PatternFill('solid', fgColor='FFF9C4')
+                        pct_cell.font = Font(color='F57F17', bold=True)
+                    else:
+                        pct_cell.fill = fill_failed
+                        pct_cell.font = font_failed
+
+                # === Строки высота ===
+                ws.row_dimensions[1].height = 22
+                ws.row_dimensions[2].height = 20
+                ws.row_dimensions[3].height = 40
+                for i in range(len(users)):
+                    ws.row_dimensions[4 + i].height = 32
+
+                # Закрепляем первые 3 строки и первый столбец
+                ws.freeze_panes = 'B4'
+
+            except Exception as e_matrix:
+                print(f'[export] Ошибка листа матрицы: {e_matrix}')
+                import traceback as tb
+                tb.print_exc()
+
         return send_file(
             tmp_path,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -1703,6 +1703,94 @@ class TrainerManager:
 
         return results
 
+    def get_completion_matrix(self, passing_percent: int = 70) -> Dict:
+        """
+        Матрица прохождения: кто прошёл какой сценарий.
+        Пользователи берутся из trainer_results (кто хоть раз запускал тренажёр).
+        Возвращает:
+          levels  — список уровней с их сценариями
+          users   — список пользователей
+          matrix  — dict[user_id][scenario_id] = {status, best_percent, attempts}
+          summary — dict[user_id] = {passed, total, percent_done}
+        """
+        cursor = self.conn.cursor()
+
+        # Все уровни и их активные сценарии
+        cursor.execute("""
+            SELECT l.id as level_id, l.name as level_name, l.code as level_code,
+                   s.id as scenario_id, s.title as scenario_title, s.order_num
+            FROM trainer_levels l
+            JOIN trainer_scenarios s ON s.level_id = l.id
+            WHERE s.is_active = 1
+            ORDER BY l.id, s.order_num
+        """)
+        rows = cursor.fetchall()
+
+        # Группируем по уровням
+        levels = {}
+        all_scenario_ids = []
+        for r in rows:
+            lid = r['level_id']
+            if lid not in levels:
+                levels[lid] = {'id': lid, 'name': r['level_name'], 'code': r['level_code'], 'scenarios': []}
+            levels[lid]['scenarios'].append({'id': r['scenario_id'], 'title': r['scenario_title']})
+            all_scenario_ids.append(r['scenario_id'])
+
+        # Все пользователи из trainer_results
+        cursor.execute("SELECT DISTINCT user_id FROM trainer_results ORDER BY user_id")
+        users = [r['user_id'] for r in cursor.fetchall()]
+
+        # Лучший результат каждого пользователя по каждому сценарию
+        cursor.execute("""
+            SELECT user_id, scenario_id,
+                   MAX(percent) as best_percent,
+                   COUNT(*) as attempts,
+                   MAX(CASE WHEN percent >= ? THEN 1 ELSE 0 END) as is_passed
+            FROM trainer_results
+            GROUP BY user_id, scenario_id
+        """, (passing_percent,))
+
+        # Строим матрицу
+        matrix = {u: {} for u in users}
+        for r in cursor.fetchall():
+            uid = r['user_id']
+            sid = r['scenario_id']
+            if uid in matrix:
+                if r['is_passed']:
+                    status = 'passed'
+                else:
+                    status = 'failed'
+                matrix[uid][sid] = {
+                    'status': status,
+                    'best_percent': r['best_percent'],
+                    'attempts': r['attempts']
+                }
+
+        # Заполняем not_started для незапущенных сценариев
+        for uid in users:
+            for sid in all_scenario_ids:
+                if sid not in matrix[uid]:
+                    matrix[uid][sid] = {'status': 'not_started', 'best_percent': None, 'attempts': 0}
+
+        # Итоги по каждому пользователю
+        total_scenarios = len(all_scenario_ids)
+        summary = {}
+        for uid in users:
+            passed = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'passed')
+            summary[uid] = {
+                'passed': passed,
+                'total': total_scenarios,
+                'percent_done': round(passed / total_scenarios * 100) if total_scenarios else 0
+            }
+
+        return {
+            'levels': list(levels.values()),
+            'users': users,
+            'matrix': matrix,
+            'summary': summary,
+            'passing_percent': passing_percent
+        }
+
     # ==================== ОБРАТНАЯ СВЯЗЬ ====================
 
     def add_feedback(self, user_id: str, message: str, level_code: str = None) -> Dict:

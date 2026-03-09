@@ -250,20 +250,61 @@
         }
 
         .conn-point.input {
-            top: 50%;
-            left: -7px;
-            transform: translateY(-50%);
+            top: -7px;
+            left: 50%;
+            transform: translateX(-50%);
         }
 
         .conn-point.output {
-            top: 50%;
-            right: -7px;
-            transform: translateY(-50%);
+            bottom: -7px;
+            left: 50%;
+            transform: translateX(-50%);
         }
 
         .conn-point:hover {
-            transform: translateY(-50%) scale(1.3);
             background: #ff6b8a;
+            transform: translateX(-50%) scale(1.3);
+        }
+
+        .conn-point.input:hover {
+            transform: translateX(-50%) scale(1.3);
+        }
+
+        /* Кнопки быстрого добавления дочерних узлов */
+        .node-quick-add {
+            display: flex;
+            gap: 5px;
+            padding: 6px 10px 10px;
+        }
+
+        .quick-add-btn {
+            flex: 1;
+            padding: 4px 6px;
+            background: #e3f2fd;
+            border: 1px dashed #2196F3;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #1565C0;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .quick-add-btn:hover {
+            background: #2196F3;
+            color: white;
+            border-style: solid;
+        }
+
+        .node-type-answer .quick-add-btn {
+            background: #e8f5e9;
+            border-color: #4CAF50;
+            color: #2E7D32;
+        }
+
+        .node-type-answer .quick-add-btn:hover {
+            background: #4CAF50;
+            color: white;
         }
 
         /* Properties Panel */
@@ -1052,81 +1093,79 @@
         // === AUTO-LAYOUT FUNCTION ===
         function autoLayout() {
             if (!confirm('Автоматически расположить узлы? Текущие позиции будут изменены.')) return;
-
             saveState();
 
-            // Find root nodes (no incoming connections)
-            const roots = nodes.filter(n =>
-                !connections.some(c => c.to === n.id)
-            );
+            const NODE_W = 240;
+            const HORIZ_GAP = 30;   // отступ между соседними узлами
+            const VERT_GAP = 180;   // отступ по вертикали между уровнями
+            const START_X = 200;
+            const START_Y = 80;
 
-            const LEVEL_HEIGHT = 200;
-            const NODE_WIDTH = 280;
-            const MARGIN = 50;
-            const canvasWidth = 3000;
+            const positioned = new Set();
 
-            let visited = new Set();
-            let levels = {};  // { nodeId: level }
-
-            // BFS for level assignment
-            function assignLevels(startNodes) {
-                let queue = startNodes.map(n => ({ node: n, level: 0 }));
-
-                while (queue.length > 0) {
-                    const { node, level } = queue.shift();
-                    if (visited.has(node.id)) continue;
-
-                    visited.add(node.id);
-                    levels[node.id] = level;
-
-                    // Find children
-                    const children = connections
-                        .filter(c => c.from === node.id)
-                        .map(c => nodes.find(n => n.id === c.to))
-                        .filter(Boolean);
-
-                    children.forEach(child => {
-                        if (!visited.has(child.id)) {
-                            queue.push({ node: child, level: level + 1 });
-                        }
-                    });
-                }
+            // Получить детей узла
+            function getChildren(nodeId) {
+                return connections
+                    .filter(c => c.from === nodeId)
+                    .map(c => nodes.find(n => n.id === c.to))
+                    .filter(Boolean);
             }
 
-            assignLevels(roots.length > 0 ? roots : (nodes.length > 0 ? [nodes[0]] : []));
+            // Рекурсивно вычислить ширину поддерева (в пикселях)
+            function subtreeWidth(nodeId, visited = new Set()) {
+                if (visited.has(nodeId)) return NODE_W + HORIZ_GAP;
+                visited.add(nodeId);
+                const children = getChildren(nodeId).filter(c => !visited.has(c.id));
+                if (children.length === 0) return NODE_W + HORIZ_GAP;
+                return children.reduce((sum, c) => sum + subtreeWidth(c.id, visited), 0);
+            }
 
-            // Group by levels
-            const levelGroups = {};
-            Object.entries(levels).forEach(([nodeId, level]) => {
-                if (!levelGroups[level]) levelGroups[level] = [];
-                levelGroups[level].push(nodeId);
-            });
+            // Рекурсивно расставить узлы
+            function placeSubtree(nodeId, centerX, y, visited = new Set()) {
+                if (visited.has(nodeId)) return;
+                visited.add(nodeId);
+                positioned.add(nodeId);
 
-            // Position nodes
-            Object.entries(levelGroups).forEach(([level, nodeIds]) => {
-                const y = parseInt(level) * LEVEL_HEIGHT + MARGIN;
-                const totalWidth = nodeIds.length * NODE_WIDTH;
-                const startX = Math.max(MARGIN, (canvasWidth - totalWidth) / 2);
+                const node = nodes.find(n => n.id === nodeId);
+                if (!node) return;
 
-                nodeIds.forEach((nodeId, idx) => {
-                    const node = nodes.find(n => n.id === nodeId);
-                    if (node) {
-                        node.x = startX + idx * NODE_WIDTH;
-                        node.y = y;
-                    }
+                node.x = centerX - NODE_W / 2;
+                node.y = y;
+
+                const children = getChildren(nodeId).filter(c => !visited.has(c.id));
+                if (children.length === 0) return;
+
+                const totalW = children.reduce((sum, c) => sum + subtreeWidth(c.id, new Set([...visited])), 0);
+                let curX = centerX - totalW / 2;
+
+                children.forEach(child => {
+                    const cw = subtreeWidth(child.id, new Set([...visited]));
+                    placeSubtree(child.id, curX + cw / 2, y + VERT_GAP, new Set([...visited]));
+                    curX += cw;
                 });
+            }
+
+            // Найти корневые узлы (без входящих соединений)
+            const roots = nodes.filter(n => !connections.some(c => c.to === n.id));
+            const startNodes = roots.length > 0 ? roots : (nodes.length > 0 ? [nodes[0]] : []);
+
+            let curRootX = START_X;
+            startNodes.forEach(root => {
+                const w = subtreeWidth(root.id);
+                placeSubtree(root.id, curRootX + w / 2, START_Y);
+                curRootX += w;
             });
 
-            // Handle disconnected nodes
-            let offsetY = (Object.keys(levelGroups).length) * LEVEL_HEIGHT + MARGIN;
-            nodes.filter(n => !levels[n.id]).forEach((node, idx) => {
-                node.x = MARGIN + (idx % 4) * NODE_WIDTH;
-                node.y = offsetY + Math.floor(idx / 4) * LEVEL_HEIGHT;
+            // Отдельно стоящие узлы — внизу
+            let floatX = curRootX + HORIZ_GAP;
+            nodes.filter(n => !positioned.has(n.id)).forEach((node, idx) => {
+                node.x = floatX + (idx % 4) * (NODE_W + HORIZ_GAP);
+                node.y = START_Y + Math.floor(idx / 4) * VERT_GAP;
             });
 
             renderNodes();
             updateConnections();
-            showToast('Узлы расположены автоматически');
+            showToast('Узлы расположены как дерево');
         }
 
         // Node rendering
@@ -1183,6 +1222,14 @@
                     break;
             }
 
+            // Кнопки быстрого добавления
+            let quickAddHtml = '';
+            if (node.type === 'client') {
+                quickAddHtml = `<div class="node-quick-add"><button class="quick-add-btn" onclick="event.stopPropagation(); addAnswerToNode('${node.id}')">+ Ответ</button></div>`;
+            } else if (node.type === 'answer') {
+                quickAddHtml = `<div class="node-quick-add"><button class="quick-add-btn" onclick="event.stopPropagation(); addReplicaToAnswer('${node.id}')">+ Реплика</button></div>`;
+            }
+
             el.innerHTML = `
                 <div class="node-header">
                     <span>${headerText}</span>
@@ -1192,6 +1239,7 @@
                     <span class="node-step-num">${footerText}</span>
                     <button class="node-delete" onclick="deleteNode('${node.id}')">Удалить</button>
                 </div>
+                ${quickAddHtml}
                 <div class="conn-point input" data-node="${node.id}" data-type="input"></div>
                 <div class="conn-point output" data-node="${node.id}" data-type="output"></div>
             `;
@@ -1259,8 +1307,8 @@
 
             creatingConnection = {
                 fromNode: node,
-                fromX: node.x + 200, // right side of node
-                fromY: node.y + 50  // middle
+                fromX: node.x + 110, // центр узла по X (примерно)
+                fromY: node.y + 150  // нижний край узла
             };
 
             document.addEventListener('mousemove', onCreateConnection);
@@ -1322,8 +1370,9 @@
         }
 
         function createCurvePath(x1, y1, x2, y2) {
-            const midX = (x1 + x2) / 2;
-            return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+            // Вертикальная кривая Безье (сверху вниз)
+            const midY = (y1 + y2) / 2;
+            return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
         }
 
         function updateConnections() {
@@ -1341,10 +1390,11 @@
 
                 if (!fromEl || !toEl) return;
 
-                const x1 = fromNode.x + fromEl.offsetWidth;
-                const y1 = fromNode.y + fromEl.offsetHeight / 2;
-                const x2 = toNode.x;
-                const y2 = toNode.y + toEl.offsetHeight / 2;
+                // Выход снизу по центру, вход сверху по центру
+                const x1 = fromNode.x + fromEl.offsetWidth / 2;
+                const y1 = fromNode.y + fromEl.offsetHeight;
+                const x2 = toNode.x + toEl.offsetWidth / 2;
+                const y2 = toNode.y;
 
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 line.setAttribute('d', createCurvePath(x1, y1, x2, y2));
@@ -1500,6 +1550,64 @@
             saveState();
             renderNodes();
             selectNode(selectedNode);
+        }
+
+        // === БЫСТРОЕ ДОБАВЛЕНИЕ УЗЛОВ ===
+        function addAnswerToNode(clientNodeId) {
+            const parentNode = nodes.find(n => n.id === clientNodeId);
+            if (!parentNode) return;
+
+            // Считаем уже существующие ответы для отступа
+            const existingAnswerCount = connections
+                .filter(c => c.from === clientNodeId)
+                .filter(c => nodes.find(n => n.id === c.to && n.type === 'answer'))
+                .length;
+
+            const newNode = {
+                id: `node_${nodeIdCounter++}`,
+                type: 'answer',
+                x: parentNode.x + existingAnswerCount * 260,
+                y: parentNode.y + 200,
+                data: { text: 'Ответ оператора', isCorrect: false, isPartial: false, points: 0, moodImpact: 0, feedback: '', knowledgeLink: '' }
+            };
+
+            nodes.push(newNode);
+            connections.push({ from: clientNodeId, to: newNode.id });
+            saveState();
+            renderNodes();
+            updateConnections();
+            selectNode(newNode);
+            showToast('Ответ добавлен');
+        }
+
+        function addReplicaToAnswer(answerNodeId) {
+            const parentNode = nodes.find(n => n.id === answerNodeId);
+            if (!parentNode) return;
+
+            // Проверяем что у ответа ещё нет следующей реплики
+            const hasNext = connections.some(
+                c => c.from === answerNodeId && nodes.find(n => n.id === c.to && n.type === 'client')
+            );
+            if (hasNext) {
+                showToast('Этот ответ уже ведёт к реплике', true);
+                return;
+            }
+
+            const newNode = {
+                id: `node_${nodeIdCounter++}`,
+                type: 'client',
+                x: parentNode.x,
+                y: parentNode.y + 200,
+                data: { message: 'Новое сообщение клиента', clientName: 'Клиент', mood: 'neutral', answers: [] }
+            };
+
+            nodes.push(newNode);
+            connections.push({ from: answerNodeId, to: newNode.id, type: 'branch' });
+            saveState();
+            renderNodes();
+            updateConnections();
+            selectNode(newNode);
+            showToast('Реплика добавлена');
         }
 
         // Answer management — ответы теперь отдельные узлы, управляются через тулбар

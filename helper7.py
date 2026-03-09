@@ -2917,10 +2917,34 @@ def admin_trainer_visual_save(scenario_id):
             if answer_db_id and target_step_id:
                 trainer_mgr.update_answer(answer_db_id, {'next_step_id': target_step_id})
 
+        # Строим маппинг старых visual-ID → новых DB-ID
+        # (нужен потому что DELETE+CREATE присваивает новые ID шагам/ответам)
+        id_remap = {}
+        for old_id, new_step_id in node_to_step.items():
+            id_remap[old_id] = f"step_{new_step_id}"
+        for old_id, new_answer_id in node_to_answer.items():
+            id_remap[old_id] = f"answer_{new_answer_id}"
+
+        # Обновляем ID узлов в visual_data на актуальные DB-ID
+        updated_nodes = []
+        for node in nodes:
+            new_node = dict(node)
+            new_node['id'] = id_remap.get(node['id'], node['id'])
+            updated_nodes.append(new_node)
+
+        # Обновляем fromId/toId в соединениях
+        updated_connections = []
+        for conn in connections:
+            new_conn = dict(conn)
+            new_conn['fromId'] = id_remap.get(conn.get('fromId', ''), conn.get('fromId', ''))
+            new_conn['toId'] = id_remap.get(conn.get('toId', ''), conn.get('toId', ''))
+            new_conn['id'] = f"conn_{new_conn['fromId']}_{new_conn['toId']}"
+            updated_connections.append(new_conn)
+
         # Сохраняем визуальную структуру для последующего восстановления
         visual_data = {
-            'nodes': nodes,
-            'connections': connections
+            'nodes': updated_nodes,
+            'connections': updated_connections
         }
 
         # Сохраняем визуальные данные в отдельное поле сценария
@@ -2952,7 +2976,7 @@ def admin_trainer_visual_save(scenario_id):
             ip_address=request.remote_addr
         )
 
-        return jsonify({'success': True, 'message': 'Сценарий сохранен'})
+        return jsonify({'success': True, 'message': 'Сценарий сохранен', 'id_remap': id_remap})
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

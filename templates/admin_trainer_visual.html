@@ -144,6 +144,13 @@
             opacity: 0.7;
         }
 
+        .connection-line.branch-line {
+            stroke: #2196F3;
+            stroke-width: 2.5;
+            stroke-dasharray: 8, 4;
+            marker-end: url(#arrowhead-branch);
+        }
+
         /* Nodes */
         .node {
             position: absolute;
@@ -243,20 +250,61 @@
         }
 
         .conn-point.input {
-            top: 50%;
-            left: -7px;
-            transform: translateY(-50%);
+            top: -7px;
+            left: 50%;
+            transform: translateX(-50%);
         }
 
         .conn-point.output {
-            top: 50%;
-            right: -7px;
-            transform: translateY(-50%);
+            bottom: -7px;
+            left: 50%;
+            transform: translateX(-50%);
         }
 
         .conn-point:hover {
-            transform: translateY(-50%) scale(1.3);
             background: #ff6b8a;
+            transform: translateX(-50%) scale(1.3);
+        }
+
+        .conn-point.input:hover {
+            transform: translateX(-50%) scale(1.3);
+        }
+
+        /* Кнопки быстрого добавления дочерних узлов */
+        .node-quick-add {
+            display: flex;
+            gap: 5px;
+            padding: 6px 10px 10px;
+        }
+
+        .quick-add-btn {
+            flex: 1;
+            padding: 4px 6px;
+            background: #e3f2fd;
+            border: 1px dashed #2196F3;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #1565C0;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .quick-add-btn:hover {
+            background: #2196F3;
+            color: white;
+            border-style: solid;
+        }
+
+        .node-type-answer .quick-add-btn {
+            background: #e8f5e9;
+            border-color: #4CAF50;
+            color: #2E7D32;
+        }
+
+        .node-type-answer .quick-add-btn:hover {
+            background: #4CAF50;
+            color: white;
         }
 
         /* Properties Panel */
@@ -682,6 +730,9 @@
                     <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                         <polygon points="0 0, 10 3.5, 0 7" fill="#e94560" />
                     </marker>
+                    <marker id="arrowhead-branch" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#2196F3" />
+                    </marker>
                 </defs>
             </svg>
             <!-- Nodes will be added here dynamically -->
@@ -812,7 +863,7 @@
         const panelContent = document.getElementById('panelContent');
         const panelEmpty = document.getElementById('panelEmpty');
 
-        // Initialize with existing steps
+        // Initialize with existing steps — ответы как отдельные узлы
         {% for step in steps %}
         nodes.push({
             id: 'step_{{ step.id }}',
@@ -821,26 +872,41 @@
             y: 100,
             data: {
                 stepId: {{ step.id }},
-                stepNum: {{ step.step_num }},
-                message: {{ step.client_message | tojson }},
-                avatar: {{ step.client_avatar | tojson }},
-                clientName: {{ step.client_name | tojson }},
-                mood: {{ step.initial_mood | tojson if step.initial_mood else '"neutral"' }},
-                answers: [
-                    {% for answer in step.answers %}
-                    {
-                        id: {{ answer.id }},
-                        text: {{ answer.answer_text | tojson }},
-                        isCorrect: {{ 'true' if answer.is_correct else 'false' }},
-                        isPartial: {{ 'true' if answer.is_partial else 'false' }},
-                        points: {{ answer.points }},
-                        moodImpact: {{ answer.mood_impact or 0 }}
-                    }{{ ',' if not loop.last else '' }}
-                    {% endfor %}
-                ]
+                stepNum: {{ step.step_num or 1 }},
+                message: {{ (step.client_message or '') | tojson }},
+                avatar: {{ (step.client_avatar or '👤') | tojson }},
+                clientName: {{ (step.client_name or 'Клиент') | tojson }},
+                mood: {{ (step.initial_mood or 'neutral') | tojson }},
+                answers: []
             }
         });
         nodeIdCounter = Math.max(nodeIdCounter, {{ step.id }} + 1);
+
+        // Ответы — отдельные узлы
+        {% set step_x = loop.index * 250 %}
+        {% for answer in step.answers %}
+        nodes.push({
+            id: 'answer_{{ answer.id }}',
+            type: 'answer',
+            x: {{ step_x + 300 }},
+            y: {{ 100 + loop.index0 * 100 }},
+            data: {
+                answerId: {{ answer.id }},
+                text: {{ answer.answer_text | tojson }},
+                isCorrect: {{ 'true' if answer.is_correct else 'false' }},
+                isPartial: {{ 'true' if answer.is_partial else 'false' }},
+                points: {{ answer.points or 0 }},
+                moodImpact: {{ answer.mood_impact or 0 }},
+                feedback: {{ (answer.feedback or '') | tojson }},
+                knowledgeLink: ''
+            }
+        });
+        connections.push({
+            from: 'step_{{ step.id }}',
+            to: 'answer_{{ answer.id }}'
+        });
+        nodeIdCounter = Math.max(nodeIdCounter, {{ answer.id }} + 1);
+        {% endfor %}
         {% endfor %}
 
         // Try to load saved visual data first, fallback to generated data
@@ -849,32 +915,50 @@
                 const response = await fetch(`/admin/trainer/scenario/${scenarioId}/visual/load`);
                 const result = await response.json();
 
+                console.log('Visual load result:', JSON.stringify(result).substring(0, 500));
+
                 if (result.success && result.nodes && result.nodes.length > 0) {
-                    // Use saved visual data
-                    nodes = result.nodes.map(n => ({
-                        id: n.id,
-                        type: n.type,
-                        x: n.x,
-                        y: n.y,
-                        data: {
-                            message: n.label || '',
-                            mood: n.mood || 'neutral',
-                            answers: n.answers || [],
-                            condition: n.condition || '',
-                            endType: n.endType || 'success',
-                            stepId: n.stepId,
-                            stepNum: n.stepNum,
-                            clientName: n.clientName || 'Клиент',
-                            isCorrect: n.isCorrect || false,
-                            moodImpact: n.moodImpact || 0,
-                            feedback: n.feedback || '',
-                            knowledgeLink: n.knowledgeLink || ''
+                    // Use saved visual data — ответы приходят как отдельные узлы
+                    nodes = result.nodes.map(n => {
+                        if (n.type === 'answer') {
+                            return {
+                                id: n.id,
+                                type: 'answer',
+                                x: n.x,
+                                y: n.y,
+                                data: {
+                                    text: n.label || '',
+                                    isCorrect: n.isCorrect || false,
+                                    isPartial: n.isPartial || false,
+                                    points: n.points || 0,
+                                    moodImpact: n.moodImpact || 0,
+                                    feedback: n.feedback || '',
+                                    knowledgeLink: n.knowledgeLink || ''
+                                }
+                            };
                         }
-                    }));
+                        return {
+                            id: n.id,
+                            type: n.type,
+                            x: n.x,
+                            y: n.y,
+                            data: {
+                                message: n.label || '',
+                                mood: n.mood || 'neutral',
+                                answers: [],
+                                condition: n.condition || '',
+                                endType: n.endType || 'success',
+                                stepId: n.stepId,
+                                stepNum: n.stepNum,
+                                clientName: n.clientName || 'Клиент'
+                            }
+                        };
+                    });
 
                     connections = result.connections.map(c => ({
                         from: c.fromId,
-                        to: c.toId
+                        to: c.toId,
+                        type: c.type || null
                     }));
 
                     // Update node counter
@@ -884,9 +968,10 @@
                     });
                 }
             } catch (e) {
-                console.log('Using initial data from steps');
+                console.log('loadVisualData error:', e);
             }
 
+            console.log('Rendering nodes:', nodes.length, 'connections:', connections.length);
             renderNodes();
             updateConnections();
         }
@@ -983,15 +1068,9 @@
             newNode.x += 50;  // Offset
             newNode.y += 50;
 
-            // Clear IDs from answers if copying client node
-            if (newNode.data && newNode.data.answers) {
-                newNode.data.answers = newNode.data.answers.map(a => ({
-                    ...a,
-                    id: null
-                }));
-            }
             if (newNode.data) {
                 newNode.data.stepId = null;
+                newNode.data.answerId = null;
             }
 
             nodes.push(newNode);
@@ -1014,81 +1093,79 @@
         // === AUTO-LAYOUT FUNCTION ===
         function autoLayout() {
             if (!confirm('Автоматически расположить узлы? Текущие позиции будут изменены.')) return;
-
             saveState();
 
-            // Find root nodes (no incoming connections)
-            const roots = nodes.filter(n =>
-                !connections.some(c => c.to === n.id)
-            );
+            const NODE_W = 240;
+            const HORIZ_GAP = 30;   // отступ между соседними узлами
+            const VERT_GAP = 180;   // отступ по вертикали между уровнями
+            const START_X = 200;
+            const START_Y = 80;
 
-            const LEVEL_HEIGHT = 200;
-            const NODE_WIDTH = 280;
-            const MARGIN = 50;
-            const canvasWidth = 3000;
+            const positioned = new Set();
 
-            let visited = new Set();
-            let levels = {};  // { nodeId: level }
-
-            // BFS for level assignment
-            function assignLevels(startNodes) {
-                let queue = startNodes.map(n => ({ node: n, level: 0 }));
-
-                while (queue.length > 0) {
-                    const { node, level } = queue.shift();
-                    if (visited.has(node.id)) continue;
-
-                    visited.add(node.id);
-                    levels[node.id] = level;
-
-                    // Find children
-                    const children = connections
-                        .filter(c => c.from === node.id)
-                        .map(c => nodes.find(n => n.id === c.to))
-                        .filter(Boolean);
-
-                    children.forEach(child => {
-                        if (!visited.has(child.id)) {
-                            queue.push({ node: child, level: level + 1 });
-                        }
-                    });
-                }
+            // Получить детей узла
+            function getChildren(nodeId) {
+                return connections
+                    .filter(c => c.from === nodeId)
+                    .map(c => nodes.find(n => n.id === c.to))
+                    .filter(Boolean);
             }
 
-            assignLevels(roots.length > 0 ? roots : (nodes.length > 0 ? [nodes[0]] : []));
+            // Рекурсивно вычислить ширину поддерева (в пикселях)
+            function subtreeWidth(nodeId, visited = new Set()) {
+                if (visited.has(nodeId)) return NODE_W + HORIZ_GAP;
+                visited.add(nodeId);
+                const children = getChildren(nodeId).filter(c => !visited.has(c.id));
+                if (children.length === 0) return NODE_W + HORIZ_GAP;
+                return children.reduce((sum, c) => sum + subtreeWidth(c.id, visited), 0);
+            }
 
-            // Group by levels
-            const levelGroups = {};
-            Object.entries(levels).forEach(([nodeId, level]) => {
-                if (!levelGroups[level]) levelGroups[level] = [];
-                levelGroups[level].push(nodeId);
-            });
+            // Рекурсивно расставить узлы
+            function placeSubtree(nodeId, centerX, y, visited = new Set()) {
+                if (visited.has(nodeId)) return;
+                visited.add(nodeId);
+                positioned.add(nodeId);
 
-            // Position nodes
-            Object.entries(levelGroups).forEach(([level, nodeIds]) => {
-                const y = parseInt(level) * LEVEL_HEIGHT + MARGIN;
-                const totalWidth = nodeIds.length * NODE_WIDTH;
-                const startX = Math.max(MARGIN, (canvasWidth - totalWidth) / 2);
+                const node = nodes.find(n => n.id === nodeId);
+                if (!node) return;
 
-                nodeIds.forEach((nodeId, idx) => {
-                    const node = nodes.find(n => n.id === nodeId);
-                    if (node) {
-                        node.x = startX + idx * NODE_WIDTH;
-                        node.y = y;
-                    }
+                node.x = centerX - NODE_W / 2;
+                node.y = y;
+
+                const children = getChildren(nodeId).filter(c => !visited.has(c.id));
+                if (children.length === 0) return;
+
+                const totalW = children.reduce((sum, c) => sum + subtreeWidth(c.id, new Set([...visited])), 0);
+                let curX = centerX - totalW / 2;
+
+                children.forEach(child => {
+                    const cw = subtreeWidth(child.id, new Set([...visited]));
+                    placeSubtree(child.id, curX + cw / 2, y + VERT_GAP, new Set([...visited]));
+                    curX += cw;
                 });
+            }
+
+            // Найти корневые узлы (без входящих соединений)
+            const roots = nodes.filter(n => !connections.some(c => c.to === n.id));
+            const startNodes = roots.length > 0 ? roots : (nodes.length > 0 ? [nodes[0]] : []);
+
+            let curRootX = START_X;
+            startNodes.forEach(root => {
+                const w = subtreeWidth(root.id);
+                placeSubtree(root.id, curRootX + w / 2, START_Y);
+                curRootX += w;
             });
 
-            // Handle disconnected nodes
-            let offsetY = (Object.keys(levelGroups).length) * LEVEL_HEIGHT + MARGIN;
-            nodes.filter(n => !levels[n.id]).forEach((node, idx) => {
-                node.x = MARGIN + (idx % 4) * NODE_WIDTH;
-                node.y = offsetY + Math.floor(idx / 4) * LEVEL_HEIGHT;
+            // Отдельно стоящие узлы — внизу
+            let floatX = curRootX + HORIZ_GAP;
+            nodes.filter(n => !positioned.has(n.id)).forEach((node, idx) => {
+                node.x = floatX + (idx % 4) * (NODE_W + HORIZ_GAP);
+                node.y = START_Y + Math.floor(idx / 4) * VERT_GAP;
             });
 
             renderNodes();
             updateConnections();
-            showToast('Узлы расположены автоматически');
+            showToast('Узлы расположены как дерево');
         }
 
         // Node rendering
@@ -1145,25 +1222,24 @@
                     break;
             }
 
+            // Кнопки быстрого добавления
+            let quickAddHtml = '';
+            if (node.type === 'client') {
+                quickAddHtml = `<div class="node-quick-add"><button class="quick-add-btn" onclick="event.stopPropagation(); addAnswerToNode('${node.id}')">+ Ответ</button></div>`;
+            } else if (node.type === 'answer') {
+                quickAddHtml = `<div class="node-quick-add"><button class="quick-add-btn" onclick="event.stopPropagation(); addReplicaToAnswer('${node.id}')">+ Реплика</button></div>`;
+            }
+
             el.innerHTML = `
                 <div class="node-header">
                     <span>${headerText}</span>
                 </div>
                 <div class="node-body">${escapeHtml(bodyText).substring(0, 150)}${bodyText.length > 150 ? '...' : ''}</div>
-                ${node.type === 'client' && node.data.answers && node.data.answers.length > 0 ? `
-                    <div class="node-answers">
-                        ${node.data.answers.slice(0, 3).map(a => `
-                            <div class="node-answer-item ${a.isCorrect ? 'correct' : a.isPartial ? 'partial' : 'wrong'}">
-                                ${escapeHtml(a.text).substring(0, 30)}...
-                            </div>
-                        `).join('')}
-                        ${node.data.answers.length > 3 ? `<div style="font-size: 11px; color: #999;">+${node.data.answers.length - 3} ещё</div>` : ''}
-                    </div>
-                ` : ''}
                 <div class="node-footer">
                     <span class="node-step-num">${footerText}</span>
                     <button class="node-delete" onclick="deleteNode('${node.id}')">Удалить</button>
                 </div>
+                ${quickAddHtml}
                 <div class="conn-point input" data-node="${node.id}" data-type="input"></div>
                 <div class="conn-point output" data-node="${node.id}" data-type="output"></div>
             `;
@@ -1231,8 +1307,8 @@
 
             creatingConnection = {
                 fromNode: node,
-                fromX: node.x + 200, // right side of node
-                fromY: node.y + 50  // middle
+                fromX: node.x + 110, // центр узла по X (примерно)
+                fromY: node.y + 150  // нижний край узла
             };
 
             document.addEventListener('mousemove', onCreateConnection);
@@ -1274,9 +1350,14 @@
                 const toNode = nodes.find(n => n.id === toNodeId);
 
                 if (toNode && toNode.id !== creatingConnection.fromNode.id) {
+                    // Автоматически помечаем answer→client как branch
+                    const fromType = creatingConnection.fromNode.type;
+                    const toType = toNode.type;
+                    const connType = (fromType === 'answer' && toType === 'client') ? 'branch' : null;
                     connections.push({
                         from: creatingConnection.fromNode.id,
-                        to: toNode.id
+                        to: toNode.id,
+                        type: connType
                     });
                     saveState();
                     updateConnections();
@@ -1289,8 +1370,9 @@
         }
 
         function createCurvePath(x1, y1, x2, y2) {
-            const midX = (x1 + x2) / 2;
-            return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+            // Вертикальная кривая Безье (сверху вниз)
+            const midY = (y1 + y2) / 2;
+            return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
         }
 
         function updateConnections() {
@@ -1308,19 +1390,41 @@
 
                 if (!fromEl || !toEl) return;
 
-                const x1 = fromNode.x + fromEl.offsetWidth;
-                const y1 = fromNode.y + fromEl.offsetHeight / 2;
-                const x2 = toNode.x;
-                const y2 = toNode.y + toEl.offsetHeight / 2;
+                // Выход снизу по центру, вход сверху по центру
+                const x1 = fromNode.x + fromEl.offsetWidth / 2;
+                const y1 = fromNode.y + fromEl.offsetHeight;
+                const x2 = toNode.x + toEl.offsetWidth / 2;
+                const y2 = toNode.y;
 
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                line.classList.add('connection-line');
                 line.setAttribute('d', createCurvePath(x1, y1, x2, y2));
+
+                // Стрелки ветвления (answer→client) — синие пунктирные
+                const isBranch = conn.type === 'branch' || (fromNode.type === 'answer' && toNode.type === 'client');
+                if (isBranch) {
+                    line.classList.add('connection-line', 'branch-line');
+                } else {
+                    line.classList.add('connection-line');
+                }
+
                 connectionsSvg.appendChild(line);
             });
         }
 
         // Node selection
+        function getNextStepLabel(answerNode) {
+            // Ищем connection от этого answer к client-узлу
+            const branchConn = connections.find(c => c.from === answerNode.id && nodes.find(n => n.id === c.to && n.type === 'client'));
+            if (branchConn) {
+                const targetNode = nodes.find(n => n.id === branchConn.to);
+                if (targetNode) {
+                    const msg = (targetNode.data.message || '').substring(0, 40);
+                    return `Шаг ${targetNode.data.stepNum || '?'}: ${msg}...`;
+                }
+            }
+            return 'Следующий по порядку';
+        }
+
         function selectNode(node, e) {
             if (e) e.stopPropagation();
 
@@ -1341,35 +1445,6 @@
 
             switch(node.type) {
                 case 'client':
-                    const answers = node.data.answers || [];
-                    let answersHtml = answers.map((a, idx) => `
-                        <div class="answer-edit-item" data-idx="${idx}">
-                            <div class="answer-edit-header">
-                                <span class="answer-num">#${idx + 1}</span>
-                                <button class="answer-delete-btn" onclick="deleteAnswer(${idx})">✕</button>
-                            </div>
-                            <textarea class="prop-textarea answer-text" placeholder="Текст ответа" onchange="updateAnswer(${idx}, 'text', this.value)">${escapeHtml(a.text || '')}</textarea>
-                            <div class="answer-options">
-                                <label class="answer-option">
-                                    <input type="radio" name="answer_type_${idx}" value="correct" ${a.isCorrect ? 'checked' : ''} onchange="setAnswerType(${idx}, 'correct')">
-                                    <span class="option-correct">Верный</span>
-                                </label>
-                                <label class="answer-option">
-                                    <input type="radio" name="answer_type_${idx}" value="partial" ${a.isPartial ? 'checked' : ''} onchange="setAnswerType(${idx}, 'partial')">
-                                    <span class="option-partial">Частично</span>
-                                </label>
-                                <label class="answer-option">
-                                    <input type="radio" name="answer_type_${idx}" value="wrong" ${!a.isCorrect && !a.isPartial ? 'checked' : ''} onchange="setAnswerType(${idx}, 'wrong')">
-                                    <span class="option-wrong">Неверный</span>
-                                </label>
-                            </div>
-                            <div class="answer-points">
-                                <label>Баллы: <input type="number" class="prop-input-small" value="${a.points || 0}" onchange="updateAnswer(${idx}, 'points', parseInt(this.value))"></label>
-                                <label>Влияние: <input type="number" class="prop-input-small" value="${a.moodImpact || 0}" onchange="updateAnswer(${idx}, 'moodImpact', parseInt(this.value))"></label>
-                            </div>
-                        </div>
-                    `).join('');
-
                     html = `
                         <div class="prop-group">
                             <label class="prop-label">Сообщение клиента</label>
@@ -1389,13 +1464,7 @@
                                 <option value="delight" ${node.data.mood === 'delight' ? 'selected' : ''}>Восторг</option>
                             </select>
                         </div>
-                        <div class="prop-group">
-                            <label class="prop-label">Варианты ответов (${answers.length})</label>
-                            <div class="answers-list">
-                                ${answersHtml}
-                            </div>
-                            <button class="btn-add-answer" onclick="addAnswer()">+ Добавить ответ</button>
-                        </div>
+                        <p style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 10px;">Добавляйте ответы через кнопку "Ответ" в тулбаре и соединяйте стрелками</p>
                     `;
                     break;
                 case 'condition':
@@ -1452,6 +1521,11 @@
                             <label class="prop-label">Ссылка на Базу Знаний</label>
                             <input class="prop-input" placeholder="https://..." value="${escapeHtml(node.data.knowledgeLink || '')}" onchange="updateNodeData('knowledgeLink', this.value)">
                         </div>
+                        <div class="prop-group">
+                            <label class="prop-label">Следующий шаг (ветвление)</label>
+                            <div class="prop-input" style="background: #f5f5f5; color: #666; cursor: default;">${getNextStepLabel(node)}</div>
+                            <small style="color: #999;">Определяется стрелкой от ответа к шагу клиента</small>
+                        </div>
                     `;
                     break;
                 case 'end':
@@ -1478,65 +1552,65 @@
             selectNode(selectedNode);
         }
 
-        // Answer management functions
-        function addAnswer() {
-            if (!selectedNode || selectedNode.type !== 'client') return;
-            if (!selectedNode.data.answers) selectedNode.data.answers = [];
+        // === БЫСТРОЕ ДОБАВЛЕНИЕ УЗЛОВ ===
+        function addAnswerToNode(clientNodeId) {
+            const parentNode = nodes.find(n => n.id === clientNodeId);
+            if (!parentNode) return;
 
-            selectedNode.data.answers.push({
-                id: null,
-                text: 'Новый ответ',
-                isCorrect: false,
-                isPartial: false,
-                points: 0,
-                moodImpact: 0
-            });
+            // Считаем уже существующие ответы для отступа
+            const existingAnswerCount = connections
+                .filter(c => c.from === clientNodeId)
+                .filter(c => nodes.find(n => n.id === c.to && n.type === 'answer'))
+                .length;
 
+            const newNode = {
+                id: `node_${nodeIdCounter++}`,
+                type: 'answer',
+                x: parentNode.x + existingAnswerCount * 260,
+                y: parentNode.y + 200,
+                data: { text: 'Ответ оператора', isCorrect: false, isPartial: false, points: 0, moodImpact: 0, feedback: '', knowledgeLink: '' }
+            };
+
+            nodes.push(newNode);
+            connections.push({ from: clientNodeId, to: newNode.id });
             saveState();
             renderNodes();
-            showProperties(selectedNode);
+            updateConnections();
+            selectNode(newNode);
+            showToast('Ответ добавлен');
         }
 
-        function deleteAnswer(idx) {
-            if (!selectedNode || !selectedNode.data.answers) return;
-            if (!confirm('Удалить этот ответ?')) return;
+        function addReplicaToAnswer(answerNodeId) {
+            const parentNode = nodes.find(n => n.id === answerNodeId);
+            if (!parentNode) return;
 
-            selectedNode.data.answers.splice(idx, 1);
-            saveState();
-            renderNodes();
-            showProperties(selectedNode);
-        }
-
-        function updateAnswer(idx, key, value) {
-            if (!selectedNode || !selectedNode.data.answers || !selectedNode.data.answers[idx]) return;
-            selectedNode.data.answers[idx][key] = value;
-            saveState();
-            renderNodes();
-        }
-
-        function setAnswerType(idx, type) {
-            if (!selectedNode || !selectedNode.data.answers || !selectedNode.data.answers[idx]) return;
-
-            const answer = selectedNode.data.answers[idx];
-            answer.isCorrect = (type === 'correct');
-            answer.isPartial = (type === 'partial');
-
-            // Автоматически назначаем баллы
-            if (type === 'correct') {
-                answer.points = 10;
-                answer.moodImpact = 10;
-            } else if (type === 'partial') {
-                answer.points = 5;
-                answer.moodImpact = 0;
-            } else {
-                answer.points = 0;
-                answer.moodImpact = -10;
+            // Проверяем что у ответа ещё нет следующей реплики
+            const hasNext = connections.some(
+                c => c.from === answerNodeId && nodes.find(n => n.id === c.to && n.type === 'client')
+            );
+            if (hasNext) {
+                showToast('Этот ответ уже ведёт к реплике', true);
+                return;
             }
 
+            const newNode = {
+                id: `node_${nodeIdCounter++}`,
+                type: 'client',
+                x: parentNode.x,
+                y: parentNode.y + 200,
+                data: { message: 'Новое сообщение клиента', clientName: 'Клиент', mood: 'neutral', answers: [] }
+            };
+
+            nodes.push(newNode);
+            connections.push({ from: answerNodeId, to: newNode.id, type: 'branch' });
             saveState();
             renderNodes();
-            showProperties(selectedNode);
+            updateConnections();
+            selectNode(newNode);
+            showToast('Реплика добавлена');
         }
+
+        // Answer management — ответы теперь отдельные узлы, управляются через тулбар
 
         // Add new node
         function addNode(type) {
@@ -1642,25 +1716,41 @@
         // Save scenario
         async function saveScenario() {
             // Prepare nodes data for API
-            const nodesData = nodes.map(n => ({
-                id: n.id,
-                type: n.type,
-                x: n.x,
-                y: n.y,
-                label: n.data.message || n.data.condition || '',
-                mood: n.data.mood || 'neutral',
-                isCorrect: n.data.isCorrect || false,
-                moodImpact: n.data.moodImpact || 0,
-                feedback: n.data.feedback || '',
-                knowledgeLink: n.data.knowledgeLink || '',
-                answers: n.data.answers || []
-            }));
+            const nodesData = nodes.map(n => {
+                if (n.type === 'answer') {
+                    return {
+                        id: n.id,
+                        type: 'answer',
+                        x: n.x,
+                        y: n.y,
+                        label: n.data.text || '',
+                        isCorrect: n.data.isCorrect || false,
+                        isPartial: n.data.isPartial || false,
+                        points: n.data.points || 0,
+                        moodImpact: n.data.moodImpact || 0,
+                        feedback: n.data.feedback || '',
+                        knowledgeLink: n.data.knowledgeLink || ''
+                    };
+                }
+                return {
+                    id: n.id,
+                    type: n.type,
+                    x: n.x,
+                    y: n.y,
+                    label: n.data.message || n.data.condition || '',
+                    mood: n.data.mood || 'neutral',
+                    clientName: n.data.clientName || 'Клиент',
+                    endType: n.data.endType || 'success',
+                    answers: []
+                };
+            });
 
             // Prepare connections data
             const connectionsData = connections.map(c => ({
                 id: `conn_${c.from}_${c.to}`,
                 fromId: c.from,
-                toId: c.to
+                toId: c.to,
+                type: c.type || null
             }));
 
             const data = {

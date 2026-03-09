@@ -297,9 +297,65 @@
             border-color: #ff9800 !important;
         }
 
+        /* Step message block */
+        .step-message-block {
+            border-left: 4px solid #2196F3;
+            background: rgba(33, 150, 243, 0.05);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 0;
+        }
+
+        .step-message-block .block-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64b5f6;
+            margin-bottom: 12px;
+        }
+
+        /* Step answers block */
+        .step-answers-block {
+            border-left: 4px solid #4caf50;
+            background: rgba(76, 175, 80, 0.05);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .step-answers-block .block-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #66bb6a;
+            margin-bottom: 12px;
+        }
+
+        /* Divider between blocks */
+        .step-block-divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 12px 0;
+            color: #555;
+            font-size: 11px;
+        }
+
+        .step-block-divider::before,
+        .step-block-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, #2196F3, #4caf50);
+            opacity: 0.3;
+        }
+
         /* Answers */
         .answers-list {
-            margin-top: 15px;
+            margin-top: 0;
         }
 
         .answer-item {
@@ -606,7 +662,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" id="scenarioForm">
+        <form method="POST" id="scenarioForm" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <!-- Basic Info Section -->
@@ -747,6 +803,14 @@
                                value="{{ scenario.initial_loyalty if scenario else 100 }}">
                         <div class="form-hint">От 50 до 200%. При 0% клиент "бросает трубку" (Game Over).</div>
                     </div>
+
+                    <div class="form-group">
+                        <label for="silence_messages">Реплики молчания клиента (при таймауте)</label>
+                        <textarea id="silence_messages" name="silence_messages" rows="4"
+                                  placeholder="Каждая реплика с новой строки. Например:&#10;Алло? Вы там?&#10;Что вы молчите?!&#10;Ответьте мне наконец!"
+                                  style="width:100%; background:#1a1a2e; border:1px solid #2a2a3e; color:#fff; padding:8px; border-radius:6px; resize:vertical;">{{ scenario.silence_messages if scenario and scenario.silence_messages else '' }}</textarea>
+                        <div class="form-hint">Реплики показываются по порядку при каждом таймауте. Если не заполнено — используются стандартные фразы.</div>
+                    </div>
                 </div>
             </div>
 
@@ -790,6 +854,38 @@
                 </div>
             </div>
 
+            <!-- Аватары клиента (5 эмоций) -->
+            {% if scenario %}
+            <div class="form-section">
+                <h2>Аватар клиента</h2>
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                    Загрузите изображения для каждой эмоции. Если не загружены — используется стандартный аватар (Максим).
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
+                    {% set emotions = [
+                        ('angry', '😡 Гнев', 'Раздражение 70-100%'),
+                        ('irritated', '😤 Раздражение', 'Раздражение 40-70%'),
+                        ('neutral', '😐 Нейтрально', 'Раздражение 20-40%'),
+                        ('satisfied', '😊 Удовлетворение', 'Раздражение 5-20%'),
+                        ('delighted', '🤩 Восторг', 'Раздражение 0-5%')
+                    ] %}
+                    {% for emo_key, emo_label, emo_hint in emotions %}
+                    <div style="background: #16213e; border: 1px solid #2a2a3e; border-radius: 10px; padding: 12px; text-align: center;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #e0e0e0;">{{ emo_label }}</div>
+                        <div style="font-size: 11px; color: #888; margin-bottom: 10px;">{{ emo_hint }}</div>
+                        {% if avatar_images and avatar_images.get(emo_key) %}
+                        <img src="{{ url_for('static', filename=avatar_images[emo_key]) }}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e;">
+                        {% else %}
+                        <div style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
+                        {% endif %}
+                        <input type="file" name="avatar_{{ emo_key }}" accept="image/*"
+                               style="font-size: 11px; color: #999; width: 100%;">
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             {% if scenario %}
             <!-- Steps Section (only for existing scenarios) -->
             <div class="steps-section">
@@ -808,23 +904,29 @@
                             </div>
                         </div>
 
-                        <div class="client-message-input">
-                            <div class="client-info">
-                                <input type="text" name="step_{{ step.id }}_avatar" value="{{ step.client_avatar or '' }}" placeholder="Avatar">
-                                <input type="text" name="step_{{ step.id }}_name" value="{{ step.client_name or 'Клиент' }}" placeholder="Имя клиента">
-                                <select name="step_{{ step.id }}_mood" class="mood-select">
-                                    <option value="neutral" {% if step.initial_mood == 'neutral' %}selected{% endif %}>Нейтрально</option>
-                                    <option value="anger" {% if step.initial_mood == 'anger' %}selected{% endif %}>Гнев</option>
-                                    <option value="irritation" {% if step.initial_mood == 'irritation' %}selected{% endif %}>Раздражение</option>
-                                    <option value="satisfaction" {% if step.initial_mood == 'satisfaction' %}selected{% endif %}>Удовлетворение</option>
-                                    <option value="delight" {% if step.initial_mood == 'delight' %}selected{% endif %}>Восторг</option>
-                                </select>
+                        <div class="step-message-block">
+                            <div class="block-title">💬 Реплика клиента</div>
+                            <div class="client-message-input" style="margin-bottom: 0;">
+                                <div class="client-info">
+                                    <input type="text" name="step_{{ step.id }}_avatar" value="{{ step.client_avatar or '' }}" placeholder="Avatar">
+                                    <input type="text" name="step_{{ step.id }}_name" value="{{ step.client_name or 'Клиент' }}" placeholder="Имя клиента">
+                                    <select name="step_{{ step.id }}_mood" class="mood-select">
+                                        <option value="neutral" {% if step.initial_mood == 'neutral' %}selected{% endif %}>Нейтрально</option>
+                                        <option value="anger" {% if step.initial_mood == 'anger' %}selected{% endif %}>Гнев</option>
+                                        <option value="irritation" {% if step.initial_mood == 'irritation' %}selected{% endif %}>Раздражение</option>
+                                        <option value="satisfaction" {% if step.initial_mood == 'satisfaction' %}selected{% endif %}>Удовлетворение</option>
+                                        <option value="delight" {% if step.initial_mood == 'delight' %}selected{% endif %}>Восторг</option>
+                                    </select>
+                                </div>
+                                <textarea name="step_{{ step.id }}_message" placeholder="Сообщение клиента...">{{ step.client_message }}</textarea>
                             </div>
-                            <textarea name="step_{{ step.id }}_message" placeholder="Сообщение клиента...">{{ step.client_message }}</textarea>
                         </div>
 
-                        <div class="answers-list">
-                            <strong style="font-size: 13px; color: #666; display: block; margin-bottom: 10px;">Варианты ответов:</strong>
+                        <div class="step-block-divider">&#8595;</div>
+
+                        <div class="step-answers-block">
+                            <div class="block-title">✅ Варианты ответов оператора</div>
+                            <div class="answers-list">
 
                             {% for answer in step.answers %}
                             <div class="answer-item" data-answer-id="{{ answer.id }}">
@@ -871,6 +973,17 @@
                                         <input type="text" name="answer_{{ answer.id }}_knowledge_link"
                                                value="{{ answer.knowledge_link or '' }}" placeholder="https://...">
                                     </div>
+                                    <div class="form-group" style="max-width: 200px;">
+                                        <label>Следующий шаг</label>
+                                        <select name="answer_{{ answer.id }}_next_step_id">
+                                            <option value="">По порядку</option>
+                                            {% for s in steps %}
+                                            <option value="{{ s.id }}" {% if answer.next_step_id == s.id %}selected{% endif %}>
+                                                Шаг {{ s.step_num }}: {{ s.client_message[:30] }}{% if s.client_message|length > 30 %}...{% endif %}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                             {% endfor %}
@@ -878,6 +991,7 @@
                             <button type="button" class="add-btn" onclick="addAnswer({{ step.id }})">
                                 + Добавить вариант ответа
                             </button>
+                            </div>
                         </div>
                     </div>
                     {% endfor %}

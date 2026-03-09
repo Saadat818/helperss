@@ -542,13 +542,13 @@
 
             <div class="score-display">
                 <div class="score-item">
-                    <div class="score-value">{{ result.percent }}%</div>
-                    <div class="score-label">Результат</div>
+                    <div class="score-value">{{ result.score }}/{{ result.max_score }}</div>
+                    <div class="score-label">Баллы</div>
                 </div>
                 <div class="score-divider"></div>
                 <div class="score-item">
-                    <div class="score-value">{{ result.score }}</div>
-                    <div class="score-label">из {{ result.max_score }} баллов</div>
+                    <div class="score-value">{{ result.percent }}%</div>
+                    <div class="score-label">Результат</div>
                 </div>
             </div>
 

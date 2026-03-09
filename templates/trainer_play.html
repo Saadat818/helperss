@@ -676,8 +676,12 @@
     <div class="game-container">
         <!-- Левая панель - Клиент -->
         <div class="left-panel">
-            <img src="{{ url_for('static', filename='images/maxim_avatar.png') }}" alt="Максим" class="avatar-img" id="clientImg">
-            <div class="avatar-name">Максим</div>
+            {% if avatar_images and avatar_images.get('neutral') %}
+            <img src="{{ url_for('static', filename=avatar_images.get('neutral')) }}" alt="{{ client_name }}" class="avatar-img" id="clientImg">
+            {% else %}
+            <img src="{{ url_for('static', filename='images/maxim_avatar.png') }}" alt="{{ client_name }}" class="avatar-img" id="clientImg">
+            {% endif %}
+            <div class="avatar-name">{{ client_name }}</div>
             <div class="avatar-role">Клиент</div>
 
             <div class="emotion-container">
@@ -708,7 +712,7 @@
             <div class="top-bar">
                 <div class="scenario-title">{{ scenario.title }}</div>
                 <div class="top-stats">
-                    <div class="score-badge">⭐ <span id="scoreValue">0</span></div>
+                    <div class="score-badge">⭐ <span id="scoreValue">0</span>/<span id="maxScoreValue">{{ scenario.total_points }}</span></div>
                     <div class="timer-badge" id="timerBadge">⏱️ <span id="timerValue">{{ scenario.timer_seconds or 15 }}</span>с</div>
                 </div>
                 <a href="{{ url_for('trainer_menu') }}" class="exit-btn">✕ Выход</a>
@@ -839,6 +843,23 @@
         let timeLeft = timerSeconds;
         let emotionTimer = null;
         let answersHistory = [];
+        let answerLocked = false;
+        let resultSaved = false;
+        let silenceCount = 0;  // сколько раз клиент реагировал на молчание
+        let timeoutCount = 0;  // общее число таймаутов за сессию
+
+        // Реплики клиента при молчании специалиста — из сценария или стандартные
+        const silenceMessagesRaw = {{ (scenario.silence_messages or '') | tojson }};
+        const silenceMessages = silenceMessagesRaw
+            ? silenceMessagesRaw.split('\n').map(s => s.trim()).filter(s => s.length > 0)
+            : [
+                "Алло? Вы меня слышите?",
+                "Эй, меня кто-нибудь слышит?",
+                "Что вы молчите?!",
+                "Ответьте мне наконец!",
+                "Вы вообще там?! Я жду!",
+                "Это просто невозможно! Почему вы молчите?!"
+              ];
 
         const dialogArea = document.getElementById('dialogArea');
         const answersList = document.getElementById('answersList');
@@ -851,6 +872,9 @@
         const currentStepEl = document.getElementById('currentStep');
         const pointsInfo = document.getElementById('pointsInfo');
         const clientImg = document.getElementById('clientImg');
+        const avatarImages = {{ avatar_images | tojson }};
+        const hasCustomAvatars = avatarImages && Object.keys(avatarImages).length >= 3;
+        const staticBase = '{{ url_for("static", filename="") }}';
         const clientCard = document.getElementById('clientCard');
         const clientCardBody = document.getElementById('clientCardBody');
 
@@ -876,6 +900,7 @@
         async function loadStep(stepNum) {
             currentStepNum = stepNum;
             currentStepEl.textContent = stepNum;
+            silenceCount = 0;  // сброс счётчика молчания на каждом новом шаге
 
             try {
                 const response = await fetch(`/api/trainer/step/${scenarioId}/${stepNum}`);
@@ -909,6 +934,31 @@
             }
         }
 
+        async function loadStepById(stepId) {
+            silenceCount = 0;  // сброс счётчика молчания на каждом новом шаге
+            try {
+                const response = await fetch(`/api/trainer/step_by_id/${stepId}`);
+                const data = await response.json();
+
+                if (!data.success) {
+                    console.error('Error loading step by id:', data.error);
+                    showSuccess();
+                    return;
+                }
+
+                currentStepNum = data.step.step_num;
+                currentStepEl.textContent = currentStepNum;
+
+                addBubble(data.step.client_message, 'client');
+                showAnswers(data.step.answers);
+                startTimer();
+                startEmotionTimer();
+                scrollToBottom();
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
         function addBubble(text, type, isWrong = false, isPartial = false) {
             const bubble = document.createElement('div');
             let classes = `speech-bubble ${type}`;
@@ -920,6 +970,7 @@
         }
 
         function showAnswers(answers) {
+            answerLocked = false;
             answersList.innerHTML = '';
 
             if (!answers || answers.length === 0) {
@@ -937,8 +988,11 @@
         }
 
         async function selectAnswer(answer) {
+            if (answerLocked) return;
+            answerLocked = true;
             stopTimer();
             stopEmotionTimer();
+            let lastNextStepId = null;
 
             document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.add('disabled'));
 
@@ -957,6 +1011,7 @@
                 const result = await response.json();
 
                 if (result.success) {
+                    lastNextStepId = result.next_step_id || null;
                     const isWrong = !result.is_correct && !result.is_partial;
                     const isPartial = result.is_partial;
                     addBubble(answer.answer_text, 'operator', isWrong, isPartial);
@@ -997,7 +1052,10 @@
             scrollToBottom();
 
             setTimeout(() => {
-                if (currentStepNum < totalSteps) {
+                // Ветвление: если у ответа есть next_step_id — грузим по ID
+                if (lastNextStepId) {
+                    loadStepById(lastNextStepId);
+                } else if (currentStepNum < totalSteps) {
                     loadStep(currentStepNum + 1);
                 } else {
                     showSuccess();
@@ -1030,15 +1088,42 @@
         function handleTimeout() {
             stopTimer();
             stopEmotionTimer();
+            // Блокируем кнопки на время показа реплики молчания
+            answerLocked = true;
+            document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.add('disabled'));
+
             updateEmotion(20);
             addBubble("...", 'operator', true);
 
+            // Фиксируем таймаут в истории для аналитики
+            timeoutCount++;
+            answersHistory.push({
+                step_num: currentStepNum,
+                answer_id: null,
+                answer_text: '...',
+                is_correct: false,
+                is_partial: false,
+                is_timeout: true,
+                points: 0,
+                feedback: 'Время вышло — ответ не выбран',
+                knowledge_link: null
+            });
+
             if (emotion >= 100) { showGameOver(); return; }
 
+            // Клиент реагирует на молчание — не переходим к следующему шагу
+            const silenceMsg = silenceMessages[Math.min(silenceCount, silenceMessages.length - 1)];
+            silenceCount++;
+
             setTimeout(() => {
-                if (currentStepNum < totalSteps) loadStep(currentStepNum + 1);
-                else showSuccess();
-            }, 1500);
+                addBubble(silenceMsg, 'client');
+                scrollToBottom();
+                // Разблокируем кнопки и перезапускаем таймер
+                answerLocked = false;
+                document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.remove('disabled'));
+                startTimer();
+                startEmotionTimer();
+            }, 1000);
         }
 
         function updateEmotion(change) {
@@ -1046,26 +1131,36 @@
             emotionBar.style.width = emotion + '%';
             emotionValue.textContent = emotion + '%';
 
+            let emoKey, emoFace, emoBarClass, emoValClass;
             if (emotion >= 70) {
-                emotionBar.className = 'emotion-bar danger';
-                emotionValue.className = 'emotion-value danger';
-                emotionFace.textContent = '😡';
-                clientImg.style.filter = 'hue-rotate(-30deg) saturate(1.5)';
+                emoKey = 'angry'; emoFace = '😡';
+                emoBarClass = 'emotion-bar danger'; emoValClass = 'emotion-value danger';
             } else if (emotion >= 40) {
-                emotionBar.className = 'emotion-bar warning';
-                emotionValue.className = 'emotion-value warning';
-                emotionFace.textContent = '😤';
-                clientImg.style.filter = 'hue-rotate(-15deg)';
+                emoKey = 'irritated'; emoFace = '😤';
+                emoBarClass = 'emotion-bar warning'; emoValClass = 'emotion-value warning';
             } else if (emotion >= 20) {
-                emotionBar.className = 'emotion-bar';
-                emotionValue.className = 'emotion-value';
-                emotionFace.textContent = '😐';
+                emoKey = 'neutral'; emoFace = '😐';
+                emoBarClass = 'emotion-bar'; emoValClass = 'emotion-value';
+            } else if (emotion >= 5) {
+                emoKey = 'satisfied'; emoFace = '😊';
+                emoBarClass = 'emotion-bar'; emoValClass = 'emotion-value';
+            } else {
+                emoKey = 'delighted'; emoFace = '🤩';
+                emoBarClass = 'emotion-bar'; emoValClass = 'emotion-value';
+            }
+
+            emotionBar.className = emoBarClass;
+            emotionValue.className = emoValClass;
+            emotionFace.textContent = emoFace;
+
+            if (hasCustomAvatars && avatarImages[emoKey]) {
+                clientImg.src = staticBase + avatarImages[emoKey];
                 clientImg.style.filter = '';
             } else {
-                emotionBar.className = 'emotion-bar';
-                emotionValue.className = 'emotion-value';
-                emotionFace.textContent = '😊';
-                clientImg.style.filter = '';
+                // Fallback: CSS-фильтр для Максима
+                if (emotion >= 70) clientImg.style.filter = 'hue-rotate(-30deg) saturate(1.5)';
+                else if (emotion >= 40) clientImg.style.filter = 'hue-rotate(-15deg)';
+                else clientImg.style.filter = '';
             }
         }
 
@@ -1315,6 +1410,8 @@
                 console.log('[Preview Mode] Results not saved');
                 return;
             }
+            if (resultSaved) return;
+            resultSaved = true;
 
             try {
                 const payload = {
@@ -1322,7 +1419,8 @@
                     score: score,
                     answers: answersHistory,
                     is_game_over: isGameOver,
-                    final_loyalty: 100 - emotion
+                    final_loyalty: 100 - emotion,
+                    timeout_count: timeoutCount
                 };
 
                 if (selectedTopicId) {

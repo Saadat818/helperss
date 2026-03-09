@@ -2454,11 +2454,31 @@ def trainer_play(scenario_id):
         except:
             pass
 
+    # Парсим аватары
+    avatar_images = {}
+    if scenario.get('avatar_images'):
+        try:
+            avatar_images = json.loads(scenario['avatar_images'])
+        except:
+            pass
+
+    # Парсим имя клиента
+    client_name = 'Максим'
+    if scenario.get('client_info_json'):
+        try:
+            ci = json.loads(scenario['client_info_json'])
+            if ci.get('name'):
+                client_name = ci['name']
+        except:
+            pass
+
     return render_template('trainer_play.html',
                          scenario=scenario,
                          total_steps=total_steps,
                          preview_mode=preview_mode,
-                         correct_topics=correct_topics)
+                         correct_topics=correct_topics,
+                         avatar_images=avatar_images,
+                         client_name=client_name)
 
 
 @app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
@@ -2507,6 +2527,43 @@ def trainer_get_step(scenario_id, step_num):
         'timer_seconds': scenario.get('timer_seconds', 15) if scenario else 15,
         'initial_loyalty': scenario.get('initial_loyalty', 100) if scenario else 100,
         'client_info': client_info
+    })
+
+
+@app.route('/api/trainer/step_by_id/<int:step_id>')
+@rate_limit(max_requests=120, window=60)
+def trainer_get_step_by_id(step_id):
+    """API: получить шаг по ID (для ветвления диалога)"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    step = trainer_mgr.get_step_by_id(step_id)
+    if not step:
+        return jsonify({'success': False, 'error': 'Шаг не найден'})
+
+    scenario = trainer_mgr.get_scenario(step['scenario_id'])
+
+    # Не отправляем информацию о правильности ответов
+    safe_answers = []
+    for answer in step.get('answers', []):
+        safe_answers.append({
+            'id': answer['id'],
+            'answer_text': answer['answer_text'],
+            'order_num': answer['order_num']
+        })
+
+    return jsonify({
+        'success': True,
+        'step': {
+            'id': step['id'],
+            'step_num': step['step_num'],
+            'client_message': step['client_message'],
+            'client_avatar': step['client_avatar'],
+            'client_name': step['client_name'],
+            'initial_mood': step.get('initial_mood', 'neutral'),
+            'answers': safe_answers
+        },
+        'timer_seconds': scenario.get('timer_seconds', 15) if scenario else 15
     })
 
 
@@ -2572,7 +2629,8 @@ def trainer_submit_answer():
             'new_mood': new_mood,
             'new_loyalty': new_loyalty,
             'knowledge_link': selected_answer.get('knowledge_link'),
-            'is_game_over': is_game_over
+            'is_game_over': is_game_over,
+            'next_step_id': selected_answer.get('next_step_id')
         })
 
     except Exception as e:
@@ -2886,13 +2944,37 @@ def admin_trainer_edit(scenario_id):
             'timer_seconds': request.form.get('timer_seconds', 15, type=int),
             'initial_loyalty': request.form.get('initial_loyalty', 100, type=int),
             'client_info_json': client_info_json,
-            'correct_topics': correct_topics_val
+            'correct_topics': correct_topics_val,
+            'silence_messages': request.form.get('silence_messages', '').strip()
         }
 
         # Сохраняем снимок текущей версии перед обновлением
         user_info = session.get('user_info', {})
         editor = user_info.get('username') or user_info.get('name', 'admin')
         trainer_mgr.save_version_snapshot(scenario_id, changed_by=editor)
+
+        # Обработка аватаров (5 эмоций)
+        avatar_images = {}
+        if scenario.get('avatar_images'):
+            try:
+                avatar_images = json.loads(scenario['avatar_images'])
+            except:
+                pass
+
+        emotion_keys = ['angry', 'irritated', 'neutral', 'satisfied', 'delighted']
+        for emo in emotion_keys:
+            file = request.files.get(f'avatar_{emo}')
+            if file and file.filename:
+                import os
+                from werkzeug.utils import secure_filename
+                ext = os.path.splitext(file.filename)[1].lower()
+                if ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                    fname = f"scenario_{scenario_id}_{emo}{ext}"
+                    fpath = os.path.join('static', 'uploads', 'avatars', fname)
+                    file.save(fpath)
+                    avatar_images[emo] = f"uploads/avatars/{fname}"
+
+        data['avatar_images'] = json.dumps(avatar_images, ensure_ascii=False) if avatar_images else ''
 
         result = trainer_mgr.update_scenario(scenario_id, data)
 
@@ -2935,7 +3017,8 @@ def admin_trainer_edit(scenario_id):
                         'points': request.form.get(f'answer_{answer_id}_points', 0, type=int),
                         'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip(),
                         'mood_impact': request.form.get(f'answer_{answer_id}_mood_impact', 0, type=int),
-                        'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None
+                        'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None,
+                        'next_step_id': request.form.get(f'answer_{answer_id}_next_step_id', type=int) or None
                     })
 
             flash('Сценарий успешно обновлен!')
@@ -2980,6 +3063,14 @@ def admin_trainer_edit(scenario_id):
     # Получаем историю версий
     version_history = trainer_mgr.get_scenario_version_history(scenario_id)
 
+    # Парсим аватары
+    avatar_images = {}
+    if scenario.get('avatar_images'):
+        try:
+            avatar_images = json.loads(scenario['avatar_images'])
+        except:
+            pass
+
     return render_template('admin_trainer_edit.html',
                          scenario=scenario,
                          levels=levels,
@@ -2990,7 +3081,8 @@ def admin_trainer_edit(scenario_id):
                          tags=tags,
                          scenario_tag_ids=scenario_tag_ids,
                          correct_topics=correct_topics,
-                         version_history=version_history)
+                         version_history=version_history,
+                         avatar_images=avatar_images)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/versions')
@@ -3194,30 +3286,18 @@ def admin_trainer_visual_save(scenario_id):
 
             result = trainer_mgr.create_step(scenario_id, step_data)
             if result['success']:
-                step_id = result['step_id']
+                step_id = result['id']
                 node_to_step[node['id']] = step_id
 
-                # Создаём ответы из поля answers узла client
-                node_answers = node.get('answers', [])
-                for answer in node_answers:
-                    answer_data = {
-                        'answer_text': answer.get('text', 'Ответ оператора'),
-                        'is_correct': 1 if answer.get('isCorrect', False) else 0,
-                        'is_partial': 1 if answer.get('isPartial', False) else 0,
-                        'points': answer.get('points', 0),
-                        'feedback': answer.get('feedback', ''),
-                        'mood_impact': answer.get('moodImpact', 0),
-                        'knowledge_link': answer.get('knowledgeLink', '')
-                    }
-                    trainer_mgr.create_answer(step_id, answer_data)
-
-        # Также обрабатываем отдельные узлы типа "answer" (для обратной совместимости)
+        # Обрабатываем отдельные узлы типа "answer" (ответы — отдельные узлы-дерево)
         answer_nodes = [n for n in nodes if n.get('type') == 'answer']
+        # Маппинг временных ID answer-узлов к реальным ID в БД
+        node_to_answer = {}
 
         for answer_node in answer_nodes:
             # Находим связь от клиентского узла к этому ответу
             parent_connection = next(
-                (c for c in connections if c.get('toId') == answer_node['id']),
+                (c for c in connections if c.get('toId') == answer_node['id'] and node_to_step.get(c.get('fromId'))),
                 None
             )
 
@@ -3226,20 +3306,28 @@ def admin_trainer_visual_save(scenario_id):
                 step_id = node_to_step.get(parent_node_id)
 
                 if step_id:
-                    is_correct = answer_node.get('isCorrect', False)
-                    mood_impact = answer_node.get('moodImpact', 0)
-
                     answer_data = {
                         'answer_text': answer_node.get('label', 'Ответ оператора'),
-                        'is_correct': 1 if is_correct else 0,
-                        'is_partial': 0,
-                        'points': 10 if is_correct else 0,
+                        'is_correct': 1 if answer_node.get('isCorrect', False) else 0,
+                        'is_partial': 1 if answer_node.get('isPartial', False) else 0,
+                        'points': answer_node.get('points', 0),
                         'feedback': answer_node.get('feedback', ''),
-                        'mood_impact': mood_impact,
+                        'mood_impact': answer_node.get('moodImpact', 0),
                         'knowledge_link': answer_node.get('knowledgeLink', '')
                     }
 
-                    trainer_mgr.create_answer(step_id, answer_data)
+                    result = trainer_mgr.create_answer(step_id, answer_data)
+                    if result.get('success'):
+                        node_to_answer[answer_node['id']] = result['id']
+
+        # Второй проход: связи answer→client = next_step_id (ветвление)
+        for conn in connections:
+            from_id = conn.get('fromId', '')
+            to_id = conn.get('toId', '')
+            answer_db_id = node_to_answer.get(from_id)
+            target_step_id = node_to_step.get(to_id)
+            if answer_db_id and target_step_id:
+                trainer_mgr.update_answer(answer_db_id, {'next_step_id': target_step_id})
 
         # Сохраняем визуальную структуру для последующего восстановления
         visual_data = {
@@ -3324,7 +3412,7 @@ def admin_trainer_visual_load(scenario_id):
             # Используем сохраненную позицию или дефолтную
             pos = saved_positions.get(step_id, {'x': 200, 'y': y_offset})
 
-            # Узел реплики клиента с полными данными
+            # Узел реплики клиента (без answers — они отдельные узлы)
             nodes.append({
                 'id': step_id,
                 'type': 'client',
@@ -3335,40 +3423,66 @@ def admin_trainer_visual_load(scenario_id):
                 'stepId': step['id'],
                 'stepNum': step.get('step_num', 1),
                 'clientName': step.get('client_name', 'Клиент'),
-                'answers': []  # Будет заполнено ниже
+                'answers': []
             })
 
-            # Узлы ответов
+            # Ответы — отдельные узлы типа "answer"
             answers = trainer_mgr.get_step_answers(step['id'])
             answer_x = pos['x'] + 300
             answer_y_offset = 0
-            node_answers = []
 
             for answer in answers:
                 answer_id = f"answer_{answer['id']}"
                 ans_pos = saved_positions.get(answer_id, {'x': answer_x, 'y': pos['y'] + answer_y_offset})
 
-                # Добавляем ответ в список ответов узла клиента
-                node_answers.append({
-                    'id': answer['id'],
-                    'text': answer.get('answer_text', ''),
+                nodes.append({
+                    'id': answer_id,
+                    'type': 'answer',
+                    'x': ans_pos['x'],
+                    'y': ans_pos['y'],
+                    'label': answer.get('answer_text', ''),
                     'isCorrect': bool(answer.get('is_correct', 0)),
                     'isPartial': bool(answer.get('is_partial', 0)),
                     'points': answer.get('points', 0),
-                    'moodImpact': answer.get('mood_impact', 0)
+                    'moodImpact': answer.get('mood_impact', 0),
+                    'feedback': answer.get('feedback', ''),
+                    'knowledgeLink': answer.get('knowledge_link', '')
                 })
 
-                answer_y_offset += 80
+                # Связь: реплика клиента → ответ
+                connections.append({
+                    'id': f"conn_{step_id}_{answer_id}",
+                    'fromId': step_id,
+                    'toId': answer_id
+                })
 
-            # Обновляем ответы в узле клиента
-            nodes[-1]['answers'] = node_answers
+                # Связь ветвления: ответ → следующий шаг клиента
+                next_sid = answer.get('next_step_id')
+                if next_sid:
+                    target_step_id = f"step_{next_sid}"
+                    connections.append({
+                        'id': f"branch_{answer_id}_{target_step_id}",
+                        'fromId': answer_id,
+                        'toId': target_step_id,
+                        'type': 'branch'
+                    })
 
-            y_offset += 200
+                answer_y_offset += 100
+
+            y_offset += max(200, len(answers) * 100 + 50)
+
+        # Добавляем сохранённые connections (например client→client переходы)
+        # которых нет в сгенерированных из БД
+        generated_conn_keys = {(c['fromId'], c['toId']) for c in connections}
+        for sc in saved_connections:
+            key = (sc.get('fromId'), sc.get('toId'))
+            if key not in generated_conn_keys:
+                connections.append(sc)
 
         return jsonify({
             'success': True,
             'nodes': nodes,
-            'connections': saved_connections if saved_connections else []
+            'connections': connections
         })
 
     except Exception as e:
@@ -3633,11 +3747,25 @@ def admin_trainer_feedback():
 
 
 @app.route('/api/admin/trainer/feedback/<int:feedback_id>/read', methods=['POST'])
+@csrf.exempt
 @AdminAuth.login_required
 def admin_trainer_feedback_mark_read(feedback_id):
     """API: пометить обратную связь как прочитанную"""
     result = trainer_mgr.mark_feedback_read(feedback_id)
     return jsonify(result)
+
+
+@app.route('/api/trainer/my-feedback')
+def trainer_my_feedback():
+    """API: получить обратную связь текущего пользователя"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+    try:
+        user_id = session['user_info'].get('username', 'anonymous')
+        feedback_list = trainer_mgr.get_user_feedback(user_id)
+        return jsonify({'success': True, 'feedback': feedback_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================

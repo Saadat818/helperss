@@ -204,6 +204,9 @@ class TrainerManager:
         # Миграция: таблица обратной связи
         self._migrate_feedback_table()
 
+        # Миграция: аватары сценариев
+        self._migrate_avatar_images()
+
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
         cursor = self.conn.cursor()
@@ -223,6 +226,11 @@ class TrainerManager:
             cursor.execute("SELECT client_info_json FROM trainer_scenarios LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN client_info_json TEXT")
+
+        try:
+            cursor.execute("SELECT silence_messages FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN silence_messages TEXT DEFAULT ''")
 
         # Проверяем и добавляем новые колонки в trainer_steps
         try:
@@ -387,6 +395,23 @@ class TrainerManager:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_feedback_created ON trainer_feedback(created_at)")
         self.conn.commit()
+
+    def _migrate_avatar_images(self):
+        """Миграция: добавление колонки avatar_images к сценариям"""
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_scenarios)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'avatar_images' not in columns:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN avatar_images TEXT DEFAULT ''")
+            self.conn.commit()
+
+        # Поле next_step_id для ветвления диалога
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_answers)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'next_step_id' not in columns:
+            cursor.execute("ALTER TABLE trainer_answers ADD COLUMN next_step_id INTEGER")
+            self.conn.commit()
 
     def _init_default_data(self):
         """Инициализация начальных данных (уровни, категории)"""
@@ -920,6 +945,17 @@ class TrainerManager:
             return step
         return None
 
+    def get_step_by_id(self, step_id: int) -> Optional[Dict]:
+        """Получить шаг по ID (для ветвления диалога)"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM trainer_steps WHERE id = ?", (step_id,))
+        row = cursor.fetchone()
+        if row:
+            step = dict(row)
+            step['answers'] = self.get_step_answers(step['id'])
+            return step
+        return None
+
     def get_steps_count(self, scenario_id: int) -> int:
         """Получить количество шагов в сценарии"""
         cursor = self.conn.cursor()
@@ -987,12 +1023,12 @@ class TrainerManager:
             result['total_completed'] += completed
             result['total_scenarios'] += total
 
-        # Общий средний балл
+        # Общий средний балл (percent ограничен 100)
         cursor.execute("""
-            SELECT AVG(percent) FROM trainer_results WHERE user_id = ?
+            SELECT AVG(MIN(percent, 100)) FROM trainer_results WHERE user_id = ?
         """, (user_id,))
         avg_row = cursor.fetchone()
-        result['average_score'] = round(avg_row[0] or 0, 1)
+        result['average_score'] = min(100, round(avg_row[0] or 0, 1))
 
         return result
 
@@ -1053,7 +1089,7 @@ class TrainerManager:
                     final_loyalty: int = None, is_game_over: bool = False, timeout_count: int = 0,
                     selected_topic_id: int = None, selected_topic_name: str = None) -> Dict:
         """Сохранить результат прохождения"""
-        percent = round((score / max_score) * 100) if max_score > 0 else 0
+        percent = min(100, round((score / max_score) * 100)) if max_score > 0 else 0
         grade = self.calculate_grade(percent)
 
         # Получаем текущую версию сценария
@@ -1182,7 +1218,7 @@ class TrainerManager:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
                             'estimated_time', 'total_points', 'is_active', 'order_num',
                             'timer_seconds', 'initial_loyalty', 'client_info_json',
-                            'correct_topics']
+                            'correct_topics', 'avatar_images', 'silence_messages']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -1288,8 +1324,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num, mood_impact, knowledge_link)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num, mood_impact, knowledge_link, next_step_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 step_id,
                 data.get('answer_text', ''),
@@ -1299,7 +1335,8 @@ class TrainerManager:
                 data.get('feedback', ''),
                 data.get('order_num', 0),
                 data.get('mood_impact', 0),
-                data.get('knowledge_link')
+                data.get('knowledge_link'),
+                data.get('next_step_id')
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
@@ -1309,7 +1346,7 @@ class TrainerManager:
     def update_answer(self, answer_id: int, data: Dict) -> Dict:
         """Обновить вариант ответа"""
         try:
-            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num', 'mood_impact', 'knowledge_link']
+            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num', 'mood_impact', 'knowledge_link', 'next_step_id']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -1457,7 +1494,6 @@ class TrainerManager:
             FROM trainer_results
             GROUP BY user_id
             ORDER BY avg_percent DESC, completions DESC
-            LIMIT 10
         """)
         top_users = [dict(row) for row in cursor.fetchall()]
 
@@ -1502,80 +1538,75 @@ class TrainerManager:
         no_gameover_count = row[5] or 0
         levels_touched = row[6] or 0
 
-        badges = []
+        # Бейджи в порядке приоритета (от крутого к простому)
+        # Показываем максимум 3
+        all_badges = []
 
-        # Новичок — у всех кто прошёл хотя бы 1
-        badges.append({
-            'code': 'newbie',
-            'name': 'Новичок',
-            'icon': '🌱',
-            'description': 'Первое прохождение тренажёра'
-        })
-
-        # Укротитель гнева — avg final_loyalty >= 80%
-        if avg_loyalty >= 80:
-            badges.append({
-                'code': 'anger_tamer',
-                'name': 'Укротитель гнева',
-                'icon': '😤→😊',
-                'description': 'Средняя лояльность клиента >= 80%'
-            })
-
-        # Flash — 0 таймаутов при >= 5 прохождениях
-        if total >= 5 and no_timeout_count == total:
-            badges.append({
-                'code': 'flash',
-                'name': 'Flash',
-                'icon': '⚡',
-                'description': '0 таймаутов при >= 5 прохождениях'
-            })
-
-        # Знаток Мвики — >= 3 прохождений с результатом >= 90%
-        if excellent_count >= 3:
-            badges.append({
-                'code': 'expert',
-                'name': 'Знаток Мвики',
-                'icon': '📖',
-                'description': '>= 3 прохождений с результатом >= 90%'
-            })
-
-        # Перфекционист — хотя бы 1 прохождение на 100%
         if perfect_count >= 1:
-            badges.append({
+            all_badges.append({
                 'code': 'perfectionist',
                 'name': 'Перфекционист',
                 'icon': '💎',
-                'description': 'Хотя бы 1 прохождение на 100%'
+                'description': 'Набрал 100% хотя бы в 1 сценарии'
             })
 
-        # Марафонец — >= 10 прохождений
-        if total >= 10:
-            badges.append({
-                'code': 'marathon',
-                'name': 'Марафонец',
-                'icon': '🏃',
-                'description': '>= 10 прохождений'
-            })
-
-        # Покоритель уровней — >= 3 разных уровней
-        if levels_touched >= 3:
-            badges.append({
-                'code': 'level_conqueror',
-                'name': 'Покоритель уровней',
-                'icon': '🏔️',
-                'description': 'Прошёл сценарии на >= 3 разных уровнях'
-            })
-
-        # Стальные нервы — >= 5 прохождений без game_over
         if no_gameover_count >= 5:
-            badges.append({
+            all_badges.append({
                 'code': 'steel_nerves',
                 'name': 'Стальные нервы',
                 'icon': '🧘',
-                'description': '>= 5 прохождений без game over'
+                'description': '5+ сценариев без Game Over'
             })
 
-        return badges
+        if total >= 5 and no_timeout_count == total:
+            all_badges.append({
+                'code': 'flash',
+                'name': 'Flash',
+                'icon': '⚡',
+                'description': '5+ сценариев без единого таймаута'
+            })
+
+        if avg_loyalty >= 80:
+            all_badges.append({
+                'code': 'anger_tamer',
+                'name': 'Укротитель',
+                'icon': '😊',
+                'description': 'Средняя лояльность клиента 80%+'
+            })
+
+        if excellent_count >= 3:
+            all_badges.append({
+                'code': 'expert',
+                'name': 'Знаток',
+                'icon': '📖',
+                'description': '3+ сценария с результатом 90%+'
+            })
+
+        if total >= 10:
+            all_badges.append({
+                'code': 'marathon',
+                'name': 'Марафонец',
+                'icon': '🏃',
+                'description': '10+ пройденных сценариев'
+            })
+
+        if levels_touched >= 3:
+            all_badges.append({
+                'code': 'level_conqueror',
+                'name': 'Покоритель',
+                'icon': '🏔️',
+                'description': 'Прошёл сценарии на 3+ уровнях'
+            })
+
+        if not all_badges:
+            all_badges.append({
+                'code': 'newbie',
+                'name': 'Новичок',
+                'icon': '🌱',
+                'description': 'Первое прохождение тренажёра'
+            })
+
+        return all_badges[:3]
 
     def get_scenario_statistics(self, scenario_id: int) -> Dict:
         """Получить статистику по конкретному сценарию"""
@@ -1702,6 +1733,17 @@ class TrainerManager:
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def get_user_feedback(self, user_id: str) -> List[Dict]:
+        """Получить обратную связь конкретного пользователя"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, user_id, message, level_code, created_at, is_read
+            FROM trainer_feedback
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+        """, (user_id,))
+        return [dict(row) for row in cursor.fetchall()]
 
     def get_unread_feedback_count(self) -> int:
         """Получить количество непрочитанных сообщений"""

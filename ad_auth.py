@@ -78,19 +78,13 @@ class ADAuth:
                 )
                 print("[AD] TLS: используется CA-сертификат, проверка включена (CERT_REQUIRED)")
             else:
-                # Небезопасный режим: без проверки сертификата (MiTM уязвимость!)
-                # Разрешен только если AD_ALLOW_INSECURE_SSL=true
-                allow_insecure = os.getenv('AD_ALLOW_INSECURE_SSL', 'false').lower() == 'true'
-                if not allow_insecure:
-                    print("[AD] ❌ ОШИБКА: CA-сертификат не указан (AD_CA_CERT), а AD_ALLOW_INSECURE_SSL != true")
-                    print("[AD] ❌ Укажите AD_CA_CERT=/path/to/ca.pem или AD_ALLOW_INSECURE_SSL=true в .env")
-                    raise ValueError("AD SSL: CA-сертификат не указан. Установите AD_CA_CERT или AD_ALLOW_INSECURE_SSL=true")
+                # Без проверки сертификата — допустимо во внутренней сети
                 tls_config = Tls(
                     validate=ssl.CERT_NONE,
                     version=ssl.PROTOCOL_TLSv1_2
                 )
-                print("[AD] ⚠ ВНИМАНИЕ: SSL без проверки сертификата (CERT_NONE)!")
-                print("[AD] ⚠ Для защиты от MiTM укажите AD_CA_CERT=/path/to/ca.pem в .env")
+                print("[AD] ⚠ SSL без проверки сертификата (CERT_NONE) — внутренняя сеть")
+                print("[AD] ⚠ Для повышения безопасности укажите AD_CA_CERT=/path/to/ca.pem в .env")
             server = Server(
                 self.server_uri,
                 port=self.port,

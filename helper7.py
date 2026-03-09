@@ -2027,6 +2027,11 @@ def trainer_play(scenario_id):
         flash('Сценарий не найден')
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
 
+    # Черновики недоступны для обычных пользователей
+    if scenario.get('is_draft') and not preview_mode:
+        flash('Сценарий недоступен')
+        return redirect(url_for('trainer_menu'))
+
     # Check level access (skip in preview mode)
     if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):
         flash('Этот уровень ещё заблокирован')
@@ -2426,6 +2431,7 @@ def admin_trainer():
         scenarios = [s for s in scenarios if any(t['id'] == tag_id for t in s['tags'])]
 
     unread_feedback = trainer_mgr.get_unread_feedback_count()
+    draft_count = trainer_mgr.get_draft_count()
 
     return render_template('admin_trainer.html',
                          stats=stats,
@@ -2436,7 +2442,8 @@ def admin_trainer():
                          current_level=level_code,
                          current_category=category_id,
                          current_tag=tag_id,
-                         unread_feedback=unread_feedback)
+                         unread_feedback=unread_feedback,
+                         draft_count=draft_count)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
@@ -2447,6 +2454,7 @@ def admin_trainer_create():
     categories = trainer_mgr.get_all_categories()
 
     if request.method == 'POST':
+        is_draft = 1 if request.form.get('is_draft') else 0
         data = {
             'level_id': request.form.get('level_id', type=int),
             'category_id': request.form.get('category_id', type=int) or None,
@@ -2454,8 +2462,9 @@ def admin_trainer_create():
             'description': request.form.get('description', '').strip(),
             'estimated_time': request.form.get('estimated_time', 5, type=int),
             'total_points': request.form.get('total_points', 100, type=int),
-            'is_active': 1 if request.form.get('is_active') else 0,
-            'order_num': request.form.get('order_num', 0, type=int)
+            'is_active': 0 if is_draft else (1 if request.form.get('is_active') else 0),
+            'order_num': request.form.get('order_num', 0, type=int),
+            'is_draft': is_draft
         }
 
         if not data['title']:
@@ -2524,6 +2533,7 @@ def admin_trainer_edit(scenario_id):
         correct_topics_raw = request.form.get('correct_topics', '').strip()
         correct_topics_val = correct_topics_raw if correct_topics_raw else None
 
+        is_draft = 1 if request.form.get('is_draft') else 0
         data = {
             'level_id': request.form.get('level_id', type=int),
             'category_id': request.form.get('category_id', type=int) or None,
@@ -2531,13 +2541,14 @@ def admin_trainer_edit(scenario_id):
             'description': request.form.get('description', '').strip(),
             'estimated_time': request.form.get('estimated_time', 5, type=int),
             'total_points': request.form.get('total_points', 100, type=int),
-            'is_active': 1 if request.form.get('is_active') else 0,
+            'is_active': 0 if is_draft else (1 if request.form.get('is_active') else 0),
             'order_num': request.form.get('order_num', 0, type=int),
             'timer_seconds': request.form.get('timer_seconds', 15, type=int),
             'initial_loyalty': request.form.get('initial_loyalty', 100, type=int),
             'client_info_json': client_info_json,
             'correct_topics': correct_topics_val,
-            'silence_messages': request.form.get('silence_messages', '').strip()
+            'silence_messages': request.form.get('silence_messages', '').strip(),
+            'is_draft': is_draft
         }
 
         # Сохраняем снимок текущей версии перед обновлением
@@ -2734,6 +2745,44 @@ def admin_trainer_delete(scenario_id):
         flash(f'Ошибка: {result.get("error")}')
 
     return redirect(url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/drafts')
+@AdminAuth.login_required
+def admin_trainer_drafts():
+    """Черновики сценариев"""
+    drafts = trainer_mgr.get_draft_scenarios()
+    for d in drafts:
+        d['steps_count'] = trainer_mgr.get_steps_count(d['id'])
+        d['tags'] = trainer_mgr.get_scenario_tags(d['id'])
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+    return render_template('admin_trainer_drafts.html',
+                           drafts=drafts,
+                           levels=levels,
+                           categories=categories)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/publish', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_publish(scenario_id):
+    """Опубликовать черновик"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.publish_draft(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='publish',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий опубликован!')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+    return redirect(url_for('admin_trainer_drafts'))
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])

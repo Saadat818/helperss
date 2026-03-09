@@ -284,6 +284,12 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN correct_topics TEXT")
 
+        # Черновики сценариев
+        try:
+            cursor.execute("SELECT is_draft FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_draft BOOLEAN DEFAULT 0")
+
         self.conn.commit()
 
     def _migrate_hard_level(self):
@@ -882,7 +888,7 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? AND s.category_id = ? AND s.is_active = 1
+                WHERE s.level_id = ? AND s.category_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
                 ORDER BY s.order_num
             """, (level['id'], category_id))
         else:
@@ -891,7 +897,7 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? AND s.is_active = 1
+                WHERE s.level_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
                 ORDER BY s.order_num
             """, (level['id'],))
         return [dict(row) for row in cursor.fetchall()]
@@ -910,7 +916,7 @@ class TrainerManager:
         return dict(row) if row else None
 
     def get_all_scenarios(self, include_inactive: bool = False) -> List[Dict]:
-        """Получить все сценарии"""
+        """Получить все сценарии (без черновиков)"""
         cursor = self.conn.cursor()
         if include_inactive:
             cursor.execute("""
@@ -918,6 +924,7 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
+                WHERE (s.is_draft = 0 OR s.is_draft IS NULL)
                 ORDER BY l.order_num, s.order_num
             """)
         else:
@@ -926,10 +933,42 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.is_active = 1
+                WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
                 ORDER BY l.order_num, s.order_num
             """)
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_draft_scenarios(self) -> List[Dict]:
+        """Получить все черновики сценариев"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
+            FROM trainer_scenarios s
+            JOIN trainer_levels l ON s.level_id = l.id
+            LEFT JOIN trainer_categories c ON s.category_id = c.id
+            WHERE s.is_draft = 1
+            ORDER BY s.created_at DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_draft_count(self) -> int:
+        """Количество черновиков"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = 1")
+        return cursor.fetchone()[0]
+
+    def publish_draft(self, scenario_id: int) -> Dict:
+        """Опубликовать черновик — сделать активным сценарием"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE trainer_scenarios SET is_draft = 0, is_active = 1 WHERE id = ?",
+                (scenario_id,)
+            )
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def get_scenario_steps(self, scenario_id: int) -> List[Dict]:
         """Получить шаги сценария"""
@@ -1212,8 +1251,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num, timer_seconds, initial_loyalty, client_info_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num, timer_seconds, initial_loyalty, client_info_json, is_draft)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 data.get('level_id'),
                 data.get('category_id'),
@@ -1225,7 +1264,8 @@ class TrainerManager:
                 data.get('order_num', 0),
                 data.get('timer_seconds', 15),
                 data.get('initial_loyalty', 100),
-                data.get('client_info_json')
+                data.get('client_info_json'),
+                data.get('is_draft', 0)
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
@@ -1238,7 +1278,7 @@ class TrainerManager:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
                             'estimated_time', 'total_points', 'is_active', 'order_num',
                             'timer_seconds', 'initial_loyalty', 'client_info_json',
-                            'correct_topics', 'avatar_images', 'silence_messages']
+                            'correct_topics', 'avatar_images', 'silence_messages', 'is_draft']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -1468,8 +1508,8 @@ class TrainerManager:
         """Получить общую статистику тренажера"""
         cursor = self.conn.cursor()
 
-        # Общее количество сценариев
-        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_active = 1")
+        # Общее количество сценариев (без черновиков)
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)")
         total_scenarios = cursor.fetchone()[0]
 
         # Количество прохождений

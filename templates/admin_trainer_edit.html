@@ -731,8 +731,17 @@
 
                 <div class="form-group">
                     <div class="checkbox-group">
+                        <input type="checkbox" id="is_draft" name="is_draft"
+                               {% if scenario and scenario.is_draft %}checked{% endif %}
+                               onchange="this.form.is_active.disabled = this.checked">
+                        <label for="is_draft" style="color: #f39c12;">✏️ Черновик (не виден пользователям)</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
                         <input type="checkbox" id="is_active" name="is_active"
-                               {% if not scenario or scenario.is_active %}checked{% endif %}>
+                               {% if not scenario or scenario.is_active %}checked{% endif %}
+                               {% if scenario and scenario.is_draft %}disabled{% endif %}>
                         <label for="is_active">Сценарий активен (виден пользователям)</label>
                     </div>
                 </div>

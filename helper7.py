@@ -180,6 +180,17 @@ def add_security_headers(response):
     response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
 
+    # Inject favicon в HTML ответы
+    if response.content_type and 'text/html' in response.content_type:
+        try:
+            data = response.get_data(as_text=True)
+            if '<head>' in data and 'favicon' not in data:
+                favicon_tag = '<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'80\' font-size=\'80\'>🤖</text></svg>">'
+                data = data.replace('<head>', '<head>' + favicon_tag, 1)
+                response.set_data(data)
+        except Exception:
+            pass
+
     return response
 
 
@@ -3765,7 +3776,9 @@ def trainer_my_feedback():
         feedback_list = trainer_mgr.get_user_feedback(user_id)
         return jsonify({'success': True, 'feedback': feedback_list})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"[trainer_my_feedback] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
 
 
 # ============================================
@@ -3982,8 +3995,9 @@ def admin_trainer_import_preview():
         })
 
     except Exception as e:
+        print(f"[trainer_import_preview] Ошибка: {e}")
         traceback.print_exc()
-        return jsonify({'success': False, 'error': f'Ошибка чтения файла: {str(e)}'})
+        return jsonify({'success': False, 'error': 'Ошибка чтения файла. Проверьте формат Excel.'})
 
 
 @app.route('/admin/trainer/import/confirm', methods=['POST'])
@@ -5367,7 +5381,7 @@ def admin_import_topics_upload():
     except Exception as e:
         print(f"[admin_import_topics_upload] Ошибка: {e}")
         traceback.print_exc()
-        flash(f'Произошла ошибка при импорте: {str(e)}', 'error')
+        flash('Произошла ошибка при импорте. Проверьте формат файла.', 'error')
 
     return redirect(url_for('admin_import_topics'))
 
@@ -5406,7 +5420,7 @@ def admin_export_topics():
     except Exception as e:
         print(f"[admin_export_topics] Ошибка: {e}")
         traceback.print_exc()
-        flash(f'Произошла ошибка при экспорте: {str(e)}', 'error')
+        flash('Произошла ошибка при экспорте. Попробуйте позже.', 'error')
         return redirect(url_for('admin_topics'))
 
 

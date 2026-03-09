@@ -5,6 +5,7 @@
 
 import sqlite3
 import json
+import traceback
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
@@ -1210,7 +1211,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def update_scenario(self, scenario_id: int, data: Dict) -> Dict:
         """Обновить сценарий"""
@@ -1244,7 +1247,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def delete_scenario(self, scenario_id: int) -> Dict:
         """Удалить сценарий"""
@@ -1258,7 +1263,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def create_step(self, scenario_id: int, data: Dict) -> Dict:
         """Создать шаг сценария"""
@@ -1282,7 +1289,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid, "step_num": max_num + 1}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def update_step(self, step_id: int, data: Dict) -> Dict:
         """Обновить шаг"""
@@ -1306,7 +1315,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def delete_step(self, step_id: int) -> Dict:
         """Удалить шаг"""
@@ -1317,7 +1328,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def create_answer(self, step_id: int, data: Dict) -> Dict:
         """Создать вариант ответа"""
@@ -1341,7 +1354,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def update_answer(self, answer_id: int, data: Dict) -> Dict:
         """Обновить вариант ответа"""
@@ -1365,7 +1380,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def delete_answer(self, answer_id: int) -> Dict:
         """Удалить вариант ответа"""
@@ -1375,7 +1392,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     # ==================== СТАТИСТИКА ====================
 
@@ -1716,7 +1735,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def get_all_feedback(self) -> List[Dict]:
         """Получить все сообщения обратной связи"""
@@ -1732,7 +1753,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def get_user_feedback(self, user_id: str) -> List[Dict]:
         """Получить обратную связь конкретного пользователя"""
@@ -1770,7 +1793,9 @@ class TrainerManager:
         except sqlite3.IntegrityError:
             return {"success": False, "error": "Тег с таким названием уже существует"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def update_tag(self, tag_id: int, data: Dict) -> Dict:
         """Обновить тег"""
@@ -1792,7 +1817,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def delete_tag(self, tag_id: int) -> Dict:
         """Удалить тег"""
@@ -1803,7 +1830,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def get_all_tags(self) -> List[Dict]:
         """Получить все теги"""
@@ -1832,7 +1861,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def get_scenario_tags(self, scenario_id: int) -> List[Dict]:
         """Получить теги сценария"""
@@ -1901,7 +1932,9 @@ class TrainerManager:
             self.conn.commit()
             return {"success": True, "version": current_version}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            print(f"[TrainerManager] Ошибка: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": "Внутренняя ошибка сервера"}
 
     def get_scenario_version_history(self, scenario_id: int) -> List[Dict]:
         """Получить список версий сценария (без snapshot_json)"""

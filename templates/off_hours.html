@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Нерабочее время</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --greenLight: #00d4aa;
+            --orange: #ff9800;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text);
+        }
+
+        .container {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 50px 40px;
+            width: 100%;
+            max-width: 550px;
+            text-align: center;
+            animation: fadeIn 0.4s ease;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .icon {
+            font-size: 72px;
+            margin-bottom: 24px;
+        }
+
+        h2 {
+            color: var(--orange);
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .message {
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.7;
+            margin-bottom: 24px;
+        }
+
+        .schedule {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 32px;
+            font-size: 15px;
+            color: var(--text);
+        }
+
+        .schedule strong {
+            color: var(--orange);
+        }
+
+        .home-button {
+            display: inline-block;
+            padding: 14px 36px;
+            font-size: 16px;
+            font-weight: 700;
+            color: #041a0f;
+            background: var(--green);
+            border: none;
+            border-radius: 10px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .home-button:hover {
+            background: var(--greenHover);
+            transform: translateY(-2px);
+            text-decoration: none;
+        }
+
+        .home-button:active {
+            transform: translateY(0);
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 40px 28px;
+            }
+
+            .icon {
+                font-size: 64px;
+            }
+
+            h2 {
+                font-size: 22px;
+            }
+
+            .message {
+                font-size: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">&#128337;</div>
+        <h2>Нерабочее время</h2>
+        <p class="message">{{ message }}</p>
+        <div class="schedule">
+            <strong>График работы ОПО:</strong><br>
+            Понедельник - Пятница<br>
+            с 8:30 до 17:30
+        </div>
+        <a href="{{ url_for('go_home') }}" class="home-button">На главную</a>
+    </div>
+</body>
+</html>

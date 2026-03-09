@@ -198,6 +198,21 @@ def safe_redirect(fallback_endpoint='index'):
     return redirect(url_for(fallback_endpoint))
 
 
+def is_working_hours():
+    """Проверяет, рабочее ли сейчас время (Пн-Пт, 8:30-17:30).
+    Возвращает (True, '') если рабочее время, иначе (False, сообщение).
+    """
+    now = datetime.now()
+    # 0=Пн, 1=Вт, ..., 5=Сб, 6=Вс
+    if now.weekday() >= 5:  # Суббота или Воскресенье
+        return False, 'Сегодня выходной день. Сотрудники ОПО не на рабочем месте. Просьба постараться решить проблему самостоятельно с помощью инструкций.'
+    work_start = now.replace(hour=8, minute=30, second=0, microsecond=0)
+    work_end = now.replace(hour=17, minute=30, second=0, microsecond=0)
+    if now < work_start or now > work_end:
+        return False, 'Сейчас нерабочее время. Просьба постараться решить проблему самостоятельно с помощью инструкций.'
+    return True, ''
+
+
 # ============================================
 # ТРЕКИНГ ОНЛАЙН-ПОЛЬЗОВАТЕЛЕЙ
 # ============================================
@@ -1446,6 +1461,11 @@ def submit_selected_topic():
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
 
+    # Проверка рабочего времени
+    working, off_hours_msg = is_working_hours()
+    if not working:
+        return render_template('off_hours.html', message=off_hours_msg)
+
     try:
         selected_topic_id = request.form.get('selected_topic_id')
         selected_topic_name = request.form.get('selected_topic_name')
@@ -1713,6 +1733,13 @@ def other_problem():
         other_problem_type = 'other'
     session['other_problem_type'] = other_problem_type
     is_cisco = other_problem_type == 'cisco'
+
+    # Проверка рабочего времени (Cisco — без ограничений, 24/7)
+    if not is_cisco:
+        working, off_hours_msg = is_working_hours()
+        if not working:
+            return render_template('off_hours.html', message=off_hours_msg)
+
     if request.method == 'POST':
         problem_description = request.form.get('problem')
 
@@ -1809,6 +1836,11 @@ def other_problem():
 @app.route('/send_final_ticket')
 def send_final_ticket():
     try:
+        # Проверка рабочего времени (эскалация после мануала — не cisco)
+        working, off_hours_msg = is_working_hours()
+        if not working:
+            return render_template('off_hours.html', message=off_hours_msg)
+
         # Проверяем флаг - была ли уже отправлена заявка
         if session.get('ticket_sent'):
             # Заявка уже отправлена, просто показываем страницу

@@ -207,6 +207,9 @@ class TrainerManager:
         # Миграция: аватары сценариев
         self._migrate_avatar_images()
 
+        # Миграция: таблица посещений сценариев
+        self._migrate_visits_table()
+
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
         cursor = self.conn.cursor()
@@ -378,6 +381,23 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_results ADD COLUMN scenario_version INTEGER")
 
+        self.conn.commit()
+
+    def _migrate_visits_table(self):
+        """Миграция: таблица посещений сценариев (запуск без завершения)"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trainer_visits (
+                id INTEGER PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                scenario_id INTEGER NOT NULL,
+                visited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trainer_visits_user
+            ON trainer_visits(user_id, scenario_id)
+        """)
         self.conn.commit()
 
     def _migrate_feedback_table(self):
@@ -1703,6 +1723,18 @@ class TrainerManager:
 
         return results
 
+    def log_visit(self, user_id: str, scenario_id: int):
+        """Записываем факт открытия сценария пользователем"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT INTO trainer_visits (user_id, scenario_id) VALUES (?, ?)",
+                (user_id, scenario_id)
+            )
+            self.conn.commit()
+        except Exception:
+            pass  # не ломаем основной флоу
+
     def get_completion_matrix(self, passing_percent: int = 70) -> Dict:
         """
         Матрица прохождения: кто прошёл какой сценарий.
@@ -1736,8 +1768,13 @@ class TrainerManager:
             levels[lid]['scenarios'].append({'id': r['scenario_id'], 'title': r['scenario_title']})
             all_scenario_ids.append(r['scenario_id'])
 
-        # Все пользователи из trainer_results
-        cursor.execute("SELECT DISTINCT user_id FROM trainer_results ORDER BY user_id")
+        # Все пользователи: из trainer_results ИЛИ из trainer_visits
+        cursor.execute("""
+            SELECT user_id FROM trainer_results
+            UNION
+            SELECT user_id FROM trainer_visits
+            ORDER BY user_id
+        """)
         users = [r['user_id'] for r in cursor.fetchall()]
 
         # Лучший результат каждого пользователя по каждому сценарию
@@ -1750,35 +1787,74 @@ class TrainerManager:
             GROUP BY user_id, scenario_id
         """, (passing_percent,))
 
-        # Строим матрицу
-        matrix = {u: {} for u in users}
+        results_by_user = {}
         for r in cursor.fetchall():
             uid = r['user_id']
-            sid = r['scenario_id']
-            if uid in matrix:
-                if r['is_passed']:
-                    status = 'passed'
-                else:
-                    status = 'failed'
-                matrix[uid][sid] = {
-                    'status': status,
-                    'best_percent': r['best_percent'],
-                    'attempts': r['attempts']
-                }
+            if uid not in results_by_user:
+                results_by_user[uid] = {}
+            results_by_user[uid][r['scenario_id']] = {
+                'best_percent': r['best_percent'],
+                'attempts': r['attempts'],
+                'is_passed': bool(r['is_passed'])
+            }
 
-        # Заполняем not_started для незапущенных сценариев
+        # Посещения (запустил, но не дошёл до конца)
+        cursor.execute("""
+            SELECT user_id, scenario_id, COUNT(*) as visit_count,
+                   MAX(visited_at) as last_visit
+            FROM trainer_visits
+            GROUP BY user_id, scenario_id
+        """)
+        visits_by_user = {}
+        for r in cursor.fetchall():
+            uid = r['user_id']
+            if uid not in visits_by_user:
+                visits_by_user[uid] = {}
+            visits_by_user[uid][r['scenario_id']] = {
+                'visit_count': r['visit_count'],
+                'last_visit': r['last_visit']
+            }
+
+        # Строим матрицу: статусы
+        # passed      — завершил с результатом >= passing_percent
+        # failed      — завершил, но результат < passing_percent
+        # visited     — открывал сценарий, но так и не завершил ни разу
+        # not_started — никогда не открывал
+        matrix = {u: {} for u in users}
         for uid in users:
             for sid in all_scenario_ids:
-                if sid not in matrix[uid]:
+                res = results_by_user.get(uid, {}).get(sid)
+                vis = visits_by_user.get(uid, {}).get(sid)
+                if res:
+                    status = 'passed' if res['is_passed'] else 'failed'
+                    matrix[uid][sid] = {
+                        'status': status,
+                        'best_percent': res['best_percent'],
+                        'attempts': res['attempts']
+                    }
+                elif vis:
+                    matrix[uid][sid] = {
+                        'status': 'visited',
+                        'best_percent': None,
+                        'attempts': 0,
+                        'visit_count': vis['visit_count'],
+                        'last_visit': vis['last_visit']
+                    }
+                else:
                     matrix[uid][sid] = {'status': 'not_started', 'best_percent': None, 'attempts': 0}
 
         # Итоги по каждому пользователю
         total_scenarios = len(all_scenario_ids)
         summary = {}
         for uid in users:
-            passed = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'passed')
+            passed   = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'passed')
+            failed   = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'failed')
+            visited  = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'visited')
             summary[uid] = {
                 'passed': passed,
+                'failed': failed,
+                'visited': visited,
+                'not_started': total_scenarios - passed - failed - visited,
                 'total': total_scenarios,
                 'percent_done': round(passed / total_scenarios * 100) if total_scenarios else 0
             }

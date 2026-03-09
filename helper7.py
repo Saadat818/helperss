@@ -2019,6 +2019,10 @@ def trainer_play(scenario_id):
     user_id = session.get('user_info', {}).get('username', 'admin_preview') if not preview_mode else 'admin_preview'
     scenario = trainer_mgr.get_scenario(scenario_id)
 
+    # Логируем факт открытия сценария (для отчёта посещений)
+    if not preview_mode and user_id != 'admin_preview':
+        trainer_mgr.log_visit(user_id, scenario_id)
+
     if not scenario:
         flash('Сценарий не найден')
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
@@ -3255,6 +3259,7 @@ def admin_trainer_export():
                 # Цвета
                 fill_passed      = PatternFill('solid', fgColor='C8E6C9')  # зелёный
                 fill_failed      = PatternFill('solid', fgColor='FFCDD2')  # красный
+                fill_visited     = PatternFill('solid', fgColor='FFF9C4')  # жёлтый — зашёл, не завершил
                 fill_not_started = PatternFill('solid', fgColor='F5F5F5')  # серый
                 fill_header      = PatternFill('solid', fgColor='1A237E')  # тёмно-синий
                 fill_level       = PatternFill('solid', fgColor='3949AB')  # синий уровень
@@ -3354,6 +3359,11 @@ def admin_trainer_export():
                                 text  = f'✗ {pct}%\n({att} поп.)'
                                 fill  = fill_failed
                                 fnt   = font_failed
+                            elif status == 'visited':
+                                vc = cell_data.get('visit_count', 1)
+                                text  = f'👁 открывал\n({vc} раз)'
+                                fill  = fill_visited
+                                fnt   = Font(color='F57F17')
                             else:
                                 text  = '—'
                                 fill  = fill_not_started
@@ -3368,8 +3378,12 @@ def admin_trainer_export():
 
                     # Итог по пользователю
                     sm = summary[uid]
+                    parts = [f'✓{sm["passed"]}']
+                    if sm['failed']:   parts.append(f'✗{sm["failed"]}')
+                    if sm['visited']:  parts.append(f'👁{sm["visited"]}')
+                    if sm['not_started']: parts.append(f'—{sm["not_started"]}')
                     total_cell = ws.cell(row=data_row, column=col,
-                        value=f'{sm["passed"]}/{sm["total"]}')
+                        value=' / '.join(parts))
                     total_cell.font = font_bold
                     total_cell.alignment = center
                     total_cell.border = border

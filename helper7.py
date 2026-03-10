@@ -6385,6 +6385,517 @@ def api_stats_topics_history():
         return jsonify({'success': False, 'error': 'Ошибка получения истории тематик'}), 500
 
 
+@app.route('/api/stats/pending_tickets')
+@AdminAuth.login_required
+def api_stats_pending_tickets():
+    """API: заявки которые отправлены но ещё не решены."""
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT ticket_number, problem, department, user_name, is_cisco,
+                               MIN(created_at) as created_at
+                        FROM ticket_events
+                        WHERE event_type = 'ticket_created'
+                          AND ticket_number IS NOT NULL
+                          AND ticket_number NOT IN (
+                            SELECT ticket_number FROM ticket_events
+                            WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                              AND ticket_number IS NOT NULL
+                          )
+                        GROUP BY ticket_number, problem, department, user_name, is_cisco
+                        ORDER BY MIN(created_at) ASC
+                    """)
+                    rows = [dict(r) for r in cur.fetchall()]
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT ticket_number, problem, department, user_name, is_cisco,
+                           MIN(created_at) as created_at
+                    FROM ticket_events
+                    WHERE event_type = 'ticket_created'
+                      AND ticket_number IS NOT NULL
+                      AND ticket_number NOT IN (
+                        SELECT ticket_number FROM ticket_events
+                        WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                          AND ticket_number IS NOT NULL
+                      )
+                    GROUP BY ticket_number, problem, department, user_name, is_cisco
+                    ORDER BY MIN(created_at) ASC
+                """)
+                rows = [dict(r) for r in cur.fetchall()]
+
+        now = datetime.now()
+        for row in rows:
+            created = row.get('created_at', '')
+            if created:
+                try:
+                    if isinstance(created, str):
+                        dt = datetime.strptime(created[:19], '%Y-%m-%d %H:%M:%S')
+                    else:
+                        dt = created
+                    delta = now - dt
+                    total_hours = delta.total_seconds() / 3600
+                    if total_hours >= 24:
+                        days = int(total_hours // 24)
+                        hours = int(total_hours % 24)
+                        row['waiting_time'] = f"{days}д {hours}ч"
+                    else:
+                        row['waiting_time'] = f"{int(total_hours)}ч {int((total_hours % 1) * 60)}м"
+                    row['waiting_hours'] = round(total_hours, 1)
+                    row['created_at'] = str(created)[:19]
+                except Exception:
+                    row['waiting_time'] = '—'
+                    row['waiting_hours'] = 0
+
+        return jsonify({'success': True, 'data': rows, 'total': len(rows)})
+    except Exception as e:
+        print(f"[api_stats_pending_tickets] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения нерешённых заявок'}), 500
+
+
+@app.route('/api/stats/tickets_journal')
+@AdminAuth.login_required
+def api_stats_tickets_journal():
+    """API: полная сводка по всем заявкам — создание, решение, время ожидания."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        limit = max(1, min(request.args.get('limit', 100, type=int), 500))
+
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    # Все созданные заявки за период
+                    cur.execute("""
+                        SELECT ticket_number, problem, department, user_name, workplace,
+                               is_cisco, created_at::text as created_at
+                        FROM ticket_events
+                        WHERE event_type = 'ticket_created'
+                          AND ticket_number IS NOT NULL
+                          AND created_at BETWEEN %s AND %s
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                    """, (start_at, end_at, limit))
+                    created_rows = [dict(r) for r in cur.fetchall()]
+
+                    # Все решения/закрытия за период (или вообще — для нерешённых)
+                    ticket_nums = [r['ticket_number'] for r in created_rows]
+                    resolved_map = {}
+                    if ticket_nums:
+                        cur.execute("""
+                            SELECT ticket_number, event_type, actor_name, created_at::text as resolved_at
+                            FROM ticket_events
+                            WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                              AND ticket_number = ANY(%s)
+                            ORDER BY created_at ASC
+                        """, (ticket_nums,))
+                        for r in cur.fetchall():
+                            tn = r['ticket_number']
+                            if tn not in resolved_map:
+                                resolved_map[tn] = dict(r)
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT ticket_number, problem, department, user_name, workplace,
+                           is_cisco, created_at
+                    FROM ticket_events
+                    WHERE event_type = 'ticket_created'
+                      AND ticket_number IS NOT NULL
+                      AND created_at BETWEEN ? AND ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (start_at, end_at, limit))
+                created_rows = [dict(r) for r in cur.fetchall()]
+
+                ticket_nums = [r['ticket_number'] for r in created_rows]
+                resolved_map = {}
+                if ticket_nums:
+                    placeholders = ','.join('?' * len(ticket_nums))
+                    cur.execute(f"""
+                        SELECT ticket_number, event_type, actor_name, created_at as resolved_at
+                        FROM ticket_events
+                        WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                          AND ticket_number IN ({placeholders})
+                        ORDER BY created_at ASC
+                    """, ticket_nums)
+                    for r in cur.fetchall():
+                        r = dict(r)
+                        tn = r['ticket_number']
+                        if tn not in resolved_map:
+                            resolved_map[tn] = r
+
+        now = datetime.now()
+        result = []
+        for row in created_rows:
+            tn = row['ticket_number']
+            resolution = resolved_map.get(tn)
+
+            entry = {
+                'ticket_number': tn,
+                'problem': row.get('problem', ''),
+                'department': row.get('department', ''),
+                'user_name': row.get('user_name', ''),
+                'workplace': row.get('workplace', ''),
+                'is_cisco': bool(row.get('is_cisco')),
+                'created_at': str(row.get('created_at', ''))[:19],
+                'status': 'pending',
+                'resolved_by': None,
+                'resolved_at': None,
+                'resolution_time': None,
+                'resolution_minutes': None
+            }
+
+            if resolution:
+                et = resolution.get('event_type', '')
+                entry['status'] = 'resolved' if et == 'ticket_resolved_by_staff' else 'not_relevant'
+                entry['resolved_by'] = resolution.get('actor_name', '')
+                entry['resolved_at'] = str(resolution.get('resolved_at', ''))[:19]
+
+                # Время решения
+                try:
+                    created_str = str(row.get('created_at', ''))[:19]
+                    resolved_str = str(resolution.get('resolved_at', ''))[:19]
+                    dt_created = datetime.strptime(created_str, '%Y-%m-%d %H:%M:%S')
+                    dt_resolved = datetime.strptime(resolved_str, '%Y-%m-%d %H:%M:%S')
+                    delta = dt_resolved - dt_created
+                    total_min = delta.total_seconds() / 60
+                    entry['resolution_minutes'] = round(total_min, 1)
+                    if total_min < 60:
+                        entry['resolution_time'] = f"{int(total_min)}м"
+                    elif total_min < 1440:
+                        entry['resolution_time'] = f"{int(total_min // 60)}ч {int(total_min % 60)}м"
+                    else:
+                        d = int(total_min // 1440)
+                        h = int((total_min % 1440) // 60)
+                        entry['resolution_time'] = f"{d}д {h}ч"
+                except Exception:
+                    entry['resolution_time'] = '—'
+            else:
+                # Нерешённая — считаем сколько ждёт
+                try:
+                    created_str = str(row.get('created_at', ''))[:19]
+                    dt_created = datetime.strptime(created_str, '%Y-%m-%d %H:%M:%S')
+                    delta = now - dt_created
+                    total_min = delta.total_seconds() / 60
+                    entry['resolution_minutes'] = round(total_min, 1)
+                    if total_min < 60:
+                        entry['resolution_time'] = f"{int(total_min)}м ожидает"
+                    elif total_min < 1440:
+                        entry['resolution_time'] = f"{int(total_min // 60)}ч {int(total_min % 60)}м ожидает"
+                    else:
+                        d = int(total_min // 1440)
+                        h = int((total_min % 1440) // 60)
+                        entry['resolution_time'] = f"{d}д {h}ч ожидает"
+                except Exception:
+                    entry['resolution_time'] = '—'
+
+            result.append(entry)
+
+        return jsonify({'success': True, 'data': result, 'total': len(result)})
+    except Exception as e:
+        print(f"[api_stats_tickets_journal] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения журнала заявок'}), 500
+
+
+@app.route('/admin/stats/export')
+@AdminAuth.login_required
+def admin_stats_export():
+    """Экспорт статистики обращений в Excel."""
+    try:
+        import tempfile
+        import pandas as pd
+        from flask import send_file
+
+        start_at, end_at = _resolve_period_range()
+
+        # --- Используем _load_ticket_dashboard_data для основных данных ---
+        stats_data, timeline, top_problems, departments = _load_ticket_dashboard_data(start_at, end_at)
+
+        # Breakdown по event_type
+        breakdown = {}
+        users = []
+        dept_usage = []
+        staff_list = []
+        pending = []
+
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT event_type, COUNT(*)::int as c
+                        FROM ticket_events WHERE created_at BETWEEN %s AND %s
+                        GROUP BY event_type
+                    """, (start_at, end_at))
+                    for r in cur.fetchall():
+                        breakdown[r['event_type']] = r['c']
+
+                    # Users — используем actor_username/actor_name как в api_stats_users
+                    cur.execute("""
+                        SELECT
+                            COALESCE(NULLIF(TRIM(actor_name), ''), COALESCE(NULLIF(TRIM(actor_username), ''), 'Неизвестно')) as name,
+                            COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                            SUM(CASE WHEN event_type IN ('manual_opened_video','manual_opened_text') THEN 1 ELSE 0 END)::int as manuals_opened,
+                            SUM(CASE WHEN event_type = 'ticket_created' THEN 1 ELSE 0 END)::int as tickets_created,
+                            COUNT(*)::int as total_actions
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s
+                          AND event_type IN ('ticket_created','manual_opened_video','manual_opened_text',
+                                             'video_helped','video_not_helped','manual_helped','manual_not_helped',
+                                             'ticket_solved_by_helper')
+                        GROUP BY name, department
+                        ORDER BY total_actions DESC LIMIT 50
+                    """, (start_at, end_at))
+                    users = [dict(r) for r in cur.fetchall()]
+
+                    # Departments usage
+                    cur.execute("""
+                        SELECT
+                            COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
+                            SUM(CASE WHEN event_type IN ('manual_opened_video','manual_opened_text') THEN 1 ELSE 0 END)::int as manuals_opened,
+                            SUM(CASE WHEN event_type = 'ticket_created' THEN 1 ELSE 0 END)::int as tickets_created,
+                            COUNT(*)::int as total_actions
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s
+                          AND event_type IN ('ticket_created','manual_opened_video','manual_opened_text',
+                                             'video_helped','video_not_helped','manual_helped','manual_not_helped',
+                                             'ticket_solved_by_helper')
+                        GROUP BY department
+                        ORDER BY total_actions DESC
+                    """, (start_at, end_at))
+                    dept_usage = [dict(r) for r in cur.fetchall()]
+
+                    # Staff — используем actor_name как в api_stats_staff
+                    cur.execute("""
+                        SELECT actor_name, event_type, COUNT(*)::int as cnt
+                        FROM ticket_events
+                        WHERE created_at BETWEEN %s AND %s
+                          AND event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                        GROUP BY actor_name, event_type
+                    """, (start_at, end_at))
+                    staff_map = {}
+                    for row in cur.fetchall():
+                        name = row['actor_name'] or 'Неизвестно'
+                        if name not in staff_map:
+                            staff_map[name] = {'staff': name, 'resolved': 0, 'not_relevant': 0, 'total': 0}
+                        if row['event_type'] == 'ticket_resolved_by_staff':
+                            staff_map[name]['resolved'] += row['cnt']
+                        elif row['event_type'] == 'ticket_not_relevant':
+                            staff_map[name]['not_relevant'] += row['cnt']
+                        staff_map[name]['total'] += row['cnt']
+                    staff_list = sorted(staff_map.values(), key=lambda x: x['total'], reverse=True)
+
+                    # Pending tickets
+                    cur.execute("""
+                        SELECT ticket_number, problem, department, user_name, is_cisco,
+                               MIN(created_at)::text as created_at
+                        FROM ticket_events
+                        WHERE event_type = 'ticket_created'
+                          AND ticket_number IS NOT NULL
+                          AND ticket_number NOT IN (
+                            SELECT ticket_number FROM ticket_events
+                            WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
+                              AND ticket_number IS NOT NULL
+                          )
+                        GROUP BY ticket_number, problem, department, user_name, is_cisco
+                        ORDER BY MIN(created_at) ASC
+                    """)
+                    pending = [dict(r) for r in cur.fetchall()]
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT event_type, COUNT(*) as c FROM ticket_events WHERE created_at BETWEEN ? AND ? GROUP BY event_type", (start_at, end_at))
+                breakdown = {r['event_type']: r['c'] for r in cur.fetchall()}
+
+        # --- Формируем Excel ---
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        tmp_path = tmp_file.name
+        tmp_file.close()
+
+        now = datetime.now()
+        with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+            # 1. Сводка
+            summary_df = pd.DataFrame([{
+                'Период': f"{start_at[:10]} — {end_at[:10]}",
+                'Всего обращений': stats_data.get('total', 0),
+                'Видео помогло': breakdown.get('video_helped', 0),
+                'Видео не помогло': breakdown.get('video_not_helped', 0),
+                'Мануал помог': breakdown.get('manual_helped', 0),
+                'Мануал не помог': breakdown.get('manual_not_helped', 0),
+                'Заявки создано': breakdown.get('ticket_created', 0),
+                'Решено персоналом': breakdown.get('ticket_resolved_by_staff', 0),
+                'Не актуально': breakdown.get('ticket_not_relevant', 0),
+                'Нерешённых заявок': len(pending)
+            }])
+            summary_df.to_excel(writer, sheet_name='Сводка', index=False)
+
+            # 2. По дням
+            if timeline:
+                tl_df = pd.DataFrame(timeline)
+                tl_df.to_excel(writer, sheet_name='По дням', index=False)
+
+            # 3. Топ проблем
+            if top_problems:
+                tp_df = pd.DataFrame(top_problems)
+                tp_df.to_excel(writer, sheet_name='Топ проблем', index=False)
+
+            # 4. По отделам
+            if departments:
+                dep_df = pd.DataFrame(departments)
+                dep_df.to_excel(writer, sheet_name='По отделам', index=False)
+
+            # 5. По специалистам
+            if users:
+                u_df = pd.DataFrame(users)
+                u_df.columns = ['Специалист', 'Отдел', 'Мануалы', 'Заявки', 'Всего'][:len(u_df.columns)]
+                u_df.to_excel(writer, sheet_name='По специалистам', index=False)
+
+            # 6. Использование по отделам
+            if dept_usage:
+                du_df = pd.DataFrame(dept_usage)
+                du_df.columns = ['Отдел', 'Мануалы', 'Заявки', 'Всего'][:len(du_df.columns)]
+                du_df.to_excel(writer, sheet_name='Использование по отделам', index=False)
+
+            # 7. Техподдержка
+            if staff_list:
+                st_df = pd.DataFrame(staff_list)
+                st_df.columns = ['Сотрудник', 'Решено', 'Не актуально', 'Всего'][:len(st_df.columns)]
+                st_df.to_excel(writer, sheet_name='Техподдержка', index=False)
+
+            # 8. Нерешённые заявки
+            if pending:
+                for p in pending:
+                    created = p.get('created_at', '')
+                    try:
+                        if isinstance(created, str):
+                            dt = datetime.strptime(created[:19], '%Y-%m-%d %H:%M:%S')
+                        else:
+                            dt = created
+                        delta = now - dt
+                        total_hours = delta.total_seconds() / 3600
+                        if total_hours >= 24:
+                            d = int(total_hours // 24)
+                            h = int(total_hours % 24)
+                            p['waiting_time'] = f"{d}д {h}ч"
+                        else:
+                            p['waiting_time'] = f"{int(total_hours)}ч"
+                    except Exception:
+                        p['waiting_time'] = '—'
+                pend_df = pd.DataFrame([{
+                    '№ заявки': p.get('ticket_number', ''),
+                    'Проблема': p.get('problem', ''),
+                    'Отдел': p.get('department', ''),
+                    'Пользователь': p.get('user_name', ''),
+                    'Cisco': 'Да' if p.get('is_cisco') else 'Нет',
+                    'Дата создания': str(p.get('created_at', ''))[:19],
+                    'Время ожидания': p.get('waiting_time', '—')
+                } for p in pending])
+                pend_df.to_excel(writer, sheet_name='Нерешённые заявки', index=False)
+
+            # 9. Журнал заявок (полная сводка)
+            journal_rows = []
+            try:
+                if ANALYTICS_USE_POSTGRES:
+                    with _pg_connect() as conn2:
+                        with conn2.cursor() as cur2:
+                            cur2.execute("""
+                                SELECT ticket_number, problem, department, user_name, workplace,
+                                       is_cisco, created_at::text as created_at
+                                FROM ticket_events
+                                WHERE event_type = 'ticket_created'
+                                  AND ticket_number IS NOT NULL
+                                  AND created_at BETWEEN %s AND %s
+                                ORDER BY created_at DESC LIMIT 500
+                            """, (start_at, end_at))
+                            j_created = [dict(r) for r in cur2.fetchall()]
+                            j_nums = [r['ticket_number'] for r in j_created]
+                            j_resolved = {}
+                            if j_nums:
+                                cur2.execute("""
+                                    SELECT ticket_number, event_type, actor_name,
+                                           created_at::text as resolved_at
+                                    FROM ticket_events
+                                    WHERE event_type IN ('ticket_resolved_by_staff','ticket_not_relevant')
+                                      AND ticket_number = ANY(%s)
+                                    ORDER BY created_at ASC
+                                """, (j_nums,))
+                                for r in cur2.fetchall():
+                                    tn = r['ticket_number']
+                                    if tn not in j_resolved:
+                                        j_resolved[tn] = dict(r)
+                            for row in j_created:
+                                tn = row['ticket_number']
+                                res = j_resolved.get(tn)
+                                status = 'Ожидает'
+                                resolved_by = ''
+                                resolved_at = ''
+                                resolution_time = ''
+                                if res:
+                                    status = 'Решена' if res['event_type'] == 'ticket_resolved_by_staff' else 'Не актуальна'
+                                    resolved_by = res.get('actor_name', '')
+                                    resolved_at = str(res.get('resolved_at', ''))[:19]
+                                    try:
+                                        dt_c = datetime.strptime(str(row['created_at'])[:19], '%Y-%m-%d %H:%M:%S')
+                                        dt_r = datetime.strptime(resolved_at, '%Y-%m-%d %H:%M:%S')
+                                        mins = (dt_r - dt_c).total_seconds() / 60
+                                        if mins < 60:
+                                            resolution_time = f"{int(mins)}м"
+                                        elif mins < 1440:
+                                            resolution_time = f"{int(mins // 60)}ч {int(mins % 60)}м"
+                                        else:
+                                            resolution_time = f"{int(mins // 1440)}д {int((mins % 1440) // 60)}ч"
+                                    except Exception:
+                                        resolution_time = '—'
+                                else:
+                                    try:
+                                        dt_c = datetime.strptime(str(row['created_at'])[:19], '%Y-%m-%d %H:%M:%S')
+                                        mins = (now - dt_c).total_seconds() / 60
+                                        if mins < 60:
+                                            resolution_time = f"{int(mins)}м ожидает"
+                                        elif mins < 1440:
+                                            resolution_time = f"{int(mins // 60)}ч ожидает"
+                                        else:
+                                            resolution_time = f"{int(mins // 1440)}д ожидает"
+                                    except Exception:
+                                        resolution_time = '—'
+                                journal_rows.append({
+                                    '№ заявки': tn,
+                                    'Проблема': row.get('problem', ''),
+                                    'Отдел': row.get('department', ''),
+                                    'Пользователь': row.get('user_name', ''),
+                                    'Рабочее место': row.get('workplace', ''),
+                                    'Cisco': 'Да' if row.get('is_cisco') else 'Нет',
+                                    'Дата создания': str(row.get('created_at', ''))[:19],
+                                    'Статус': status,
+                                    'Кто помог': resolved_by,
+                                    'Дата решения': resolved_at,
+                                    'Время решения': resolution_time
+                                })
+            except Exception as je:
+                print(f"[admin_stats_export] journal error: {je}")
+            if journal_rows:
+                j_df = pd.DataFrame(journal_rows)
+                j_df.to_excel(writer, sheet_name='Журнал заявок', index=False)
+
+        return send_file(
+            tmp_path,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'stats_{now.strftime("%Y-%m-%d")}.xlsx'
+        )
+    except Exception as e:
+        print(f"[admin_stats_export] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка экспорта'}), 500
+
+
 # ============================================
 # УПРАВЛЕНИЕ УЧЕТНЫМИ ЗАПИСЯМИ АДМИНИСТРАТОРОВ
 # ============================================

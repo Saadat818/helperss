@@ -429,7 +429,8 @@
         }
 
         table {
-            color: var(--text);
+            background: #141414 !important;
+            color: var(--text) !important;
         }
 
         th {
@@ -440,11 +441,20 @@
 
         td {
             background: #141414 !important;
+            color: var(--text) !important;
             border-bottom: 1px solid #242424 !important;
         }
 
         tr:nth-child(even) td {
             background: #171717 !important;
+        }
+
+        tr:hover {
+            background-color: #1c1c1c !important;
+        }
+
+        tr:hover td {
+            background: #1c1c1c !important;
         }
 
         .btn {
@@ -513,7 +523,8 @@
     <div class="container">
         <div class="header">
             <h1>📊 Статистика обращений</h1>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-primary" onclick="exportExcel()" id="exportBtn" style="background: linear-gradient(135deg, #17a2b8 0%, #117a8b 100%) !important;">📥 Excel</button>
                 <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">← К мануалам</a>
                 <a href="{{ url_for('admin_topics') }}" class="btn btn-primary">🏷️ Тематики</a>
                 <a href="{{ url_for('admin_logout') }}" class="btn btn-secondary">Выход</a>
@@ -558,6 +569,10 @@
             <div class="stat-card neutral">
                 <div class="stat-label">Cisco заявки</div>
                 <div class="stat-value" id="ciscoTickets">—</div>
+            </div>
+            <div class="stat-card" id="pendingCard" style="border-left-color: #ff9800;">
+                <div class="stat-label">Нерешённых заявок</div>
+                <div class="stat-value" id="pendingCount" style="color: #ff9800;">—</div>
             </div>
         </div>
 
@@ -612,6 +627,22 @@
                 <div class="loading">Загрузка...</div>
             </div>
         </div>
+
+        <!-- Нерешённые заявки -->
+        <div class="departments-table" style="margin-top: 30px; border-left-color: #ff9800;">
+            <h2>⏳ Нерешённые заявки</h2>
+            <div id="pendingTable">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
+
+        <!-- Журнал заявок -->
+        <div class="departments-table" style="margin-top: 30px; border-left-color: #007bff;">
+            <h2>📋 Журнал заявок (полная сводка)</h2>
+            <div id="journalTable">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -638,14 +669,16 @@
 
             // Загружаем все данные параллельно
             try {
-                const [summary, timeline, problems, departments, users, deptUsage, staff] = await Promise.all([
+                const [summary, timeline, problems, departments, users, deptUsage, staff, pending, journal] = await Promise.all([
                     fetch(`/api/stats/summary?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/timeline?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/top_problems?days=${days}&limit=10`).then(r => r.json()),
                     fetch(`/api/stats/departments?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/users?days=${days}&limit=20`).then(r => r.json()),
                     fetch(`/api/stats/departments_usage?days=${days}&limit=30`).then(r => r.json()),
-                    fetch(`/api/stats/staff?days=${days}`).then(r => r.json())
+                    fetch(`/api/stats/staff?days=${days}`).then(r => r.json()),
+                    fetch('/api/stats/pending_tickets').then(r => r.json()),
+                    fetch(`/api/stats/tickets_journal?days=${days}&limit=200`).then(r => r.json())
                 ]);
 
                 if (summary.success) {
@@ -680,6 +713,18 @@
                     updateStaff(staff.data);
                 } else {
                     document.getElementById('staffTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(staff.error || 'не удалось загрузить')}</div>`;
+                }
+
+                if (pending.success) {
+                    updatePending(pending.data, pending.total);
+                } else {
+                    document.getElementById('pendingTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(pending.error || 'не удалось загрузить')}</div>`;
+                }
+
+                if (journal.success) {
+                    updateJournal(journal.data);
+                } else {
+                    document.getElementById('journalTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(journal.error || 'не удалось загрузить')}</div>`;
                 }
 
             } catch (error) {
@@ -984,6 +1029,128 @@
                 </table>
             `;
             container.innerHTML = html;
+        }
+
+        function updatePending(data, total) {
+            document.getElementById('pendingCount').textContent = total || 0;
+            const card = document.getElementById('pendingCard');
+            if (total > 0) {
+                card.style.borderLeftColor = '#ff9800';
+            } else {
+                card.style.borderLeftColor = '#28a745';
+            }
+
+            const container = document.getElementById('pendingTable');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="loading" style="color: #28a745;">Все заявки решены</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Проблема</th>
+                            <th>Отдел</th>
+                            <th>Пользователь</th>
+                            <th style="text-align:center;">Cisco</th>
+                            <th>Дата создания</th>
+                            <th style="text-align:center;">Ожидание</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            data.forEach(t => {
+                const isLong = (t.waiting_hours || 0) >= 24;
+                const rowStyle = isLong ? 'background: rgba(233, 75, 90, 0.1) !important;' : '';
+                const waitStyle = isLong ? 'color: #e94b5a; font-weight: 700;' : 'color: #ff9800;';
+                html += `
+                    <tr>
+                        <td style="${rowStyle}">${escapeHtml(t.ticket_number || '—')}</td>
+                        <td style="${rowStyle}">${escapeHtml(t.problem || '—')}</td>
+                        <td style="${rowStyle}">${escapeHtml(t.department || '—')}</td>
+                        <td style="${rowStyle}">${escapeHtml(t.user_name || '—')}</td>
+                        <td style="text-align:center; ${rowStyle}">${t.is_cisco ? '✅' : '—'}</td>
+                        <td style="${rowStyle}">${escapeHtml((t.created_at || '').substring(0, 16))}</td>
+                        <td style="text-align:center; ${waitStyle} ${rowStyle}">${escapeHtml(t.waiting_time || '—')}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function updateJournal(data) {
+            const container = document.getElementById('journalTable');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="loading">Нет заявок за выбранный период</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Проблема</th>
+                            <th>Отдел</th>
+                            <th>Пользователь</th>
+                            <th style="text-align:center;">Cisco</th>
+                            <th>Создана</th>
+                            <th>Статус</th>
+                            <th>Кто помог</th>
+                            <th>Решена</th>
+                            <th style="text-align:center;">Время решения</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            data.forEach(t => {
+                let statusText, statusColor;
+                if (t.status === 'resolved') {
+                    statusText = 'Решена';
+                    statusColor = '#28a745';
+                } else if (t.status === 'not_relevant') {
+                    statusText = 'Не актуальна';
+                    statusColor = '#6c757d';
+                } else {
+                    statusText = 'Ожидает';
+                    statusColor = '#ff9800';
+                }
+
+                const isLong = t.status === 'pending' && (t.resolution_minutes || 0) >= 1440;
+                const rowBg = t.status === 'pending' ? (isLong ? 'background: rgba(233, 75, 90, 0.08) !important;' : 'background: rgba(255, 152, 0, 0.06) !important;') : '';
+                const timeColor = t.status === 'resolved' ? '#28a745' : (isLong ? '#e94b5a' : '#ff9800');
+
+                html += `
+                    <tr>
+                        <td style="${rowBg}">${escapeHtml(String(t.ticket_number || '—'))}</td>
+                        <td style="${rowBg}">${escapeHtml(t.problem || '—')}</td>
+                        <td style="${rowBg}">${escapeHtml(t.department || '—')}</td>
+                        <td style="${rowBg}">${escapeHtml(t.user_name || '—')}</td>
+                        <td style="text-align:center; ${rowBg}">${t.is_cisco ? '✅' : '—'}</td>
+                        <td style="${rowBg}">${escapeHtml((t.created_at || '').substring(0, 16))}</td>
+                        <td style="color: ${statusColor}; font-weight: 600; ${rowBg}">${statusText}</td>
+                        <td style="${rowBg}">${escapeHtml(t.resolved_by || '—')}</td>
+                        <td style="${rowBg}">${t.resolved_at ? escapeHtml(t.resolved_at.substring(0, 16)) : '—'}</td>
+                        <td style="text-align:center; color: ${timeColor}; font-weight: 600; ${rowBg}">${escapeHtml(t.resolution_time || '—')}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function exportExcel() {
+            const btn = document.getElementById('exportBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Загрузка...';
+            window.location.href = `/admin/stats/export?days=${currentPeriod}`;
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = '📥 Excel';
+            }, 3000);
         }
 
         // Показать ошибку

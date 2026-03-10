@@ -2027,10 +2027,14 @@ def trainer_play(scenario_id):
         flash('Сценарий не найден')
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
 
-    # Черновики недоступны для обычных пользователей
-    if scenario.get('is_draft') and not preview_mode:
-        flash('Сценарий недоступен')
-        return redirect(url_for('trainer_menu'))
+    # Черновики и скрытые сценарии недоступны для обычных пользователей
+    if not preview_mode:
+        if scenario.get('is_draft'):
+            flash('Сценарий недоступен')
+            return redirect(url_for('trainer_menu'))
+        if not scenario.get('is_active'):
+            flash('Сценарий недоступен')
+            return redirect(url_for('trainer_menu'))
 
     # Check level access (skip in preview mode)
     if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):

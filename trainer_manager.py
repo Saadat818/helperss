@@ -1040,10 +1040,10 @@ class TrainerManager:
         for level in levels:
             level_code = level['code']
 
-            # Считаем сценарии на уровне
+            # Считаем сценарии на уровне (без черновиков)
             cursor.execute("""
                 SELECT COUNT(*) FROM trainer_scenarios
-                WHERE level_id = ? AND is_active = 1
+                WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)
             """, (level['id'],))
             total = cursor.fetchone()[0]
 
@@ -1110,9 +1110,9 @@ class TrainerManager:
         if not level:
             return
 
-        # Считаем сценарии
+        # Считаем сценарии (без черновиков)
         cursor.execute("""
-            SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1
+            SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)
         """, (level['id'],))
         total = cursor.fetchone()[0]
 
@@ -1529,7 +1529,7 @@ class TrainerManager:
         levels_stats = []
         for level in self.get_all_levels():
             cursor.execute("""
-                SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1
+                SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)
             """, (level['id'],))
             scenarios = cursor.fetchone()[0]
 
@@ -1793,7 +1793,7 @@ class TrainerManager:
                    s.id as scenario_id, s.title as scenario_title, s.order_num
             FROM trainer_levels l
             JOIN trainer_scenarios s ON s.level_id = l.id
-            WHERE s.is_active = 1
+            WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
             ORDER BY l.id, s.order_num
         """)
         rows = cursor.fetchall()
@@ -2059,7 +2059,7 @@ class TrainerManager:
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
             JOIN trainer_scenario_tags st ON s.id = st.scenario_id
-            WHERE st.tag_id = ? AND s.is_active = 1
+            WHERE st.tag_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
             ORDER BY l.order_num, s.order_num
         """, (tag_id,))
         return [dict(row) for row in cursor.fetchall()]

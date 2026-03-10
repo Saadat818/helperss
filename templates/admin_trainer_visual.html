@@ -133,6 +133,7 @@
             height: 2000px;
             pointer-events: none;
             overflow: visible;
+            /* viewBox НЕ задаётся — координаты прямые, без масштабирования */
         }
 
         .connection-line {
@@ -1416,9 +1417,8 @@
             });
             canvas.style.width = maxX + 'px';
             canvas.style.height = maxY + 'px';
-            connectionsSvg.setAttribute('width', maxX);
-            connectionsSvg.setAttribute('height', maxY);
-            connectionsSvg.setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+            connectionsSvg.style.width = maxX + 'px';
+            connectionsSvg.style.height = maxY + 'px';
         }
 
         function updateConnections() {

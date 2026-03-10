@@ -966,7 +966,11 @@
             answersList.innerHTML = '';
 
             if (!answers || answers.length === 0) {
-                answersList.innerHTML = '<div style="color:#888">Нет вариантов ответа</div>';
+                // Нет ответов — это конечный шаг, автозавершаем сценарий
+                answersList.innerHTML = '';
+                stopTimer();
+                stopEmotionTimer();
+                setTimeout(() => showSuccess(), 1500);
                 return;
             }
 

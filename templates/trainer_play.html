@@ -839,6 +839,7 @@
         let resultSaved = false;
         let silenceCount = 0;  // сколько раз клиент реагировал на молчание
         let timeoutCount = 0;  // общее число таймаутов за сессию
+        let scenarioEnded = false;  // флаг: сценарий завершён, таймеры не должны работать
 
         // Реплики клиента при молчании специалиста — из сценария или стандартные
         const silenceMessagesRaw = {{ (scenario.silence_messages or '') | tojson }};
@@ -916,10 +917,6 @@
                     showClientCard(data.client_info);
                 }
 
-                // Таймеры
-                startTimer();
-                startEmotionTimer();
-
                 scrollToBottom();
             } catch (error) {
                 console.error('Fetch error:', error);
@@ -943,8 +940,6 @@
 
                 addBubble(data.step.client_message, 'client');
                 showAnswers(data.step.answers);
-                startTimer();
-                startEmotionTimer();
                 scrollToBottom();
             } catch (error) {
                 console.error('Fetch error:', error);
@@ -967,9 +962,9 @@
 
             if (!answers || answers.length === 0) {
                 // Нет ответов — это конечный шаг, автозавершаем сценарий
-                answersList.innerHTML = '';
                 stopTimer();
                 stopEmotionTimer();
+                scenarioEnded = true;
                 setTimeout(() => showSuccess(), 1500);
                 return;
             }
@@ -981,6 +976,14 @@
                 btn.onclick = () => selectAnswer(answer);
                 answersList.appendChild(btn);
             });
+
+            // Таймеры запускаем только если сценарий ещё не завершён
+            if (!scenarioEnded) {
+                stopTimer();
+                stopEmotionTimer();
+                startTimer();
+                startEmotionTimer();
+            }
         }
 
         async function selectAnswer(answer) {
@@ -1082,6 +1085,7 @@
         function stopEmotionTimer() { if (emotionTimer) { clearInterval(emotionTimer); emotionTimer = null; } }
 
         function handleTimeout() {
+            if (scenarioEnded) return;
             stopTimer();
             stopEmotionTimer();
             // Блокируем кнопки на время показа реплики молчания
@@ -1169,6 +1173,9 @@
         let selectedTopicName = null;
 
         function showGameOver() {
+            scenarioEnded = true;
+            stopTimer();
+            stopEmotionTimer();
             pendingGameOver = true;
             if (correctTopics.length > 0) {
                 showTopicModal();
@@ -1184,6 +1191,9 @@
         }
 
         function showSuccess() {
+            scenarioEnded = true;
+            stopTimer();
+            stopEmotionTimer();
             pendingGameOver = false;
             if (correctTopics.length > 0) {
                 showTopicModal();

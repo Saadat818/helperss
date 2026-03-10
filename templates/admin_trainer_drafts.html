@@ -13,13 +13,25 @@
             padding: 20px;
         }
         .back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #00d4aa;
-            text-decoration: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
             font-size: 14px;
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: 600;
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 100%);
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            transition: all 0.3s ease;
         }
-        .back-link:hover { text-decoration: underline; }
+        .back-link:hover {
+            background: linear-gradient(135deg, #0cc98d 0%, #009a9e 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
+        }
 
         .container {
             max-width: 1200px;

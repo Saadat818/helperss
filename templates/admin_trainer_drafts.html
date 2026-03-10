@@ -234,6 +234,7 @@
             <p id="publishModalText"></p>
             <div class="modal-buttons">
                 <form id="publishForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-success">Опубликовать</button>
                 </form>
                 <button class="btn" style="background:#2a2a3e;color:#ccc;" onclick="closeModals()">Отмена</button>
@@ -248,6 +249,7 @@
             <p id="deleteModalText"></p>
             <div class="modal-buttons">
                 <form id="deleteForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger">Удалить</button>
                 </form>
                 <button class="btn" style="background:#2a2a3e;color:#ccc;" onclick="closeModals()">Отмена</button>

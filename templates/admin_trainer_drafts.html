@@ -154,7 +154,7 @@
     <div class="container">
         <div class="header">
             <h1>✏️ Черновики сценариев</h1>
-            <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">+ Создать сценарий</a>
+            <a href="{{ url_for('admin_trainer_create') }}?draft=1" class="btn btn-success">+ Создать черновик</a>
         </div>
 
         {% with messages = get_flashed_messages() %}

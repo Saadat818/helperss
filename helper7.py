@@ -2486,7 +2486,10 @@ def admin_trainer_create():
                 changes=data,
                 ip_address=request.remote_addr
             )
-            flash('Сценарий успешно создан!')
+            if is_draft:
+                flash('Черновик создан! Добавьте шаги и опубликуйте когда будет готов.')
+            else:
+                flash('Сценарий успешно создан!')
             return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
         else:
             flash(f'Ошибка: {result.get("error")}')

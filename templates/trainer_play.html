@@ -931,7 +931,12 @@
 
                 if (!data.success) {
                     console.error('Error loading step by id:', data.error);
-                    showSuccess();
+                    // Шаг не найден (удалён) — переходим к следующему по порядку или завершаем
+                    if (currentStepNum < totalSteps) {
+                        loadStep(currentStepNum + 1);
+                    } else {
+                        showSuccess();
+                    }
                     return;
                 }
 
@@ -943,6 +948,12 @@
                 scrollToBottom();
             } catch (error) {
                 console.error('Fetch error:', error);
+                // Сетевая ошибка — пробуем следующий шаг
+                if (currentStepNum < totalSteps) {
+                    loadStep(currentStepNum + 1);
+                } else {
+                    showSuccess();
+                }
             }
         }
 

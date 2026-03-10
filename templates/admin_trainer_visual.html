@@ -116,6 +116,8 @@
             width: 3000px;
             height: 2000px;
             cursor: grab;
+            min-width: 3000px;
+            min-height: 2000px;
         }
 
         .canvas:active {
@@ -127,9 +129,10 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 3000px;
+            height: 2000px;
             pointer-events: none;
+            overflow: visible;
         }
 
         .connection-line {
@@ -1401,7 +1404,25 @@
             return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
         }
 
+        function expandCanvas() {
+            // Расширяем canvas под самый дальний узел + отступ
+            const PADDING = 400;
+            let maxX = 3000, maxY = 2000;
+            nodes.forEach(n => {
+                const el = document.getElementById(n.id);
+                if (!el) return;
+                maxX = Math.max(maxX, n.x + el.offsetWidth + PADDING);
+                maxY = Math.max(maxY, n.y + el.offsetHeight + PADDING);
+            });
+            canvas.style.width = maxX + 'px';
+            canvas.style.height = maxY + 'px';
+            connectionsSvg.setAttribute('width', maxX);
+            connectionsSvg.setAttribute('height', maxY);
+            connectionsSvg.setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+        }
+
         function updateConnections() {
+            expandCanvas();
             // Clear existing connection lines
             connectionsSvg.querySelectorAll('.connection-line:not(.temp-line)').forEach(l => l.remove());
 

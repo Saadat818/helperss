@@ -199,7 +199,6 @@
                     <td>
                         <div class="actions-wrap">
                             <a href="{{ url_for('admin_trainer_edit', scenario_id=draft.id) }}" class="btn btn-primary btn-sm">Редактировать</a>
-                            <a href="{{ url_for('trainer_play', scenario_id=draft.id) }}?preview=1" class="btn btn-sm" style="background:#16213e;color:#00d4aa;border:1px solid #00d4aa44;" target="_blank">Просмотр</a>
                             <button class="btn btn-success btn-sm" onclick="confirmPublish({{ draft.id }}, '{{ draft.title | e }}')">Опубликовать</button>
                             <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ draft.id }}, '{{ draft.title | e }}')">Удалить</button>
                         </div>

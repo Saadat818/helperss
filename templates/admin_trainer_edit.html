@@ -786,7 +786,7 @@
                 <div style="margin-bottom: 15px;">
                     <input type="text" id="topicSearchInput" placeholder="Поиск тематики..."
                            style="width: 100%; padding: 12px 15px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 14px;">
-                    <div id="topicSearchResults" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; margin-top: 5px; display: none; background: white;"></div>
+                    <div id="topicSearchResults" style="max-height: 200px; overflow-y: auto; border: 1px solid #2a2a3e; border-radius: 8px; margin-top: 5px; display: none; background: #16213e;"></div>
                 </div>
 
                 <div id="selectedTopicsList" style="display: flex; flex-direction: column; gap: 8px;">
@@ -1274,16 +1274,16 @@
                         resultsDiv.innerHTML = '';
                         data.results.slice(0, 15).forEach(r => {
                             const item = document.createElement('div');
-                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #eee; font-size:13px; transition:background 0.2s;';
-                            item.onmouseenter = () => item.style.background = '#f0f0f0';
+                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #2a2a3e; font-size:13px; transition:background 0.2s; color:#e0e0e0;';
+                            item.onmouseenter = () => item.style.background = '#2a2a3e';
                             item.onmouseleave = () => item.style.background = '';
-                            item.innerHTML = `<strong>${r.topic}</strong> <span style="color:#888; font-size:11px;">${r.channel || ''}</span>`;
+                            item.innerHTML = `<strong style="color:#fff;">${r.topic}</strong> <span style="color:#aaa; font-size:11px;">${r.channel || ''}</span>`;
                             item.onclick = () => addCorrectTopic(r);
                             resultsDiv.appendChild(item);
                         });
                         resultsDiv.style.display = 'block';
                     } else {
-                        resultsDiv.innerHTML = '<div style="padding:10px 14px; color:#888; font-size:13px;">Ничего не найдено</div>';
+                        resultsDiv.innerHTML = '<div style="padding:10px 14px; color:#aaa; font-size:13px;">Ничего не найдено</div>';
                         resultsDiv.style.display = 'block';
                     }
                 } catch (e) {

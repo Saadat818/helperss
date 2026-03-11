@@ -1,4 +1,5 @@
 import os
+import random
 import sqlite3
 import threading
 import json
@@ -2105,6 +2106,8 @@ def trainer_get_step(scenario_id, step_num):
             'answer_text': answer['answer_text'],
             'order_num': answer['order_num']
         })
+    # Перемешиваем ответы — нельзя запомнить позицию правильного
+    random.shuffle(safe_answers)
 
     # Парсим карточку клиента из JSON
     client_info = None
@@ -2152,6 +2155,8 @@ def trainer_get_step_by_id(step_id):
             'answer_text': answer['answer_text'],
             'order_num': answer['order_num']
         })
+    # Перемешиваем ответы — нельзя запомнить позицию правильного
+    random.shuffle(safe_answers)
 
     return jsonify({
         'success': True,

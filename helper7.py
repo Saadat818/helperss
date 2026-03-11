@@ -2442,6 +2442,10 @@ def admin_trainer():
     unread_feedback = trainer_mgr.get_unread_feedback_count()
     draft_count = trainer_mgr.get_draft_count()
 
+    archived_scenarios = trainer_mgr.get_archived_scenarios()
+    for s in archived_scenarios:
+        s['steps_count'] = trainer_mgr.get_steps_count(s['id'])
+
     return render_template('admin_trainer.html',
                          stats=stats,
                          levels=levels,
@@ -2452,7 +2456,8 @@ def admin_trainer():
                          current_category=category_id,
                          current_tag=tag_id,
                          unread_feedback=unread_feedback,
-                         draft_count=draft_count)
+                         draft_count=draft_count,
+                         archived_scenarios=archived_scenarios)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
@@ -2795,6 +2800,50 @@ def admin_trainer_publish(scenario_id):
     else:
         flash(f'Ошибка: {result.get("error")}')
     return redirect(url_for('admin_trainer_drafts'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/archive', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_archive(scenario_id):
+    """Отправить сценарий в архив"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.archive_scenario(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='archive',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий перемещён в архив.')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+    return redirect(url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/restore', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_restore(scenario_id):
+    """Восстановить сценарий из архива"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.restore_from_archive(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='restore',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий восстановлен из архива и снова активен.')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+    return redirect(url_for('admin_trainer'))
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/duplicate', methods=['POST'])

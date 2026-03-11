@@ -290,6 +290,12 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_draft BOOLEAN DEFAULT 0")
 
+        # Архив сценариев
+        try:
+            cursor.execute("SELECT is_archived FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_archived BOOLEAN DEFAULT 0")
+
         self.conn.commit()
 
     def _migrate_hard_level(self):
@@ -888,7 +894,9 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? AND s.category_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                WHERE s.level_id = ? AND s.category_id = ? AND s.is_active = 1
+                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY s.order_num
             """, (level['id'], category_id))
         else:
@@ -897,7 +905,9 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                WHERE s.level_id = ? AND s.is_active = 1
+                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY s.order_num
             """, (level['id'],))
         return [dict(row) for row in cursor.fetchall()]
@@ -916,7 +926,7 @@ class TrainerManager:
         return dict(row) if row else None
 
     def get_all_scenarios(self, include_inactive: bool = False) -> List[Dict]:
-        """Получить все сценарии (без черновиков)"""
+        """Получить все сценарии (без черновиков и архивных)"""
         cursor = self.conn.cursor()
         if include_inactive:
             cursor.execute("""
@@ -925,6 +935,7 @@ class TrainerManager:
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
                 WHERE (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY l.order_num, s.order_num
             """)
         else:
@@ -933,10 +944,57 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                WHERE s.is_active = 1
+                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY l.order_num, s.order_num
             """)
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_archived_scenarios(self) -> List[Dict]:
+        """Получить все архивные сценарии"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
+            FROM trainer_scenarios s
+            JOIN trainer_levels l ON s.level_id = l.id
+            LEFT JOIN trainer_categories c ON s.category_id = c.id
+            WHERE s.is_archived = 1
+            ORDER BY s.created_at DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_archived_count(self) -> int:
+        """Количество архивных сценариев"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_archived = 1")
+        return cursor.fetchone()[0]
+
+    def archive_scenario(self, scenario_id: int) -> Dict:
+        """Отправить сценарий в архив"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE trainer_scenarios SET is_archived = 1, is_active = 0 WHERE id = ?",
+                (scenario_id,)
+            )
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def restore_from_archive(self, scenario_id: int) -> Dict:
+        """Восстановить сценарий из архива"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE trainer_scenarios SET is_archived = 0, is_active = 1 WHERE id = ?",
+                (scenario_id,)
+            )
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def get_draft_scenarios(self) -> List[Dict]:
         """Получить все черновики сценариев"""
@@ -1043,7 +1101,7 @@ class TrainerManager:
             # Считаем сценарии на уровне (без черновиков)
             cursor.execute("""
                 SELECT COUNT(*) FROM trainer_scenarios
-                WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)
+                WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
             """, (level['id'],))
             total = cursor.fetchone()[0]
 
@@ -1112,7 +1170,7 @@ class TrainerManager:
 
         # Считаем сценарии (без черновиков)
         cursor.execute("""
-            SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)
+            SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
         """, (level['id'],))
         total = cursor.fetchone()[0]
 
@@ -1566,7 +1624,7 @@ class TrainerManager:
         cursor = self.conn.cursor()
 
         # Общее количество сценариев (без черновиков)
-        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)")
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)")
         total_scenarios = cursor.fetchone()[0]
 
         # Количество прохождений
@@ -1586,7 +1644,7 @@ class TrainerManager:
         levels_stats = []
         for level in self.get_all_levels():
             cursor.execute("""
-                SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL)
+                SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
             """, (level['id'],))
             scenarios = cursor.fetchone()[0]
 
@@ -1862,7 +1920,7 @@ class TrainerManager:
                    s.id as scenario_id, s.title as scenario_title, s.order_num
             FROM trainer_levels l
             JOIN trainer_scenarios s ON s.level_id = l.id
-            WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
+            WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL)
             ORDER BY l.id, s.order_num
         """)
         rows = cursor.fetchall()
@@ -2128,7 +2186,7 @@ class TrainerManager:
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
             JOIN trainer_scenario_tags st ON s.id = st.scenario_id
-            WHERE st.tag_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL)
+            WHERE st.tag_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL)
             ORDER BY l.order_num, s.order_num
         """, (tag_id,))
         return [dict(row) for row in cursor.fetchall()]

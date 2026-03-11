@@ -2439,12 +2439,15 @@ def admin_trainer():
     if tag_id:
         scenarios = [s for s in scenarios if any(t['id'] == tag_id for t in s['tags'])]
 
-    unread_feedback = trainer_mgr.get_unread_feedback_count()
-    draft_count = trainer_mgr.get_draft_count()
-
+    # Добавляем архивные в конец общего списка
     archived_scenarios = trainer_mgr.get_archived_scenarios()
     for s in archived_scenarios:
         s['steps_count'] = trainer_mgr.get_steps_count(s['id'])
+        s['tags'] = trainer_mgr.get_scenario_tags(s['id'])
+    scenarios = scenarios + archived_scenarios
+
+    unread_feedback = trainer_mgr.get_unread_feedback_count()
+    draft_count = trainer_mgr.get_draft_count()
 
     return render_template('admin_trainer.html',
                          stats=stats,
@@ -2456,8 +2459,7 @@ def admin_trainer():
                          current_category=category_id,
                          current_tag=tag_id,
                          unread_feedback=unread_feedback,
-                         draft_count=draft_count,
-                         archived_scenarios=archived_scenarios)
+                         draft_count=draft_count)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])

@@ -807,7 +807,7 @@
                         ${user.badges.map(b => `<span title="${b.description}" class="lb-badge"><span class="lb-badge-icon">${b.icon}</span><span class="lb-badge-name">${b.name}</span></span>`).join('')}
                     </div>
                     <div class="lb-completions" title="Пройдено сценариев">${user.completions} прох.</div>
-                    <div class="lb-score" title="Средний балл">${user.avg_percent.toFixed(1)}%</div>
+                    <div class="lb-score" title="Суммарные баллы">${user.total_score || 0} б.</div>
                 </div>`;
             });
 
@@ -823,7 +823,7 @@
                         ${me.badges.map(b => `<span title="${b.description}" class="lb-badge"><span class="lb-badge-icon">${b.icon}</span><span class="lb-badge-name">${b.name}</span></span>`).join('')}
                     </div>
                     <div class="lb-completions" title="Пройдено сценариев">${me.completions} прох.</div>
-                    <div class="lb-score" title="Средний балл">${me.avg_percent.toFixed(1)}%</div>
+                    <div class="lb-score" title="Суммарные баллы">${me.total_score || 0} б.</div>
                 </div>`;
             }
 

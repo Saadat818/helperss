@@ -1548,12 +1548,13 @@ class TrainerManager:
                 'avg_percent': round(row[1] or 0, 1)
             })
 
-        # Топ пользователей
+        # Топ пользователей — сортировка по суммарным баллам
         cursor.execute("""
-            SELECT user_id, COUNT(*) as completions, AVG(percent) as avg_percent
+            SELECT user_id, COUNT(*) as completions, AVG(percent) as avg_percent,
+                   SUM(score) as total_score
             FROM trainer_results
             GROUP BY user_id
-            ORDER BY avg_percent DESC, completions DESC
+            ORDER BY total_score DESC, completions DESC
         """)
         top_users = [dict(row) for row in cursor.fetchall()]
 

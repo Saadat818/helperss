@@ -62,9 +62,10 @@
             display: inline-block;
             transition: all 0.3s;
         }
-        .btn-primary { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; }
-        .btn-success { background: linear-gradient(135deg, #28a745 0%, #218838 100%); color: white; }
-        .btn-danger  { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; }
+        .btn-primary   { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; }
+        .btn-success   { background: linear-gradient(135deg, #28a745 0%, #218838 100%); color: white; }
+        .btn-danger    { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; }
+        .btn-secondary { background: linear-gradient(135deg, #6c757d 0%, #545b62 100%); color: white; }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
         .btn:hover { transform: translateY(-1px); opacity: 0.9; }
 
@@ -212,6 +213,7 @@
                         <div class="actions-wrap">
                             <a href="{{ url_for('admin_trainer_edit', scenario_id=draft.id) }}" class="btn btn-primary btn-sm">Редактировать</a>
                             <button class="btn btn-success btn-sm" onclick="confirmPublish({{ draft.id }}, '{{ draft.title | e }}')">Опубликовать</button>
+                            <button class="btn btn-secondary btn-sm" onclick="confirmDuplicate({{ draft.id }}, '{{ draft.title | e }}')">Дублировать</button>
                             <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ draft.id }}, '{{ draft.title | e }}')">Удалить</button>
                         </div>
                     </td>
@@ -242,6 +244,21 @@
         </div>
     </div>
 
+    <!-- Модалка дублирования -->
+    <div class="modal-overlay" id="duplicateModal">
+        <div class="modal">
+            <h3>Дублировать черновик?</h3>
+            <p id="duplicateModalText"></p>
+            <div class="modal-buttons">
+                <form id="duplicateForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-success">Дублировать</button>
+                </form>
+                <button class="btn" style="background:#2a2a3e;color:#ccc;" onclick="closeModals()">Отмена</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Модалка удаления -->
     <div class="modal-overlay" id="deleteModal">
         <div class="modal">
@@ -262,6 +279,12 @@
             document.getElementById('publishModalText').textContent = 'Сценарий «' + title + '» станет виден всем пользователям.';
             document.getElementById('publishForm').action = '/admin/trainer/scenario/' + id + '/publish';
             document.getElementById('publishModal').classList.add('active');
+        }
+
+        function confirmDuplicate(id, title) {
+            document.getElementById('duplicateModalText').textContent = 'Черновик «' + title + '» будет скопирован как новый черновик «Копия: ' + title + '».';
+            document.getElementById('duplicateForm').action = '/admin/trainer/scenario/' + id + '/duplicate';
+            document.getElementById('duplicateModal').classList.add('active');
         }
 
         function confirmDelete(id, title) {

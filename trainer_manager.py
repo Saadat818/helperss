@@ -1306,6 +1306,63 @@ class TrainerManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def duplicate_scenario(self, scenario_id: int) -> Dict:
+        """Дублировать сценарий в черновики"""
+        try:
+            cursor = self.conn.cursor()
+
+            # Копируем сценарий
+            cursor.execute("SELECT * FROM trainer_scenarios WHERE id = ?", (scenario_id,))
+            orig = dict(cursor.fetchone())
+
+            cursor.execute("""
+                INSERT INTO trainer_scenarios
+                    (level_id, category_id, title, description, estimated_time, total_points,
+                     is_active, order_num, timer_seconds, initial_loyalty, client_info_json,
+                     correct_topics, avatar_images, silence_messages, visual_data, is_draft)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """, (
+                orig['level_id'], orig['category_id'],
+                'Копия: ' + orig['title'],
+                orig['description'], orig['estimated_time'], orig['total_points'],
+                orig['order_num'], orig['timer_seconds'], orig['initial_loyalty'],
+                orig['client_info_json'], orig['correct_topics'],
+                orig['avatar_images'], orig['silence_messages'], orig['visual_data'],
+            ))
+            new_scenario_id = cursor.lastrowid
+
+            # Копируем шаги, строим маппинг old_step_id → new_step_id
+            cursor.execute("SELECT * FROM trainer_steps WHERE scenario_id = ? ORDER BY step_num", (scenario_id,))
+            steps = [dict(r) for r in cursor.fetchall()]
+            step_id_map = {}
+            for step in steps:
+                cursor.execute("""
+                    INSERT INTO trainer_steps (scenario_id, step_num, client_message, client_avatar, client_name, initial_mood)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (new_scenario_id, step['step_num'], step['client_message'],
+                      step['client_avatar'], step['client_name'], step['initial_mood']))
+                step_id_map[step['id']] = cursor.lastrowid
+
+            # Копируем ответы, ремапим next_step_id
+            for old_step_id, new_step_id in step_id_map.items():
+                cursor.execute("SELECT * FROM trainer_answers WHERE step_id = ?", (old_step_id,))
+                answers = [dict(r) for r in cursor.fetchall()]
+                for ans in answers:
+                    new_next = step_id_map.get(ans['next_step_id']) if ans['next_step_id'] else None
+                    cursor.execute("""
+                        INSERT INTO trainer_answers
+                            (step_id, answer_text, is_correct, is_partial, points, feedback,
+                             order_num, mood_impact, knowledge_link, next_step_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (new_step_id, ans['answer_text'], ans['is_correct'], ans['is_partial'],
+                          ans['points'], ans['feedback'], ans['order_num'], ans['mood_impact'],
+                          ans['knowledge_link'], new_next))
+
+            self.conn.commit()
+            return {"success": True, "id": new_scenario_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     def delete_scenario(self, scenario_id: int) -> Dict:
         """Удалить сценарий"""
         try:

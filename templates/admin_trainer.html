@@ -75,6 +75,11 @@
             color: white;
         }
 
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
+            color: white;
+        }
+
         .btn-sm {
             padding: 6px 12px;
             font-size: 12px;
@@ -459,6 +464,7 @@
                     <td class="actions-cell">
                         <div class="actions-wrap">
                             <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="btn btn-primary btn-sm">Редактировать</a>
+                            <button class="btn btn-secondary btn-sm" onclick="confirmDuplicate({{ scenario.id }}, '{{ scenario.title | e }}')">Дублировать</button>
                             <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ scenario.id }}, '{{ scenario.title | e }}')">Удалить</button>
                         </div>
                     </td>
@@ -475,6 +481,21 @@
             </p>
         </div>
         {% endif %}
+    </div>
+
+    <!-- Duplicate Confirmation Modal -->
+    <div class="modal-overlay" id="duplicateModal">
+        <div class="modal">
+            <h3>Дублировать сценарий?</h3>
+            <p>Сценарий "<span id="duplicateScenarioTitle"></span>" будет скопирован в черновики под именем "Копия: ..."</p>
+            <div class="modal-buttons">
+                <button class="btn btn-logout" onclick="closeDuplicateModal()">Отмена</button>
+                <form id="duplicateForm" method="POST" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-success">Дублировать</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <!-- Delete Confirmation Modal -->
@@ -505,6 +526,20 @@
 
             window.location.href = url;
         }
+
+        function confirmDuplicate(id, title) {
+            document.getElementById('duplicateScenarioTitle').textContent = title;
+            document.getElementById('duplicateForm').action = '/admin/trainer/scenario/' + id + '/duplicate';
+            document.getElementById('duplicateModal').classList.add('show');
+        }
+
+        function closeDuplicateModal() {
+            document.getElementById('duplicateModal').classList.remove('show');
+        }
+
+        document.getElementById('duplicateModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDuplicateModal();
+        });
 
         function confirmDelete(id, title) {
             document.getElementById('deleteScenarioTitle').textContent = title;

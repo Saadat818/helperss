@@ -2797,6 +2797,29 @@ def admin_trainer_publish(scenario_id):
     return redirect(url_for('admin_trainer_drafts'))
 
 
+@app.route('/admin/trainer/scenario/<int:scenario_id>/duplicate', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_duplicate(scenario_id):
+    """Дублировать сценарий в черновики"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.duplicate_scenario(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='duplicate',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий продублирован и сохранён в черновиках!')
+        return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
+    else:
+        flash(f'Ошибка дублирования: {result.get("error")}')
+        return redirect(url_for('admin_trainer'))
+
+
 @app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])
 @AdminAuth.login_required
 def admin_trainer_create_step(scenario_id):

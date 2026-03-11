@@ -1548,11 +1548,22 @@ class TrainerManager:
                 'avg_percent': round(row[1] or 0, 1)
             })
 
-        # Топ пользователей — сортировка по суммарным баллам
+        # Топ пользователей — суммируем только последнее прохождение каждого сценария
         cursor.execute("""
-            SELECT user_id, COUNT(*) as completions, AVG(percent) as avg_percent,
+            SELECT user_id,
+                   COUNT(*) as completions,
+                   AVG(percent) as avg_percent,
                    SUM(score) as total_score
-            FROM trainer_results
+            FROM (
+                SELECT user_id, scenario_id,
+                       score, percent
+                FROM trainer_results r1
+                WHERE id = (
+                    SELECT id FROM trainer_results r2
+                    WHERE r2.user_id = r1.user_id AND r2.scenario_id = r1.scenario_id
+                    ORDER BY completed_at DESC LIMIT 1
+                )
+            )
             GROUP BY user_id
             ORDER BY total_score DESC, completions DESC
         """)

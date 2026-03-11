@@ -29,9 +29,9 @@
         }
 
         .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
+            position: absolute;
+            top: 0;
+            right: 0;
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 50%;
@@ -67,6 +67,7 @@
         .container {
             max-width: 900px;
             margin: 0 auto;
+            position: relative;
             background: linear-gradient(180deg, var(--card), var(--card2));
             border: 1px solid var(--border);
             padding: 40px;
@@ -329,8 +330,8 @@
     </style>
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <div class="container">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
         <h1>{{ manual_title | e }}</h1>
 
         {% if video_data %}

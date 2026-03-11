@@ -27,9 +27,9 @@
         }
 
         .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
+            position: absolute;
+            top: 0;
+            right: 0;
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 50%;
@@ -73,6 +73,7 @@
             width: 100%;
             max-width: 550px;
             text-align: center;
+            position: relative;
             animation: fadeIn 0.4s ease;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
         }
@@ -161,8 +162,8 @@
     </style>
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <div class="container">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
         <div class="icon">✅</div>
         <h2>Заявка отправлена!</h2>
         <p>Ваша заявка была успешно отправлена специалистам технической поддержки. Ожидайте, они скоро с вами свяжутся.</p>

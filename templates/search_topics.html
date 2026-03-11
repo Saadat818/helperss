@@ -27,9 +27,9 @@
         }
 
         .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
+            position: absolute;
+            top: 0;
+            right: 0;
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 50%;
@@ -99,6 +99,7 @@
             border-radius: 14px;
             flex: 1;
             text-align: center;
+            position: relative;
         }
 
         .logo-text {
@@ -498,7 +499,6 @@
     </style>
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <button class="admin-btn" onclick="showAdminModal()">⚙️ Админ</button>
 
     <div class="modal-overlay" id="adminModal">
@@ -529,6 +529,7 @@
         </div>
 
         <div class="container">
+            <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
             <div class="logo-text">МБанк</div>
             <h2>📋 Просмотр тематик обращений</h2>
             <p class="subtitle">

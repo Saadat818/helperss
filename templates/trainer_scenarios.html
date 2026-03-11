@@ -27,9 +27,9 @@
         }
 
         .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
+            position: absolute;
+            top: 0;
+            right: 0;
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 50%;
@@ -64,6 +64,7 @@
         .container {
             max-width: 900px;
             margin: 0 auto;
+            position: relative;
             animation: fadeIn 0.4s ease;
         }
 
@@ -368,12 +369,12 @@
     </style>
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <a href="{{ url_for('trainer_menu') }}" class="back-link">
         &larr; К уровням
     </a>
 
     <div class="container">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
         <div class="header">
             <div class="header-icon">{{ level.icon }}</div>
             <h1>{{ level.name }}</h1>

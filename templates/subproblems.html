@@ -27,9 +27,9 @@
         }
 
         .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
+            position: absolute;
+            top: 0;
+            right: 0;
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 50%;
@@ -72,6 +72,7 @@
             width: 100%;
             max-width: 650px;
             text-align: center;
+            position: relative;
             animation: fadeIn 0.4s ease;
         }
 
@@ -278,8 +279,6 @@
     </style>
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-
     <!-- Кнопки навигации -->
     <a href="{{ url_for('show_problems') }}" class="back-link">
         ⬅️ Назад
@@ -287,6 +286,7 @@
 
     <!-- Основное содержимое -->
     <div class="container">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
         <div class="logo-text">МБанк</div>
         <h2>Пожалуйста, уточните проблему:</h2>
 

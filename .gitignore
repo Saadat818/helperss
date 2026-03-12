@@ -20,7 +20,7 @@ __pycache__/
 
 # Переменные окружения
 .env
-
+*.db
 # macOS
 .DS_Store
 

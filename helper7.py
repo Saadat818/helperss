@@ -339,8 +339,11 @@ TRAINER_MAINTENANCE = True
 
 @app.before_request
 def trainer_maintenance_check():
-    """Заглушка тренажёра — режим 'В разработке'."""
+    """Заглушка тренажёра — режим 'В разработке'. Админы тренажёра проходят."""
     if TRAINER_MAINTENANCE and request.path.startswith('/trainer') and not request.path.startswith('/static/'):
+        perms = session.get('admin_permissions', [])
+        if 'super_admin' in perms or 'admin_trainer' in perms:
+            return None
         return render_template('trainer_maintenance.html'), 503
 
 
@@ -4179,6 +4182,7 @@ def user_login():
         if TEST_MODE:
             # Тестовая авторизация: любой логин/пароль где пароль = "test" или "123"
             if password in ['test', '123', 'password']:
+                session.clear()
                 session['user_info'] = {
                     'username': username,
                     'name': username.title(),
@@ -4220,7 +4224,8 @@ def user_login():
         ad_result = ad_auth.verify_credentials(username, password)
 
         if ad_result:
-            # Успешная аутентификация - сохраняем данные в сессию
+            # Успешная аутентификация - очищаем старую сессию и сохраняем данные
+            session.clear()
             session['user_info'] = {
                 'username': ad_result.get('username', username),
                 'name': ad_result.get('display_name', username),
@@ -4381,6 +4386,7 @@ def admin_logout():
     session.pop('admin_logged_in', None)
     session.pop('admin_username', None)
     session.pop('admin_role', None)
+    session.pop('admin_permissions', None)
     session.pop('admin_token', None)
     flash('Вы вышли из системы')
     return redirect(url_for('admin_login'))
@@ -5544,7 +5550,7 @@ def admin_archive_topic(topic_id):
         print(f"[admin_archive_topic] Ошибка: {e}")
         traceback.print_exc()
         flash('Произошла ошибка при архивации')
-    return safe_redirect_back('admin_list_topics')
+    return redirect(url_for('admin_list_topics'))
 
 
 @app.route('/admin/topics/archive-bulk', methods=['POST'])

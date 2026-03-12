@@ -1067,7 +1067,7 @@
 
         {% if scenario and version_history %}
         <!-- Version History Section -->
-        <div style="margin-top: 30px; background: linear-gradient(135deg, #1a1a2e, #16213e); border: 1px solid #2a2a3e; border-radius: 12px; padding: 20px;">
+        <div class="version-history-section" style="margin-top: 30px; background: linear-gradient(135deg, #1a1a2e, #16213e); border: 1px solid #2a2a3e; border-radius: 12px; padding: 20px;">
             <h2 style="color: #00d4aa; margin-bottom: 15px; font-size: 18px;">
                 📋 История версий
                 <span style="font-size: 13px; color: #888; font-weight: normal; margin-left: 10px;">
@@ -1107,7 +1107,7 @@
 
     <!-- Version Snapshot Modal -->
     <div id="versionModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; overflow:auto;">
-        <div style="max-width:700px; margin:60px auto; background:#1a1a2e; border-radius:12px; padding:25px; color:#e0e0e0; position:relative;">
+        <div class="version-modal-inner" style="max-width:700px; margin:60px auto; background:#1a1a2e; border-radius:12px; padding:25px; color:#e0e0e0; position:relative;">
             <button onclick="document.getElementById('versionModal').style.display='none'"
                     style="position:absolute; top:15px; right:15px; background:none; border:none; color:#888; font-size:20px; cursor:pointer;">&times;</button>
             <h3 id="versionModalTitle" style="color:#00d4aa; margin-bottom:15px;"></h3>

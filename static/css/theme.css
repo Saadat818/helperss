@@ -100,7 +100,9 @@ body.light .scenarios-table .scenario-desc { color: #606070 !important; }
 body.light .filter-bar { background: #edf0f7 !important; border-color: #b8c4d0 !important; }
 body.light .filter-group select { background: #ffffff !important; color: #1a1a2e !important; }
 body.light .header-buttons .btn { /* buttons keep their colors */ }
-body.light .stats-grid .stat-card { background: #ffffff !important; border-color: #b8c4d0 !important; }
+body.light .stats-grid .stat-card,
+body.light .stat-card { background: #ffffff !important; border-color: #b8c4d0 !important; }
+body.light .stat-card.highlight { background: #f0fff4 !important; border-color: #4caf50 !important; }
 body.light .stat-value { color: #1a1a2e !important; }
 body.light .stat-label { color: #606070 !important; }
 
@@ -171,6 +173,60 @@ body.light .client-message-input {
 }
 body.light .answer-extra { border-color: #b8c4d0 !important; }
 body.light .step-block-divider { color: #888 !important; }
+
+/* ===== ЗАГОЛОВКИ ТАБЛИЦ (admin_trainer, admin_trainer_stats, admin_trainer_audit) ===== */
+body.light .scenarios-table th,
+body.light .log-table th,
+body.light .users-table th {
+    background: #e8edf4 !important;
+    color: #1a1a2e !important;
+}
+body.light .log-table tr:hover,
+body.light .users-table tr:hover { background: #edf0f7 !important; }
+
+/* ===== admin_stats_dashboard: кнопки периода ===== */
+body.light .period-btn {
+    background: #ffffff !important;
+    color: #1a1a2e !important;
+    border-color: #b8c4d0 !important;
+}
+body.light .period-btn:hover { background: #edf0f7 !important; }
+body.light .period-btn.active {
+    background: #00a651 !important;
+    color: #ffffff !important;
+    border-color: #00a651 !important;
+}
+
+/* ===== admin_trainer_stats: карточки уровней, модалка пользователя ===== */
+body.light .level-card { background: #ffffff !important; border-color: #b8c4d0 !important; color: #1a1a2e !important; }
+body.light .user-modal { background: #ffffff !important; border-color: #b8c4d0 !important; color: #1a1a2e !important; }
+body.light .user-modal .badge-item { background: #f0f2f5 !important; border-color: #b8c4d0 !important; color: #1a1a2e !important; }
+body.light .user-modal .result-row { background: #f5f7fa !important; border-color: #dde2ea !important; color: #1a1a2e !important; }
+
+/* ===== admin_trainer_audit: пагинация, pre в модалке ===== */
+body.light .pagination a { background: #ffffff !important; border-color: #b8c4d0 !important; color: #1a1a2e !important; }
+body.light .pagination a:hover { background: #edf0f7 !important; }
+body.light .pagination a.active { background: #00a651 !important; color: #ffffff !important; border-color: #00a651 !important; }
+body.light .modal pre { background: #f5f7fa !important; color: #1a1a2e !important; border-color: #b8c4d0 !important; }
+
+/* ===== admin_trainer_edit: секция истории версий (inline-стили) ===== */
+body.light .version-history-section {
+    background: linear-gradient(135deg, #f8f9fa, #ffffff) !important;
+    border-color: #b8c4d0 !important;
+}
+body.light .version-history-section td,
+body.light .version-history-section th { color: #1a1a2e !important; border-color: #dde2ea !important; }
+body.light .version-history-section tr { border-color: #dde2ea !important; }
+body.light .version-history-section button {
+    background: #f0f2f5 !important;
+    border-color: #b8c4d0 !important;
+    color: #00a651 !important;
+}
+body.light .version-modal-inner {
+    background: #ffffff !important;
+    color: #1a1a2e !important;
+}
+body.light .version-modal-inner h3 { color: #00a651 !important; }
 
 /* Кнопка «назад» (dark pill) — делаем светлой */
 body.light .back-link {

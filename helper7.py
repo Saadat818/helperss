@@ -348,6 +348,16 @@ def trainer_maintenance_check():
 
 
 @app.after_request
+def no_cache_admin(response):
+    """Запрет кэширования админских страниц — защита от Alt+← после logout."""
+    if request.path.startswith('/admin') or request.path.startswith('/trainer'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
+
+@app.after_request
 def audit_request(response):
     """Аудит всех действий пользователей/администраторов с IP и временем."""
     try:

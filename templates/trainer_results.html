@@ -550,6 +550,7 @@
         }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <style>body.light .container { background: transparent !important; border: none !important; box-shadow: none !important; }</style>
 </head>
 <body>
     {% if result.grade == 'excellent' and not result.is_game_over %}

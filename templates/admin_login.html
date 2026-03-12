@@ -426,9 +426,45 @@
             border-color: var(--accent) !important;
             box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
         }
+
+        /* ===== СВЕТЛАЯ ТЕМА ===== */
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --panel: #ffffff;
+            --panel-2: #f8f9fa;
+            --panel-3: #f0f2f5;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+            --input-bg: #ffffff;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--card, #1a1a1a);
+            border: 1px solid var(--border, #333);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 9999;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        }
+        .theme-toggle:hover { transform: scale(1.12); }
+        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
     </style>
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <div class="login-container">
         <div class="logo">
             <div class="logo-wrap">
@@ -526,5 +562,6 @@
         // Начальная проверка
         validateForm();
     </script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

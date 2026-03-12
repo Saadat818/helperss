@@ -240,3 +240,45 @@ body.light .back-link:hover {
     border-color: #00a651 !important;
     color: #00a651 !important;
 }
+
+/* ===== td с явным тёмным фоном (многие admin-страницы) ===== */
+body.light td { background: #ffffff !important; }
+body.light tbody tr:nth-child(even) td { background: #f5f7fa !important; }
+body.light tbody tr:hover td { background: #edf0f7 !important; }
+
+/* ===== admin_trainer_feedback: таблица обратной связи ===== */
+body.light .feedback-table th { background: #e8edf4 !important; color: #1a1a2e !important; }
+body.light .feedback-table tr:hover { background: #edf0f7 !important; }
+body.light .feedback-table tr.unread { background: rgba(0,166,81,0.05) !important; }
+body.light .mark-read-btn:hover { background: #edf0f7 !important; color: #1a1a2e !important; }
+
+/* ===== badge-level (тёмный в admin_trainer_drafts) ===== */
+body.light .badge-level { background: #e3f9f5 !important; color: #007b5e !important; border-color: #00a651 !important; }
+body.light .badge-draft { background: #fff8e1 !important; color: #b07800 !important; border-color: #f39c12 !important; }
+
+/* ===== Кнопки «Отмена» с inline-стилем #2a2a3e ===== */
+body.light [style*="#2a2a3e"] { background: #f0f2f5 !important; color: #606070 !important; border-color: #b8c4d0 !important; }
+body.light [style*="2a2a3e"] { background: #f0f2f5 !important; color: #606070 !important; border-color: #b8c4d0 !important; }
+
+/* ===== .modal-content (admin_trainer_versions, trainer_play) ===== */
+body.light .modal-content { background: #ffffff !important; color: #1a1a2e !important; border-color: #b8c4d0 !important; }
+
+/* ===== admin_trainer_versions: кнопки ===== */
+body.light .back-btn,
+body.light .view-btn { background: #f0f2f5 !important; border-color: #b8c4d0 !important; color: #1a1a2e !important; }
+
+/* ===== admin_trainer_import: зоны загрузки ===== */
+body.light .drop-zone { background: #f5f7fa !important; border-color: #b8c4d0 !important; color: #1a1a2e !important; }
+body.light .drop-zone:hover,
+body.light .drop-zone.dragover { background: #edf0f7 !important; border-color: #00a651 !important; }
+body.light .template-section,
+body.light .preview-section { background: #f5f7fa !important; border-color: #b8c4d0 !important; }
+body.light .preview-item { background: #ffffff !important; border-color: #b8c4d0 !important; }
+body.light .preview-step { background: #f0fff4 !important; border-color: #4caf50 !important; }
+
+/* ===== admin_trainer_audit: изменения-btn hover, pagination current ===== */
+body.light .changes-btn:hover { background: #edf0f7 !important; color: #1a1a2e !important; }
+body.light .pagination .current { background: #00a651 !important; color: #ffffff !important; border-color: #00a651 !important; }
+
+/* ===== progress-bar track ===== */
+body.light .progress-bar-mini { background: #dde2ea !important; }

@@ -344,11 +344,29 @@
         input[type="number"],
         input[type="password"],
         input[type="email"],
+        input[type="file"],
         textarea,
         select {
             background: #111 !important;
             border: 1px solid #2a2a2a !important;
             color: var(--text) !important;
+        }
+
+        input[type="file"]::file-selector-button {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 12px;
+            transition: all 0.3s;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            box-shadow: 0 4px 12px rgba(0, 166, 81, 0.3);
         }
 
         input:focus,

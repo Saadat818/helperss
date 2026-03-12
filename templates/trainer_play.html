@@ -909,7 +909,7 @@
                 console.log('Step data:', data);
 
                 if (!data.success) {
-                    console.error('Error:', data.error);
+                    console.error('Error loading data');
                     return;
                 }
 
@@ -930,7 +930,7 @@
 
                 scrollToBottom();
             } catch (error) {
-                console.error('Fetch error:', error);
+                console.error('Fetch error');
             }
         }
 
@@ -941,7 +941,7 @@
                 const data = await response.json();
 
                 if (!data.success) {
-                    console.error('Error loading step by id:', data.error);
+                    console.error('Error loading step by id');
                     showSuccess();
                     return;
                 }
@@ -955,7 +955,7 @@
                 startEmotionTimer();
                 scrollToBottom();
             } catch (error) {
-                console.error('Fetch error:', error);
+                console.error('Fetch error');
             }
         }
 
@@ -1045,7 +1045,7 @@
                     addBubble(answer.answer_text, 'operator');
                 }
             } catch (e) {
-                console.error(e);
+                console.error('Answer processing error');
                 addBubble(answer.answer_text, 'operator');
             }
 
@@ -1278,7 +1278,7 @@
                         resultsDiv.style.display = 'block';
                     }
                 } catch (e) {
-                    console.error('Topic search error:', e);
+                    console.error('Topic search error');
                 }
             }, 300);
         });
@@ -1442,7 +1442,7 @@
                         resultBtn.href = `/trainer/results/${result.result_id}`;
                     }
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error('Operation error'); }
         }
 
         function showClientCard(info) {

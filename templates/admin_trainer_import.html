@@ -530,12 +530,12 @@
             });
 
             html += '</div>';
-            previewContent.innerHTML = html;
+            previewContent.innerHTML = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
             previewSection.classList.add('show');
         }
 
         function showError(errors) {
-            errorList.innerHTML = errors.map(e => `<li>${escapeHtml(e)}</li>`).join('');
+            errorList.innerHTML = errors.map(e => `<li>${escapeHtml(e)}</li>`).join('').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
             errorSection.style.display = 'block';
         }
 
@@ -560,7 +560,9 @@
                 loading.classList.remove('show');
 
                 if (result.success) {
-                    window.location.href = result.redirect_url || '{{ url_for("admin_trainer") }}';
+                    const fallbackUrl = '{{ url_for("admin_trainer") }}';
+                    const redirectUrl = result.redirect_url || fallbackUrl;
+                    window.location.href = (redirectUrl.startsWith('/') && !redirectUrl.startsWith('//')) ? redirectUrl : fallbackUrl;
                 } else {
                     showError([result.error || 'Ошибка импорта']);
                 }

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Список тематик - Админ-панель</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        :root {
+            --bg: #0c0c0c; --panel: #1a1a1a; --panel-2: #202020; --panel-3: #141414;
+            --text: #e8e8e8; --muted: #b5b5b5; --border: #242424;
+            --accent: #00a651; --accent-2: #009448; --danger: #e94b5a; --warning: #f2b705;
+        }
+        .container {
+            max-width: 1200px; margin: 0 auto;
+            background: linear-gradient(180deg, var(--panel), var(--panel-2));
+            border: 1px solid #151515; border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.35); padding: 30px;
+        }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #2a2a2a; flex-wrap: wrap; gap: 10px; }
+        h1 { color: var(--text); font-size: 24px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; transition: all 0.3s; }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary, .btn-success { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%); color: #fff; box-shadow: 0 4px 15px rgba(0,166,81,0.2); }
+        .btn-secondary { background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%); color: #fff; }
+        .btn-danger { background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%); color: #fff; }
+        .btn-warning { background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%); color: #1b1b1b; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .alert { padding: 15px; margin-bottom: 20px; border-radius: 8px; font-size: 14px; }
+        .alert-success { background: rgba(0,166,81,0.12); color: #bfe8d1; border: 1px solid rgba(0,166,81,0.25); }
+        .alert-danger, .alert-error { background: rgba(233,75,90,0.12); color: #f3c0c6; border: 1px solid rgba(233,75,90,0.25); }
+        .alert-warning { background: rgba(242,183,5,0.08); color: #f2b705; border: 1px solid rgba(242,183,5,0.4); }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #1f1f1f; color: var(--text); padding: 12px 10px; text-align: left; font-weight: 600; font-size: 13px; border-bottom: 1px solid #2a2a2a; }
+        td { padding: 10px; background: #141414; border-bottom: 1px solid #242424; font-size: 13px; color: var(--text); }
+        tr:nth-child(even) td { background: #171717; }
+        tr:hover td { background: rgba(0,166,81,0.05); }
+        .form-section { background: var(--panel-3); border: 1px solid var(--border); padding: 25px; border-radius: 14px; margin-bottom: 25px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; color: var(--muted); margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+        input[type="text"], select { width: 100%; padding: 12px 15px; background: #111; border: 1px solid #2a2a2a; color: var(--text); border-radius: 8px; font-size: 14px; font-family: inherit; }
+        input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,166,81,0.15); }
+        input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); }
+        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 20px; align-items: center; }
+        .pagination a { color: var(--accent); text-decoration: none; padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px; }
+        .pagination a:hover { border-color: var(--accent); }
+        .pagination .current { color: var(--muted); padding: 8px 16px; }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+        .empty-state-icon { font-size: 64px; margin-bottom: 20px; }
+        .actions { display: flex; gap: 6px; flex-wrap: nowrap; }
+        .bulk-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 15px; padding: 12px 15px; background: var(--panel-3); border: 1px solid var(--border); border-radius: 10px; }
+        .info-bar { color: var(--muted); font-size: 14px; margin-bottom: 15px; }
+        .channel-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 15px; background: var(--panel-3); border: 1px solid var(--border); border-radius: 12px; align-items: center; }
+        .channel-filter-label { color: var(--muted); font-size: 13px; font-weight: 600; margin-right: 4px; }
+        .channel-btn { padding: 7px 16px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; text-decoration: none; transition: all 0.2s; white-space: nowrap; }
+        .channel-btn:hover { border-color: var(--accent); color: var(--text); }
+        .channel-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>&#x1F4CB; Список тематик</h1>
+            <div style="display: flex; gap: 10px;">
+                <a href="{{ url_for('admin_topics_archive') }}" class="btn btn-warning btn-sm">&#x1F4E6; Архив</a>
+                <a href="{{ url_for('admin_topics') }}" class="btn btn-secondary btn-sm">&larr; Назад к тематикам</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="info-bar">
+            Всего тематик: <strong>{{ total }}</strong> | Страница {{ page }} из {{ ((total - 1) // per_page + 1) if total > 0 else 1 }}
+            {% if current_channel %} | Канал: <strong>{{ current_channel }}</strong>{% endif %}
+        </div>
+
+        {% if channels %}
+        <div class="channel-filter">
+            <span class="channel-filter-label">&#x1F4C2; Канал:</span>
+            <a href="{{ url_for('admin_list_topics') }}" class="channel-btn {{ 'active' if not current_channel else '' }}">Все каналы</a>
+            {% for ch in channels %}
+            <a href="{{ url_for('admin_list_topics', channel=ch) }}" class="channel-btn {{ 'active' if current_channel == ch else '' }}">{{ ch }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if topics %}
+        <form id="bulkForm" method="POST" action="{{ url_for('admin_archive_topics_bulk') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="topic_ids" id="bulkTopicIds" value="">
+
+            <div class="bulk-bar">
+                <button type="submit" class="btn btn-warning btn-sm" onclick="return prepareBulk()">&#x1F4E6; Архивировать выбранные</button>
+                <span style="color: var(--muted); font-size: 13px;" id="selectedCount">Выбрано: 0</span>
+            </div>
+        </form>
+
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAll" title="Выбрать все"></th>
+                        <th>ID</th>
+                        <th>Канал</th>
+                        <th>SR1</th>
+                        <th>SR2</th>
+                        <th>SR3</th>
+                        <th>SR4</th>
+                        <th>Полная тематика</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for topic in topics %}
+                    <tr>
+                        <td><input type="checkbox" class="topic-checkbox" value="{{ topic.id }}"></td>
+                        <td>{{ topic.id }}</td>
+                        <td>{{ topic.channel or '&mdash;' }}</td>
+                        <td>{{ topic.sr1 or '&mdash;' }}</td>
+                        <td>{{ topic.sr2 or '&mdash;' }}</td>
+                        <td>{{ topic.sr3 or '&mdash;' }}</td>
+                        <td>{{ topic.sr4 or '&mdash;' }}</td>
+                        <td style="max-width: 250px; word-break: break-word;">{{ topic.full_topic or '&mdash;' }}</td>
+                        <td>
+                            <div class="actions">
+                                <a href="{{ url_for('admin_edit_topic', topic_id=topic.id) }}" class="btn btn-primary btn-sm" title="Редактировать">&#x270F;&#xFE0F;</a>
+                                <form method="POST" action="{{ url_for('admin_archive_topic', topic_id=topic.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-warning btn-sm" title="Архивировать">&#x1F4E6;</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('admin_delete_topic', topic_id=topic.id) }}" style="display:inline;" onsubmit="return confirm('Удалить тематику #{{ topic.id }}? Это действие нельзя отменить!')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Удалить">&#x1F5D1;&#xFE0F;</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if total > per_page %}
+        <div class="pagination">
+            {% if page > 1 %}
+                <a href="{{ url_for('admin_list_topics', page=page-1, channel=current_channel or '') }}">&laquo; Назад</a>
+            {% endif %}
+            <span class="current">Страница {{ page }} из {{ ((total - 1) // per_page + 1) }}</span>
+            {% if page * per_page < total %}
+                <a href="{{ url_for('admin_list_topics', page=page+1, channel=current_channel or '') }}">Далее &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">&#x1F4CB;</div>
+            <p>Тематики не найдены</p>
+            <p style="margin-top: 15px;">
+                <a href="{{ url_for('admin_topics') }}" class="btn btn-primary">Добавить тематику</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Select-all checkbox logic
+        var selectAll = document.getElementById('selectAll');
+        var checkboxes = document.querySelectorAll('.topic-checkbox');
+        var selectedCountEl = document.getElementById('selectedCount');
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                checkboxes.forEach(function(cb) {
+                    cb.checked = selectAll.checked;
+                });
+                updateSelectedCount();
+            });
+        }
+
+        checkboxes.forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                if (!this.checked) {
+                    selectAll.checked = false;
+                } else if (document.querySelectorAll('.topic-checkbox:checked').length === checkboxes.length) {
+                    selectAll.checked = true;
+                }
+                updateSelectedCount();
+            });
+        });
+
+        function updateSelectedCount() {
+            var count = document.querySelectorAll('.topic-checkbox:checked').length;
+            if (selectedCountEl) {
+                selectedCountEl.textContent = '\u0412\u044B\u0431\u0440\u0430\u043D\u043E: ' + count;
+            }
+        }
+
+        function prepareBulk() {
+            var checked = document.querySelectorAll('.topic-checkbox:checked');
+            if (checked.length === 0) {
+                alert('\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0445\u043E\u0442\u044F \u0431\u044B \u043E\u0434\u043D\u0443 \u0442\u0435\u043C\u0430\u0442\u0438\u043A\u0443');
+                return false;
+            }
+            var ids = [];
+            checked.forEach(function(cb) { ids.push(cb.value); });
+            document.getElementById('bulkTopicIds').value = ids.join(',');
+            return confirm('\u0410\u0440\u0445\u0438\u0432\u0438\u0440\u043E\u0432\u0430\u0442\u044C ' + ids.length + ' \u0442\u0435\u043C\u0430\u0442\u0438\u043A(\u0438)?');
+        }
+    </script>
+</body>
+</html>

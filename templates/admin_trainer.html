@@ -497,12 +497,16 @@
             const category = document.getElementById('filter-category').value;
             const tag = document.getElementById('filter-tag').value;
 
-            let url = '{{ url_for("admin_trainer") }}?';
-            if (level) url += 'level=' + level + '&';
-            if (category) url += 'category=' + category + '&';
-            if (tag) url += 'tag=' + tag;
+            const baseUrl = '{{ url_for("admin_trainer") }}';
+            const params = new URLSearchParams();
+            if (level) params.set('level', level);
+            if (category) params.set('category', category);
+            if (tag) params.set('tag', tag);
 
-            window.location.href = url;
+            const url = baseUrl + '?' + params.toString();
+            if (url.startsWith('/')) {
+                window.location.href = url;
+            }
         }
 
         function confirmDelete(id, title) {

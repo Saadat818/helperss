@@ -1070,6 +1070,13 @@
     </div>
 
     <script>
+        // Security Fix: escapeHtml to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         const csrfToken = '{{ csrf_token() }}';
         const scenarioId = {{ scenario.id if scenario else 'null' }};
 
@@ -1093,7 +1100,7 @@
                     html += `<div style="margin-bottom:8px;">${step.client_message}</div>`;
                     (step.answers || []).forEach(a => {
                         const color = a.is_correct ? '#4CAF50' : (a.is_partial ? '#FF9800' : '#888');
-                        html += `<div style="margin-left:12px; padding:4px 0; color:${color}; font-size:13px;">• ${a.answer_text} (${a.points} б.)</div>`;
+                        html += `<div style="margin-left:12px; padding:4px 0; color:${color}; font-size:13px;">• ${escapeHtml(a.answer_text)} (${escapeHtml(a.points)} б.)</div>`;
                     });
                     html += '</div>';
                 });
@@ -1268,7 +1275,7 @@
                             item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #eee; font-size:13px; transition:background 0.2s;';
                             item.onmouseenter = () => item.style.background = '#f0f0f0';
                             item.onmouseleave = () => item.style.background = '';
-                            item.innerHTML = `<strong>${r.topic}</strong> <span style="color:#888; font-size:11px;">${r.channel || ''}</span>`;
+                            item.innerHTML = `<strong>${escapeHtml(r.topic)}</strong> <span style="color:#888; font-size:11px;">${escapeHtml(r.channel || '')}</span>`;
                             item.onclick = () => addCorrectTopic(r);
                             resultsDiv.appendChild(item);
                         });

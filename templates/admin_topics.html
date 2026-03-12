@@ -76,6 +76,16 @@
             box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
         }
 
+        .btn-warning {
+            background: linear-gradient(135deg, #f2b705 0%, #e0a800 100%);
+            color: #1b1b1b;
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(242, 183, 5, 0.3);
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -379,7 +389,9 @@
     <div class="container">
         <div class="header">
             <h1>🏷️ Управление тематиками</h1>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <a href="{{ url_for('admin_list_topics') }}" class="btn btn-primary">📋 Список</a>
+                <a href="{{ url_for('admin_topics_archive') }}" class="btn btn-warning">📦 Архив{% if archived_count %} ({{ archived_count }}){% endif %}</a>
                 <a href="{{ url_for('admin_import_topics') }}" class="btn btn-primary">📥 Импорт из Excel</a>
                 <a href="{{ url_for('admin_stats_dashboard') }}" class="btn btn-primary">📊 Статистика</a>
                 <a href="{{ url_for('choose_help_type') }}" class="btn btn-secondary">← Назад</a>
@@ -409,6 +421,10 @@
             <div class="stat-card">
                 <div class="stat-value">{{ stats.cache_entries }}</div>
                 <div class="stat-label">Кэш записей</div>
+            </div>
+            <div class="stat-card" style="border-left-color: #f2b705;">
+                <div class="stat-value" style="color: #f2b705;">{{ archived_count }}</div>
+                <div class="stat-label">В архиве</div>
             </div>
         </div>
 
@@ -487,8 +503,8 @@
 
         <!-- Ссылка на просмотр всех тематик -->
         <div style="text-align: center; margin-top: 20px;">
-            <a href="{{ url_for('admin_list_topics') }}" class="btn btn-secondary">
-                📋 Просмотреть все тематики
+            <a href="{{ url_for('admin_list_topics') }}" class="btn btn-primary" style="padding: 12px 30px;">
+                📋 Просмотреть все тематики / Редактировать / Архивировать
             </a>
         </div>
     </div>

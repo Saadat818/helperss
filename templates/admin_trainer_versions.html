@@ -176,6 +176,16 @@
     <script>
         const scenarioId = {{ scenario.id }};
 
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        function sanitizeColor(color) {
+            if (!color || !/^#[0-9a-fA-F]{3,8}$/.test(color)) return '#888';
+            return color;
+        }
+
         async function viewVersion(version) {
             try {
                 const resp = await fetch(`/admin/trainer/scenario/${scenarioId}/versions/${version}`);
@@ -184,19 +194,19 @@
 
                 const snap = data.snapshot;
                 const sc = snap.scenario || {};
-                let html = `<p><strong>Название:</strong> ${sc.title || '—'}</p>`;
-                html += `<p><strong>Описание:</strong> ${sc.description || '—'}</p>`;
-                html += `<p style="color:#888; font-size:12px;">Изменил: ${data.changed_by || '—'} | ${(data.changed_at || '').substring(0, 16)}</p>`;
+                let html = `<p><strong>Название:</strong> ${escapeHtml(sc.title || '—')}</p>`;
+                html += `<p><strong>Описание:</strong> ${escapeHtml(sc.description || '—')}</p>`;
+                html += `<p style="color:#888; font-size:12px;">Изменил: ${escapeHtml(data.changed_by || '—')} | ${escapeHtml((data.changed_at || '').substring(0, 16))}</p>`;
                 html += '<hr style="border-color:#2a2a3e; margin:12px 0;">';
 
                 const steps = snap.steps || [];
                 steps.forEach(step => {
                     html += `<div class="step-card">`;
-                    html += `<div class="step-title">Шаг ${step.step_num}: ${step.client_name || 'Клиент'}</div>`;
-                    html += `<div style="margin-bottom:8px;">${step.client_message}</div>`;
+                    html += `<div class="step-title">Шаг ${escapeHtml(step.step_num)}: ${escapeHtml(step.client_name || 'Клиент')}</div>`;
+                    html += `<div style="margin-bottom:8px;">${escapeHtml(step.client_message)}</div>`;
                     (step.answers || []).forEach(a => {
                         const color = a.is_correct ? '#4CAF50' : (a.is_partial ? '#FF9800' : '#888');
-                        html += `<div class="answer-line" style="color:${color};">• ${a.answer_text} (${a.points} б.)</div>`;
+                        html += `<div class="answer-line" style="color:${sanitizeColor(color)};">• ${escapeHtml(a.answer_text)} (${escapeHtml(a.points)} б.)</div>`;
                     });
                     html += '</div>';
                 });
@@ -204,15 +214,15 @@
                 if (snap.tags && snap.tags.length > 0) {
                     html += '<hr style="border-color:#2a2a3e; margin:12px 0;">';
                     html += '<p style="font-size:13px; color:#888;">Теги: ' +
-                        snap.tags.map(t => `<span style="background:${t.color}20; color:${t.color}; padding:2px 8px; border-radius:8px; font-size:12px;">${t.icon} ${t.name}</span>`).join(' ') +
+                        snap.tags.map(t => `<span style="background:${sanitizeColor(t.color)}20; color:${sanitizeColor(t.color)}; padding:2px 8px; border-radius:8px; font-size:12px;">${escapeHtml(t.icon)} ${escapeHtml(t.name)}</span>`).join(' ') +
                         '</p>';
                 }
 
                 document.getElementById('versionModalTitle').textContent = `Версия v${version}`;
-                document.getElementById('versionModalContent').innerHTML = html;
+                document.getElementById('versionModalContent').innerHTML = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
                 document.getElementById('versionModal').style.display = 'block';
             } catch (e) {
-                alert('Ошибка: ' + e.message);
+                alert('Ошибка загрузки версии');
             }
         }
     </script>

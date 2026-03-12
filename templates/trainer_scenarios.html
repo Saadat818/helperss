@@ -676,6 +676,11 @@
             if (e.target === this) closeMyMessages();
         });
 
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
         async function loadMyMessages() {
             try {
                 const resp = await fetch('/api/trainer/my-feedback');
@@ -692,11 +697,11 @@
 
                 let html = '';
                 list.forEach(fb => {
-                    const date = fb.created_at ? fb.created_at.substring(0, 16).replace('T', ' ') : '';
+                    const date = fb.created_at ? escapeHtml(fb.created_at.substring(0, 16).replace('T', ' ')) : '';
                     const statusClass = fb.is_read ? 'msg-status-read' : 'msg-status-unread';
                     const statusText = fb.is_read ? '✓ Прочитано' : '⏳ Ожидает';
                     html += `<div class="msg-item">
-                        <div class="msg-text">${fb.message}</div>
+                        <div class="msg-text">${escapeHtml(fb.message)}</div>
                         <div class="msg-meta">
                             <span>${date}</span>
                             <span class="${statusClass}">${statusText}</span>

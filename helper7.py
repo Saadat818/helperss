@@ -209,6 +209,17 @@ def safe_redirect(fallback_endpoint='index'):
     return redirect(url_for(fallback_endpoint))
 
 
+def validated_redirect(url, fallback_endpoint='admin_dashboard'):
+    """
+    Безопасный redirect по URL — защита от Open Redirect.
+    Проверяет что URL является внутренним (относительным) путём.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme or parsed.netloc:
+        return redirect(url_for(fallback_endpoint))
+    return redirect(url)
+
+
 def is_working_hours():
     """Проверяет, рабочее ли сейчас время (Пн-Пт, 8:30-17:30).
     Возвращает (True, '') если рабочее время, иначе (False, сообщение).
@@ -322,6 +333,15 @@ def mark_request_start():
     """Отмечает старт запроса и трекает активность пользователя."""
     g.request_started_at = time()
     _track_user_activity()
+
+
+TRAINER_MAINTENANCE = True
+
+@app.before_request
+def trainer_maintenance_check():
+    """Заглушка тренажёра — режим 'В разработке'."""
+    if TRAINER_MAINTENANCE and request.path.startswith('/trainer') and not request.path.startswith('/static/'):
+        return render_template('trainer_maintenance.html'), 503
 
 
 @app.after_request
@@ -1048,6 +1068,15 @@ def get_file_url(file_id):
         print(f"Error getting file URL")
         return None
 
+def escape_markdown(text):
+    """Экранирует спецсимволы Telegram Markdown."""
+    if not text:
+        return text
+    for ch in ('_', '*', '`', '['):
+        text = text.replace(ch, '\\' + ch)
+    return text
+
+
 def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_id=None):
     user_info = session.get('user_info', {})
     department = user_info.get('department', 'Неизвестно')
@@ -1057,18 +1086,18 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
     session['current_ticket_number'] = ticket_number
     session.modified = True
 
-    # Формируем сообщение
+    # Формируем сообщение (экранируем пользовательские данные для Markdown)
     support_message = (
-        f"🚨 **НОВАЯ ЗАЯВКА №{ticket_number}** 🚨\n"
-        f"Отдел: {department}\n"
-        f"Имя: {name}\n"
+        f"🚨 *НОВАЯ ЗАЯВКА №{ticket_number}* 🚨\n"
+        f"Отдел: {escape_markdown(department)}\n"
+        f"Имя: {escape_markdown(name)}\n"
     )
 
     # Добавляем рабочее место если оно указано
     if workplace:
-        support_message += f"Рабочее место: {workplace}\n"
+        support_message += f"Рабочее место: {escape_markdown(workplace)}\n"
 
-    support_message += f"Проблема: {problem}\n"
+    support_message += f"Проблема: {escape_markdown(problem)}\n"
 
     # Тематика НЕ отправляется в Telegram - только для маркировки в CRM
     # topic_info используется только на стороне веб-приложения
@@ -1242,7 +1271,7 @@ def handle_ticket_not_relevant(call):
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
             f"❌ ЗАЯВКА НЕ АКТУАЛЬНА ❌\n\n"
-            f"Заявка отмечена сотрудником {call.from_user.first_name} как не актуальная.\n"
+            f"Заявка отмечена сотрудником {escape_markdown(call.from_user.first_name or '')} как не актуальная.\n"
             f"Решение не требуется.",
             message_thread_id=NEW_TICKETS_THREAD_ID,
             parse_mode='Markdown',
@@ -1275,11 +1304,11 @@ def send_solved_ticket(problem):
         workplace = user_info.get('workplace', 'Неизвестно')
 
         support_message = (
-            f"✅ **ПРОБЛЕМА РЕШЕНА Помощником** ✅\n"
-            f"Отдел: {department}\n"
-            f"Имя: {name}\n"
-            f"Рабочее место: {workplace}\n"
-            f"Проблема: {problem}"
+            f"✅ *ПРОБЛЕМА РЕШЕНА Помощником* ✅\n"
+            f"Отдел: {escape_markdown(department)}\n"
+            f"Имя: {escape_markdown(name)}\n"
+            f"Рабочее место: {escape_markdown(workplace)}\n"
+            f"Проблема: {escape_markdown(problem)}"
         )
         try:
             bot.send_message(
@@ -1320,21 +1349,21 @@ def send_video_feedback(problem, helped):
 
         if helped:
             support_message = (
-                f"📹 **ВИДЕО-МАНУАЛ ПОМОГ** ✅\n"
-                f"Отдел: {department}\n"
-                f"Имя: {name}\n"
-                f"Рабочее место: {workplace}\n"
-                f"Проблема: {problem}"
+                f"📹 *ВИДЕО-МАНУАЛ ПОМОГ* ✅\n"
+                f"Отдел: {escape_markdown(department)}\n"
+                f"Имя: {escape_markdown(name)}\n"
+                f"Рабочее место: {escape_markdown(workplace)}\n"
+                f"Проблема: {escape_markdown(problem)}"
             )
             thread_id = SOLVED_TICKETS_THREAD_ID
             result_type = RESULT_VIDEO_HELPED
         else:
             support_message = (
-                f"📹 **ВИДЕО-МАНУАЛ НЕ ПОМОГ** ❌\n"
-                f"Отдел: {department}\n"
-                f"Имя: {name}\n"
-                f"Рабочее место: {workplace}\n"
-                f"Проблема: {problem}\n"
+                f"📹 *ВИДЕО-МАНУАЛ НЕ ПОМОГ* ❌\n"
+                f"Отдел: {escape_markdown(department)}\n"
+                f"Имя: {escape_markdown(name)}\n"
+                f"Рабочее место: {escape_markdown(workplace)}\n"
+                f"Проблема: {escape_markdown(problem)}\n"
                 f"Пользователь перешел к пошаговой инструкции"
             )
             thread_id = SOLVED_TICKETS_THREAD_ID
@@ -3107,8 +3136,8 @@ def admin_trainer_versions(scenario_id):
 
     version_history = trainer_mgr.get_scenario_version_history(scenario_id)
     return render_template('admin_trainer_versions.html',
-                         scenario=scenario,
-                         version_history=version_history)
+                         scenario=deep_escape(scenario),
+                         version_history=deep_escape(version_history))
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/versions/<int:version>')
@@ -3544,14 +3573,14 @@ def admin_trainer_tags():
         return jsonify({'success': False, 'error': 'Название обязательно'})
 
     # Генерируем случайный цвет
-    import random
+    import secrets
     colors = ['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#00BCD4', '#795548', '#E91E63', '#607D8B']
     icons = ['🏷️', '📌', '⭐', '🔖', '📋', '🎯']
 
     result = trainer_mgr.create_tag(
         name=name,
-        color=random.choice(colors),
-        icon=random.choice(icons)
+        color=secrets.choice(colors),
+        icon=secrets.choice(icons)
     )
 
     if result['success']:
@@ -3670,7 +3699,7 @@ def admin_trainer_audit():
     logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset)
     stats = trainer_mgr.get_audit_stats()
 
-    return render_template('admin_trainer_audit.html', logs=logs, stats=stats, page=page)
+    return render_template('admin_trainer_audit.html', logs=deep_escape(logs), stats=deep_escape(stats), page=page)
 
 
 @app.route('/admin/trainer/audit/export')
@@ -4750,7 +4779,10 @@ def admin_update_subproblem(manual_id, subproblem_id):
     else:
         flash('Ошибка при сохранении изменений')
 
-    return redirect(redirect_url)
+    if redirect_url.startswith('/'):
+        return redirect(redirect_url)
+    else:
+        abort(400, "Invalid redirect URL")
 
 
 @app.route('/admin/delete-photo', methods=['POST'])
@@ -4836,12 +4868,18 @@ def admin_delete_step():
 
     if 'photos' not in target_obj or not isinstance(target_obj['photos'], list):
         flash('Шаги не найдены')
-        return redirect(redirect_url)
+        if redirect_url.startswith('/'):
+            return redirect(redirect_url)
+        else:
+            abort(400, "Invalid redirect URL")
 
     # Проверяем индекс
     if step_index >= len(target_obj['photos']):
         flash('Шаг не найден')
-        return redirect(redirect_url)
+        if redirect_url.startswith('/'):
+            return redirect(redirect_url)
+        else:
+            abort(400, "Invalid redirect URL")
 
     # Удаляем шаг
     del target_obj['photos'][step_index]
@@ -4852,7 +4890,10 @@ def admin_delete_step():
     else:
         flash('Ошибка при удалении шага')
 
-    return redirect(redirect_url)
+    if redirect_url.startswith('/'):
+        return redirect(redirect_url)
+    else:
+        abort(400, "Invalid redirect URL")
 
 
 @app.route('/admin/delete-video', methods=['POST'])
@@ -4877,7 +4918,11 @@ def admin_delete_video():
     else:
         flash('Ошибка при удалении видео')
 
-    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    _rurl = url_for('admin_edit_manual', manual_id=manual_id)
+    if _rurl.startswith('/'):
+        return redirect(_rurl)
+    else:
+        abort(400, "Invalid redirect URL")
 
 
 @app.route('/admin/upload-photo', methods=['GET', 'POST'])
@@ -4937,24 +4982,27 @@ def admin_upload_photo():
     allowed_image_types = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
     max_file_size = 10 * 1024 * 1024  # 10 MB
 
+    # Security Fix: Safe redirect URL via url_for (prevents Open Redirect)
+    _safe_redirect = url_for('admin_upload_photo', manual_id=manual_id, subproblem_id=subproblem_id, photo_index=photo_index_str)
+
     if 'photo' not in request.files:
         flash('Файл не был загружен')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     file = request.files['photo']
     if file.filename == '':
         flash('Файл не выбран')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     # Security Fix: Strict content type validation
     if not file.content_type or file.content_type not in allowed_image_types:
         flash('Можно загружать только изображения (JPEG, PNG, GIF, WebP)')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     # Security Fix: Check content-length header first
     if request.content_length and request.content_length > max_file_size:
         flash('Файл слишком большой (максимум 10 МБ)')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     # Проверка размера (максимум 10MB)
     file.seek(0, os.SEEK_END)
@@ -4963,7 +5011,7 @@ def admin_upload_photo():
 
     if file_size > max_file_size:
         flash('Файл слишком большой (максимум 10 МБ)')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     try:
         # Отправляем фото в Telegram чтобы получить file_id
@@ -5025,7 +5073,11 @@ def admin_add_new_step():
     caption = admin_manager.sanitize_text(caption, max_length=300)
     if not caption:
         flash('Описание шага не может быть пустым')
-        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+        _rurl = url_for('admin_edit_manual', manual_id=manual_id)
+        if _rurl.startswith('/'):
+            return redirect(_rurl)
+        else:
+            abort(400, "Invalid redirect URL")
 
     # Парсим индекс
     try:
@@ -5045,8 +5097,16 @@ def admin_add_new_step():
     # Редирект обратно на страницу редактирования
     manual = admin_manager.get_manual(manual_id)
     if manual and 'subproblems' in manual:
-        return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
-    return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
+        _rurl = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
+        if _rurl.startswith('/'):
+            return redirect(_rurl)
+        else:
+            abort(400, "Invalid redirect URL")
+    _rurl = url_for('admin_edit_simple_manual', manual_id=manual_id)
+    if _rurl.startswith('/'):
+        return redirect(_rurl)
+    else:
+        abort(400, "Invalid redirect URL")
 
 
 @app.route('/admin/upload-video', methods=['GET', 'POST'])
@@ -5090,24 +5150,27 @@ def admin_upload_video():
     allowed_video_types = {'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
     max_file_size = 50 * 1024 * 1024  # 50 MB
 
+    # Security Fix: Safe redirect URL via url_for (prevents Open Redirect)
+    _safe_redirect = url_for('admin_upload_video', manual_id=manual_id, subproblem_id=subproblem_id)
+
     if 'video' not in request.files:
         flash('Файл не был загружен')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     file = request.files['video']
     if file.filename == '':
         flash('Файл не выбран')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     # Security Fix: Strict content type validation
     if not file.content_type or file.content_type not in allowed_video_types:
         flash('Можно загружать только видео (MP4, MPEG, MOV, AVI, WebM)')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     # Security Fix: Check content-length header first
     if request.content_length and request.content_length > max_file_size:
         flash('Файл слишком большой (максимум 50 МБ)')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     # Проверка размера (максимум 50MB)
     file.seek(0, os.SEEK_END)
@@ -5116,7 +5179,7 @@ def admin_upload_video():
 
     if file_size > max_file_size:
         flash('Файл слишком большой (максимум 50 МБ)')
-        return redirect(request.url)
+        return redirect(_safe_redirect)
 
     try:
         # Отправляем видео в Telegram чтобы получить file_id
@@ -5146,10 +5209,18 @@ def admin_upload_video():
     manual = admin_manager.get_manual(manual_id)
     if manual and 'subproblems' in manual:
         # Мануал с подпроблемами - редирект на страницу редактирования подпроблемы
-        return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+        _rurl = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
+        if _rurl.startswith('/'):
+            return redirect(_rurl)
+        else:
+            abort(400, "Invalid redirect URL")
     else:
         # Простой мануал - редирект на страницу редактирования простого мануала
-        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
+        _rurl = url_for('admin_edit_simple_manual', manual_id=manual_id)
+        if _rurl.startswith('/'):
+            return redirect(_rurl)
+        else:
+            abort(400, "Invalid redirect URL")
 
 
 # ============================================
@@ -5162,7 +5233,8 @@ def admin_topics():
     """Страница управления тематиками"""
     stats = tm.get_statistics()
     channels = tm.get_all_channels()
-    return render_template('admin_topics.html', stats=stats, channels=channels)
+    archived_count = tm.get_archived_count()
+    return render_template('admin_topics.html', stats=stats, channels=channels, archived_count=archived_count)
 
 
 @app.route('/admin/topics/add', methods=['POST'])
@@ -5269,7 +5341,8 @@ def admin_list_topics():
     """Список всех тематик"""
     page = request.args.get('page', 1, type=int)
     per_page = 50
-    channel = request.form.get('channel', '').strip()
+    channel = request.args.get('channel', '').strip()
+    channels = tm.get_all_channels()
 
     if channel:
         topics = tm.get_topics_by_channel(channel, limit=1000)
@@ -5286,7 +5359,9 @@ def admin_list_topics():
                          topics=topics_page,
                          page=page,
                          total=total,
-                         per_page=per_page)
+                         per_page=per_page,
+                         channels=channels,
+                         current_channel=channel)
 
 
 @app.route('/admin/topics/import', methods=['GET'])
@@ -5422,6 +5497,179 @@ def admin_export_topics():
         traceback.print_exc()
         flash('Произошла ошибка при экспорте. Попробуйте позже.', 'error')
         return redirect(url_for('admin_topics'))
+
+
+# ============================================
+# АРХИВ ТЕМАТИК И РЕДАКТИРОВАНИЕ
+# ============================================
+
+
+@app.route('/admin/topics/archive')
+@AdminAuth.topics_required
+def admin_topics_archive():
+    """Страница архива тематик"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    archived = tm.get_archived_topics(limit=1000)
+    total = len(archived)
+    start = (page - 1) * per_page
+    end = start + per_page
+    archived_page = archived[start:end]
+    return render_template('admin_topics_archive.html',
+                         topics=archived_page, page=page,
+                         total=total, per_page=per_page)
+
+
+@app.route('/admin/topics/do-archive/<int:topic_id>', methods=['POST'])
+@AdminAuth.topics_required
+def admin_archive_topic(topic_id):
+    """Архивирование одной тематики"""
+    try:
+        actor = _current_actor()
+        archived_by = actor.get('username', 'unknown')
+        result = tm.archive_topic(topic_id, archived_by)
+        if result['success']:
+            topic_data = result.get('topic', {})
+            flash('Тематика перемещена в архив')
+            log_topic_change(
+                action='topic_archived',
+                topic_id=topic_id,
+                channel=topic_data.get('channel', ''),
+                full_topic=topic_data.get('full_topic', ''),
+                details={'archived_by': archived_by}
+            )
+        else:
+            flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
+    except Exception as e:
+        print(f"[admin_archive_topic] Ошибка: {e}")
+        traceback.print_exc()
+        flash('Произошла ошибка при архивации')
+    return safe_redirect_back('admin_list_topics')
+
+
+@app.route('/admin/topics/archive-bulk', methods=['POST'])
+@AdminAuth.topics_required
+def admin_archive_topics_bulk():
+    """Массовое архивирование тематик"""
+    try:
+        topic_ids_raw = request.form.get('topic_ids', '')
+        topic_ids = [int(x) for x in topic_ids_raw.split(',') if x.strip().isdigit()]
+        if not topic_ids:
+            flash('Не выбраны тематики для архивации')
+            return redirect(url_for('admin_list_topics'))
+
+        actor = _current_actor()
+        archived_by = actor.get('username', 'unknown')
+        result = tm.archive_topics_bulk(topic_ids, archived_by)
+        if result['success']:
+            flash(f'Архивировано тематик: {result["archived"]}')
+            log_topic_change(
+                action='topics_archived_bulk',
+                topic_id=None, channel='', full_topic='',
+                details={'archived_by': archived_by, 'count': result['archived']}
+            )
+        else:
+            flash(f'Ошибка: {result.get("error")}')
+    except Exception as e:
+        print(f"[admin_archive_topics_bulk] Ошибка: {e}")
+        traceback.print_exc()
+        flash('Произошла ошибка при массовой архивации')
+    return redirect(url_for('admin_list_topics'))
+
+
+@app.route('/admin/topics/restore/<int:topic_id>', methods=['POST'])
+@AdminAuth.topics_required
+def admin_restore_topic(topic_id):
+    """Восстановление тематики из архива"""
+    try:
+        result = tm.restore_topic(topic_id)
+        if result['success']:
+            topic_data = result.get('topic', {})
+            flash('Тематика восстановлена из архива')
+            log_topic_change(
+                action='topic_restored',
+                topic_id=topic_id,
+                channel=topic_data.get('channel', ''),
+                full_topic=topic_data.get('full_topic', ''),
+                details={'restored_by': _current_actor().get('username', '')}
+            )
+        else:
+            flash(f'Ошибка: {result.get("error")}')
+    except Exception as e:
+        print(f"[admin_restore_topic] Ошибка: {e}")
+        traceback.print_exc()
+        flash('Произошла ошибка при восстановлении')
+    return redirect(url_for('admin_topics_archive'))
+
+
+@app.route('/admin/topics/edit/<int:topic_id>', methods=['GET'])
+@AdminAuth.topics_required
+def admin_edit_topic(topic_id):
+    """Страница редактирования тематики"""
+    topic = tm.get_topic_by_id(topic_id)
+    if not topic:
+        flash('Тематика не найдена')
+        return redirect(url_for('admin_list_topics'))
+    channels = tm.get_all_channels()
+    return render_template('admin_edit_topic.html', topic=topic, channels=channels)
+
+
+@app.route('/admin/topics/edit/<int:topic_id>', methods=['POST'])
+@AdminAuth.topics_required
+def admin_update_topic(topic_id):
+    """Сохранение изменений тематики"""
+    try:
+        topic_before = tm.get_topic_by_id(topic_id)
+        if not topic_before:
+            flash('Тематика не найдена')
+            return redirect(url_for('admin_list_topics'))
+
+        channel = request.form.get('channel', '').strip()
+        sr1 = request.form.get('sr1', '').strip() or None
+        sr2 = request.form.get('sr2', '').strip() or None
+        sr3 = request.form.get('sr3', '').strip() or None
+        sr4 = request.form.get('sr4', '').strip() or None
+        full_topic = request.form.get('full_topic', '').strip() or None
+
+        if not channel:
+            flash('Канал обязателен для заполнения')
+            return redirect(url_for('admin_edit_topic', topic_id=topic_id))
+
+        if len(channel) > 100:
+            flash('Канал слишком длинный (макс. 100 символов)')
+            return redirect(url_for('admin_edit_topic', topic_id=topic_id))
+
+        for field, value in [('SR1', sr1), ('SR2', sr2), ('SR3', sr3), ('SR4', sr4)]:
+            if value and len(value) > 200:
+                flash(f'{field} слишком длинный (макс. 200 символов)')
+                return redirect(url_for('admin_edit_topic', topic_id=topic_id))
+
+        if full_topic and len(full_topic) > 500:
+            flash('Полная тематика слишком длинная (макс. 500 символов)')
+            return redirect(url_for('admin_edit_topic', topic_id=topic_id))
+
+        result = tm.update_topic(topic_id, channel=channel, sr1=sr1, sr2=sr2,
+                                  sr3=sr3, sr4=sr4, full_topic=full_topic)
+        if result['success']:
+            flash('Тематика успешно обновлена')
+            log_topic_change(
+                action='topic_updated',
+                topic_id=topic_id,
+                channel=channel,
+                full_topic=full_topic or '',
+                details={
+                    'updated_by': _current_actor().get('username', ''),
+                    'before': {'channel': topic_before.get('channel'), 'full_topic': topic_before.get('full_topic')},
+                    'after': {'channel': channel, 'full_topic': full_topic}
+                }
+            )
+        else:
+            flash(f'Ошибка: {result.get("error")}')
+    except Exception as e:
+        print(f"[admin_update_topic] Ошибка: {e}")
+        traceback.print_exc()
+        flash('Произошла ошибка при обновлении')
+    return redirect(url_for('admin_list_topics'))
 
 
 # ============================================
@@ -5661,7 +5909,7 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
     return summary, timeline, top_problems, departments
 
 @app.route('/admin/stats')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_stats_dashboard():
     """Страница статистики с dashboard"""
     return render_template('admin_stats_dashboard.html')
@@ -5745,7 +5993,7 @@ def api_stats_online():
 
 
 @app.route('/api/stats/summary')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_summary():
     """API для получения общей статистики"""
     try:
@@ -5843,7 +6091,7 @@ def api_stats_summary():
 
 
 @app.route('/api/stats/top_problems')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_top_problems():
     """API для получения топ проблем"""
     try:
@@ -5865,7 +6113,7 @@ def api_stats_top_problems():
 
 
 @app.route('/api/stats/departments')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_departments():
     """API для получения статистики по отделам"""
     try:
@@ -5885,7 +6133,7 @@ def api_stats_departments():
 
 
 @app.route('/api/stats/timeline')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_timeline():
     """API для получения статистики по дням (для графика)"""
     try:
@@ -5905,7 +6153,7 @@ def api_stats_timeline():
 
 
 @app.route('/api/stats/users')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_users():
     """Статистика использования Helper по специалистам (конечным пользователям)."""
     try:
@@ -6065,7 +6313,7 @@ def api_stats_users():
 
 
 @app.route('/api/stats/departments_usage')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_departments_usage():
     """Статистика использования Helper по отделам (поисki + мануалы + заявки)."""
     try:
@@ -6173,7 +6421,7 @@ def api_stats_departments_usage():
 
 
 @app.route('/api/stats/staff')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_staff():
     """Статистика по специалистам техподдержки."""
     try:
@@ -6222,7 +6470,7 @@ def api_stats_staff():
 
 
 @app.route('/api/stats/topics/summary')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_topics_summary():
     """Сводная статистика по поискам тематик."""
     try:
@@ -6266,7 +6514,7 @@ def api_stats_topics_summary():
 
 
 @app.route('/api/stats/topics/top')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_topics_top():
     """Топ поисковых запросов по тематикам."""
     try:
@@ -6307,7 +6555,7 @@ def api_stats_topics_top():
 
 
 @app.route('/api/stats/topics/channels')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_topics_channels():
     """Топ каналов по количеству поисков тематик."""
     try:
@@ -6349,7 +6597,7 @@ def api_stats_topics_channels():
 
 
 @app.route('/api/stats/topics/history')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_topics_history():
     """История изменений тематик: добавления/удаления/импорты."""
     try:
@@ -6386,7 +6634,7 @@ def api_stats_topics_history():
 
 
 @app.route('/api/stats/pending_tickets')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_pending_tickets():
     """API: заявки которые отправлены но ещё не решены."""
     try:
@@ -6459,7 +6707,7 @@ def api_stats_pending_tickets():
 
 
 @app.route('/api/stats/tickets_journal')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def api_stats_tickets_journal():
     """API: полная сводка по всем заявкам — создание, решение, время ожидания."""
     try:
@@ -6605,7 +6853,7 @@ def api_stats_tickets_journal():
 
 
 @app.route('/admin/stats/export')
-@AdminAuth.login_required
+@AdminAuth.manuals_required
 def admin_stats_export():
     """Экспорт статистики обращений в Excel."""
     try:

@@ -163,7 +163,22 @@ class TopicsManager:
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
+        # Миграция: добавляем поля для архивации тематик
+        for col_name, col_def in [
+            ("is_archived", "INTEGER DEFAULT 0"),
+            ("archived_at", "TIMESTAMP"),
+            ("archived_by", "TEXT"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE topics ADD COLUMN {col_name} {col_def}")
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_is_archived ON topics(is_archived)
+        """)
+
         self.conn.commit()
     
     def _normalize_text(self, text: str) -> str:
@@ -546,7 +561,7 @@ class TopicsManager:
 
             cursor.execute(f"""
                 SELECT * FROM topics
-                WHERE {keyword_conditions}
+                WHERE is_archived = 0 AND ({keyword_conditions})
             """, keyword_params)
 
             candidates.extend([dict(row) for row in cursor.fetchall()])
@@ -558,7 +573,7 @@ class TopicsManager:
 
             cursor.execute(f"""
                 SELECT * FROM topics
-                WHERE {keyword_conditions}
+                WHERE is_archived = 0 AND ({keyword_conditions})
             """, keyword_params)
 
             for row in cursor.fetchall():
@@ -569,7 +584,7 @@ class TopicsManager:
 
         # Если все еще мало результатов, берем больше кандидатов
         if len(candidates) < 50:
-            cursor.execute("SELECT * FROM topics LIMIT 500")
+            cursor.execute("SELECT * FROM topics WHERE is_archived = 0 LIMIT 500")
             for row in cursor.fetchall():
                 row_dict = dict(row)
                 if not any(c['id'] == row_dict['id'] for c in candidates):
@@ -628,7 +643,7 @@ class TopicsManager:
     def get_all_topics(self, limit: int = None, offset: int = None) -> List[Dict]:
         """Получить все тематики с поддержкой пагинации"""
         cursor = self.conn.cursor()
-        query = "SELECT * FROM topics ORDER BY channel, sr1, sr2, sr3, sr4"
+        query = "SELECT * FROM topics WHERE is_archived = 0 ORDER BY channel, sr1, sr2, sr3, sr4"
         params = []
         if limit:
             # Fix SQL Injection: use parameterized query
@@ -648,13 +663,13 @@ class TopicsManager:
     def get_topics_count(self) -> int:
         """Получить общее количество тематик"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM topics")
+        cursor.execute("SELECT COUNT(*) FROM topics WHERE is_archived = 0")
         return cursor.fetchone()[0]
 
     def get_topics_by_channel(self, channel: str, limit: int = None, offset: int = None) -> List[Dict]:
         """Получить все тематики для конкретного канала с поддержкой пагинации"""
         cursor = self.conn.cursor()
-        query = "SELECT * FROM topics WHERE channel = ? ORDER BY sr1, sr2, sr3, sr4"
+        query = "SELECT * FROM topics WHERE channel = ? AND is_archived = 0 ORDER BY sr1, sr2, sr3, sr4"
         params = [channel]
         if limit:
             # Fix SQL Injection: use parameterized query
@@ -671,13 +686,13 @@ class TopicsManager:
     def get_channel_topics_count(self, channel: str) -> int:
         """Получить количество тематик в канале"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM topics WHERE channel = ?", (channel,))
+        cursor.execute("SELECT COUNT(*) FROM topics WHERE channel = ? AND is_archived = 0", (channel,))
         return cursor.fetchone()[0]
 
     def get_all_channels(self) -> List[str]:
         """Получить список всех уникальных каналов"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT DISTINCT channel FROM topics ORDER BY channel")
+        cursor.execute("SELECT DISTINCT channel FROM topics WHERE is_archived = 0 ORDER BY channel")
         return [row['channel'] for row in cursor.fetchall()]
     
     def get_topic_by_id(self, topic_id: int) -> Optional[Dict]:
@@ -691,10 +706,10 @@ class TopicsManager:
         """Получить статистику по тематикам"""
         cursor = self.conn.cursor()
         
-        cursor.execute("SELECT COUNT(*) as total FROM topics")
+        cursor.execute("SELECT COUNT(*) as total FROM topics WHERE is_archived = 0")
         total = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(DISTINCT channel) as channels FROM topics")
+
+        cursor.execute("SELECT COUNT(DISTINCT channel) as channels FROM topics WHERE is_archived = 0")
         channels = cursor.fetchone()['channels']
         
         cursor.execute("SELECT COUNT(*) as cache_size FROM search_cache")
@@ -706,6 +721,95 @@ class TopicsManager:
             "cache_entries": cache_size
         }
     
+    # ========== Архивация тематик ==========
+
+    def archive_topic(self, topic_id: int, archived_by: str) -> Dict:
+        """Архивирование одной тематики"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM topics WHERE id = ? AND is_archived = 0", (topic_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "Тематика не найдена или уже архивирована"}
+
+            cursor.execute("""
+                UPDATE topics
+                SET is_archived = 1, archived_at = CURRENT_TIMESTAMP,
+                    archived_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (archived_by, topic_id))
+            self.conn.commit()
+            self.clear_cache()
+            return {"success": True, "topic": dict(row)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def archive_topics_bulk(self, topic_ids: list, archived_by: str) -> Dict:
+        """Массовое архивирование тематик"""
+        try:
+            if not topic_ids:
+                return {"success": False, "error": "Не указаны тематики"}
+            cursor = self.conn.cursor()
+            placeholders = ','.join(['?' for _ in topic_ids])
+            cursor.execute(f"""
+                UPDATE topics
+                SET is_archived = 1, archived_at = CURRENT_TIMESTAMP,
+                    archived_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders}) AND is_archived = 0
+            """, [archived_by] + list(topic_ids))
+            archived_count = cursor.rowcount
+            self.conn.commit()
+            self.clear_cache()
+            return {"success": True, "archived": archived_count}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def restore_topic(self, topic_id: int) -> Dict:
+        """Восстановление тематики из архива"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM topics WHERE id = ? AND is_archived = 1", (topic_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "Тематика не найдена в архиве"}
+
+            cursor.execute("""
+                UPDATE topics
+                SET is_archived = 0, archived_at = NULL,
+                    archived_by = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (topic_id,))
+            self.conn.commit()
+            self.clear_cache()
+            return {"success": True, "topic": dict(row)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_archived_topics(self, limit: int = None, offset: int = None) -> list:
+        """Получить все архивированные тематики"""
+        cursor = self.conn.cursor()
+        query = "SELECT * FROM topics WHERE is_archived = 1 ORDER BY archived_at DESC"
+        params = []
+        if limit:
+            if not isinstance(limit, int) or limit < 1:
+                limit = 100
+            query += " LIMIT ?"
+            params.append(limit)
+        if offset is not None and isinstance(offset, int) and offset >= 0:
+            query += " OFFSET ?"
+            params.append(offset)
+        if params:
+            cursor.execute(query, tuple(params))
+        else:
+            cursor.execute(query)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_archived_count(self) -> int:
+        """Получить количество архивированных тематик"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM topics WHERE is_archived = 1")
+        return cursor.fetchone()[0]
+
     def clear_cache(self):
         """Очистка кэша поиска"""
         cursor = self.conn.cursor()

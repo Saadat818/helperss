@@ -21,6 +21,7 @@ __pycache__/
 # Переменные окружения
 .env
 *.db
+topics.db
 # macOS
 .DS_Store
 

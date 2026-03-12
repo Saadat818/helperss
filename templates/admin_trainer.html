@@ -75,6 +75,60 @@
             color: white;
         }
 
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
+            color: white;
+        }
+
+        .status-dropdown {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .status-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            min-width: 130px;
+            z-index: 100;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            overflow: hidden;
+        }
+
+        .status-menu.open { display: block; }
+
+        .status-menu form { margin: 0; }
+
+        .status-option {
+            display: block;
+            width: 100%;
+            padding: 9px 14px;
+            text-align: left;
+            background: none;
+            border: none;
+            color: #ddd;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .status-option:hover { background: rgba(255,255,255,0.08); }
+
+        .badge-archived {
+            background: linear-gradient(135deg, #e67e22 0%, #ca6f1e 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
         .btn-sm {
             padding: 6px 12px;
             font-size: 12px;
@@ -323,9 +377,46 @@
             gap: 10px;
             justify-content: center;
         }
+
+        /* ===== СВЕТЛАЯ ТЕМА ===== */
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --panel: #ffffff;
+            --panel-2: #f8f9fa;
+            --panel-3: #f0f2f5;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+            --input-bg: #ffffff;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--card, #1a1a1a);
+            border: 1px solid var(--border, #333);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 9999;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        }
+        .theme-toggle:hover { transform: scale(1.12); }
+        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <a href="{{ url_for('choose_help_type') }}" class="back-link">
         &larr; Назад
     </a>
@@ -337,6 +428,7 @@
                 <a href="{{ url_for('admin_trainer_feedback') }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
                 <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
                 <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📊 Статистика</a>
+                <a href="{{ url_for('admin_trainer_drafts') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); position:relative;">✏️ Черновики{% if draft_count %}<span style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ draft_count }}</span>{% endif %}</a>
                 {# <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a> #}
                 <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">+ Создать сценарий</a>
             </div>
@@ -424,7 +516,7 @@
             </thead>
             <tbody>
                 {% for scenario in scenarios %}
-                <tr>
+                <tr {% if scenario.is_archived %}style="opacity:0.6;"{% endif %}>
                     <td>{{ scenario.id }}</td>
                     <td>
                         <div class="scenario-title">{{ scenario.title }}</div>
@@ -449,15 +541,33 @@
                     </td>
                     <td>{{ scenario.steps_count }}</td>
                     <td>
-                        {% if scenario.is_active %}
-                        <span class="badge badge-active">Активен</span>
-                        {% else %}
-                        <span class="badge badge-inactive">Скрыт</span>
-                        {% endif %}
+                        <div class="status-dropdown" onclick="toggleStatusMenu(event, {{ scenario.id }})">
+                            {% if scenario.is_archived %}
+                            <span class="badge badge-archived">🗄 Архив ▾</span>
+                            {% elif scenario.is_active %}
+                            <span class="badge badge-active">Активен ▾</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Скрыт ▾</span>
+                            {% endif %}
+                            <div class="status-menu" id="status-menu-{{ scenario.id }}">
+                                {% if not scenario.is_archived %}
+                                <form method="POST" action="{{ url_for('admin_trainer_archive', scenario_id=scenario.id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="status-option">🗄 Архив</button>
+                                </form>
+                                {% else %}
+                                <form method="POST" action="{{ url_for('admin_trainer_restore', scenario_id=scenario.id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="status-option">✅ Активен</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
                     </td>
                     <td class="actions-cell">
                         <div class="actions-wrap">
                             <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="btn btn-primary btn-sm">Редактировать</a>
+                            <button class="btn btn-secondary btn-sm" onclick="confirmDuplicate({{ scenario.id }}, '{{ scenario.title | e }}')">Дублировать</button>
                             <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ scenario.id }}, '{{ scenario.title | e }}')">Удалить</button>
                         </div>
                     </td>
@@ -474,6 +584,21 @@
             </p>
         </div>
         {% endif %}
+    </div>
+
+    <!-- Duplicate Confirmation Modal -->
+    <div class="modal-overlay" id="duplicateModal">
+        <div class="modal">
+            <h3>Дублировать сценарий?</h3>
+            <p>Сценарий "<span id="duplicateScenarioTitle"></span>" будет скопирован в черновики под именем "Копия: ..."</p>
+            <div class="modal-buttons">
+                <button class="btn btn-logout" onclick="closeDuplicateModal()">Отмена</button>
+                <form id="duplicateForm" method="POST" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-success">Дублировать</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <!-- Delete Confirmation Modal -->
@@ -509,6 +634,34 @@
             }
         }
 
+        function toggleStatusMenu(e, id) {
+            e.stopPropagation();
+            const menu = document.getElementById('status-menu-' + id);
+            const isOpen = menu.classList.contains('open');
+            // Закрываем все открытые меню
+            document.querySelectorAll('.status-menu.open').forEach(m => m.classList.remove('open'));
+            if (!isOpen) menu.classList.add('open');
+        }
+
+        // Клик вне — закрываем все меню
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.status-menu.open').forEach(m => m.classList.remove('open'));
+        });
+
+        function confirmDuplicate(id, title) {
+            document.getElementById('duplicateScenarioTitle').textContent = title;
+            document.getElementById('duplicateForm').action = '/admin/trainer/scenario/' + id + '/duplicate';
+            document.getElementById('duplicateModal').classList.add('show');
+        }
+
+        function closeDuplicateModal() {
+            document.getElementById('duplicateModal').classList.remove('show');
+        }
+
+        document.getElementById('duplicateModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDuplicateModal();
+        });
+
         function confirmDelete(id, title) {
             document.getElementById('deleteScenarioTitle').textContent = title;
             document.getElementById('deleteForm').action = '/admin/trainer/scenario/' + id + '/delete';
@@ -523,5 +676,6 @@
             if (e.target === this) closeModal();
         });
     </script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

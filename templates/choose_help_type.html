@@ -17,6 +17,41 @@
             --greenLight: #00d4aa;
         }
 
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+        }
+
+        body.light .help-card,
+        body.light .user-info {
+            box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 1000;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        }
+
+        .theme-toggle:hover { transform: scale(1.12); }
+
         * {
             margin: 0;
             padding: 0;
@@ -34,6 +69,7 @@
         .container {
             max-width: 900px;
             margin: 0 auto;
+            position: relative;
             animation: fadeIn 0.4s ease;
         }
 
@@ -135,7 +171,7 @@
             transform: translateY(-4px);
             border-color: rgba(0, 166, 81, 0.5);
             box-shadow: 0 12px 30px rgba(0, 166, 81, 0.15);
-            background: linear-gradient(180deg, #1f1f1f, #252525);
+            background: linear-gradient(180deg, var(--card), var(--card2));
         }
 
         .help-card:active {
@@ -165,13 +201,13 @@
         /* Карточка тренажера - занимает всю ширину */
         .trainer-card {
             grid-column: 1 / -1;
-            background: linear-gradient(180deg, #1a1f1a, #1a2520);
+            background: linear-gradient(180deg, var(--card), var(--card2));
             border-color: rgba(0, 166, 81, 0.3);
         }
 
         .trainer-card:hover {
             border-color: rgba(0, 166, 81, 0.6);
-            background: linear-gradient(180deg, #1f2a1f, #1f2f25);
+            background: linear-gradient(180deg, var(--card), var(--card2));
         }
 
         .trainer-card .help-icon {
@@ -206,9 +242,11 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
     <div class="container">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
         <div class="header">
             <div class="logo-text">МБанк</div>
             <h1>Добро пожаловать в Helper!</h1>
@@ -255,5 +293,22 @@
             </a>
         </div>
     </div>
+    <script>
+        (function() {
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.classList.add('light');
+            }
+        })();
+        function toggleTheme() {
+            const isLight = document.body.classList.toggle('light');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.body.classList.contains('light')) {
+                document.getElementById('themeToggle').textContent = '☀️';
+            }
+        });
+    </script>
 </body>
 </html>

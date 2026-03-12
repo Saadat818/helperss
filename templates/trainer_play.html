@@ -663,9 +663,46 @@
         @media (max-width: 900px) {
             .left-panel, .right-panel { display: none; }
         }
+
+        /* ===== СВЕТЛАЯ ТЕМА ===== */
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --panel: #ffffff;
+            --panel-2: #f8f9fa;
+            --panel-3: #f0f2f5;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+            --input-bg: #ffffff;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--card, #1a1a1a);
+            border: 1px solid var(--border, #333);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 9999;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        }
+        .theme-toggle:hover { transform: scale(1.12); }
+        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body class="{% if preview_mode %}preview-mode{% endif %}">
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     {% if preview_mode %}
     <div class="preview-banner">
         <span>👁️ Режим предпросмотра — результаты не сохраняются</span>
@@ -847,6 +884,7 @@
         let resultSaved = false;
         let silenceCount = 0;  // сколько раз клиент реагировал на молчание
         let timeoutCount = 0;  // общее число таймаутов за сессию
+        let scenarioEnded = false;  // флаг: сценарий завершён, таймеры не должны работать
 
         // Реплики клиента при молчании специалиста — из сценария или стандартные
         const silenceMessagesRaw = {{ (scenario.silence_messages or '') | tojson }};
@@ -924,10 +962,6 @@
                     showClientCard(data.client_info);
                 }
 
-                // Таймеры
-                startTimer();
-                startEmotionTimer();
-
                 scrollToBottom();
             } catch (error) {
                 console.error('Fetch error');
@@ -942,7 +976,12 @@
 
                 if (!data.success) {
                     console.error('Error loading step by id');
-                    showSuccess();
+                    // Шаг не найден (удалён) — переходим к следующему по порядку или завершаем
+                    if (currentStepNum < totalSteps) {
+                        loadStep(currentStepNum + 1);
+                    } else {
+                        showSuccess();
+                    }
                     return;
                 }
 
@@ -951,11 +990,15 @@
 
                 addBubble(data.step.client_message, 'client');
                 showAnswers(data.step.answers);
-                startTimer();
-                startEmotionTimer();
                 scrollToBottom();
             } catch (error) {
                 console.error('Fetch error');
+                // Сетевая ошибка — пробуем следующий шаг
+                if (currentStepNum < totalSteps) {
+                    loadStep(currentStepNum + 1);
+                } else {
+                    showSuccess();
+                }
             }
         }
 
@@ -974,7 +1017,11 @@
             answersList.innerHTML = '';
 
             if (!answers || answers.length === 0) {
-                answersList.innerHTML = '<div style="color:#888">Нет вариантов ответа</div>';
+                // Нет ответов — это конечный шаг, автозавершаем сценарий
+                stopTimer();
+                stopEmotionTimer();
+                scenarioEnded = true;
+                setTimeout(() => showSuccess(), 1500);
                 return;
             }
 
@@ -985,6 +1032,14 @@
                 btn.onclick = () => selectAnswer(answer);
                 answersList.appendChild(btn);
             });
+
+            // Таймеры запускаем только если сценарий ещё не завершён
+            if (!scenarioEnded) {
+                stopTimer();
+                stopEmotionTimer();
+                startTimer();
+                startEmotionTimer();
+            }
         }
 
         async function selectAnswer(answer) {
@@ -1086,6 +1141,7 @@
         function stopEmotionTimer() { if (emotionTimer) { clearInterval(emotionTimer); emotionTimer = null; } }
 
         function handleTimeout() {
+            if (scenarioEnded) return;
             stopTimer();
             stopEmotionTimer();
             // Блокируем кнопки на время показа реплики молчания
@@ -1173,6 +1229,9 @@
         let selectedTopicName = null;
 
         function showGameOver() {
+            scenarioEnded = true;
+            stopTimer();
+            stopEmotionTimer();
             pendingGameOver = true;
             if (correctTopics.length > 0) {
                 showTopicModal();
@@ -1188,6 +1247,9 @@
         }
 
         function showSuccess() {
+            scenarioEnded = true;
+            stopTimer();
+            stopEmotionTimer();
             pendingGameOver = false;
             if (correctTopics.length > 0) {
                 showTopicModal();
@@ -1476,5 +1538,6 @@
             toggle.classList.toggle('collapsed');
         }
     </script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

@@ -116,6 +116,8 @@
             width: 3000px;
             height: 2000px;
             cursor: grab;
+            min-width: 3000px;
+            min-height: 2000px;
         }
 
         .canvas:active {
@@ -127,9 +129,11 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 3000px;
+            height: 2000px;
             pointer-events: none;
+            overflow: visible;
+            /* viewBox НЕ задаётся — координаты прямые, без масштабирования */
         }
 
         .connection-line {
@@ -704,9 +708,46 @@
         .btn-add-answer:hover {
             background: rgba(33, 150, 243, 0.3);
         }
+
+        /* ===== СВЕТЛАЯ ТЕМА ===== */
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --panel: #ffffff;
+            --panel-2: #f8f9fa;
+            --panel-3: #f0f2f5;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+            --input-bg: #ffffff;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--card, #1a1a1a);
+            border: 1px solid var(--border, #333);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 9999;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        }
+        .theme-toggle:hover { transform: scale(1.12); }
+        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <!-- Header -->
     <div class="header">
         <div class="header-left">
@@ -743,7 +784,18 @@
     <div class="properties-panel" id="propertiesPanel">
         <div class="panel-title">Свойства</div>
         <div class="panel-empty" id="panelEmpty">
-            Выберите элемент для редактирования
+            <div style="font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.8;">
+                <div style="font-size: 15px; margin-bottom: 12px; color: rgba(255,255,255,0.7);">Как работает редактор:</div>
+                <div style="margin-bottom: 8px;">💬 <b>Реплика</b> — что говорит клиент</div>
+                <div style="margin-bottom: 8px;">✅ <b>Ответ</b> — вариант ответа оператора</div>
+                <div style="margin-bottom: 8px;">🏁 <b>Конец</b> — завершение диалога</div>
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 12px 0;">
+                <div style="margin-bottom: 6px;">→ Добавляйте узлы кнопками снизу</div>
+                <div style="margin-bottom: 6px;">→ Соединяйте узлы стрелками</div>
+                <div style="margin-bottom: 6px;">→ Кликните узел чтобы редактировать</div>
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 12px 0;">
+                <div style="color: rgba(255,255,255,0.35); font-size: 11px;">Ctrl+S — сохранить<br>Ctrl+Z / Ctrl+Y — отмена/повтор<br>Delete — удалить выбранный</div>
+            </div>
         </div>
         <div id="panelContent" style="display: none;">
             <!-- Dynamic content -->
@@ -761,21 +813,21 @@
             <span class="label">Повторить</span>
         </button>
         <span class="toolbar-divider"></span>
-        <button class="toolbar-btn" onclick="addNode('client')">
+        <button class="toolbar-btn" onclick="addNode('client')" title="Реплика клиента — что говорит клиент (синий блок)">
             <span class="icon">💬</span>
-            <span class="label">Реплика</span>
+            <span class="label">Реплика клиента</span>
         </button>
-        <button class="toolbar-btn" onclick="addNode('answer')">
+        <button class="toolbar-btn" onclick="addNode('answer')" title="Ответ оператора — вариант ответа специалиста (зелёный блок)">
             <span class="icon">✅</span>
-            <span class="label">Ответ</span>
+            <span class="label">Ответ оператора</span>
         </button>
-        <button class="toolbar-btn" onclick="addNode('condition')">
+        <button class="toolbar-btn" onclick="addNode('condition')" title="Условие — ветвление по лояльности или другому параметру">
             <span class="icon">❓</span>
             <span class="label">Условие</span>
         </button>
-        <button class="toolbar-btn" onclick="addNode('end')">
+        <button class="toolbar-btn" onclick="addNode('end')" title="Конец диалога — завершение сценария (успех или game over)">
             <span class="icon">🏁</span>
-            <span class="label">Конец</span>
+            <span class="label">Конец диалога</span>
         </button>
         <span class="toolbar-divider"></span>
         <button class="toolbar-btn" onclick="copyNode()" title="Копировать (Ctrl+C)">
@@ -807,28 +859,36 @@
     <!-- Help Overlay -->
     <div class="help-overlay" id="helpOverlay">
         <div class="help-content">
-            <h2>Справка по редактору</h2>
-            <ul>
-                <li><strong>Перетаскивание:</strong> Зажмите и тяните узлы</li>
-                <li><strong>Соединение:</strong> Нажмите на точку выхода и тяните к точке входа</li>
-                <li><strong>Выбор:</strong> Клик по узлу открывает панель свойств</li>
-                <li><strong>Удаление:</strong> Кнопка удаления или клавиша Delete</li>
-                <li><strong>Масштаб:</strong> Колесо мыши + Ctrl или кнопки +/-</li>
+            <h2>Справка по визуальному редактору</h2>
+            <p style="color: #666; margin-bottom: 12px; font-size: 13px;">
+                Сценарий строится из блоков, соединённых стрелками. Изменения сохраняются в обычный редактор автоматически.
+            </p>
+            <p style="margin-top: 10px; color: #333;"><strong>Типы блоков:</strong></p>
+            <ul style="margin-top: 6px;">
+                <li>💬 <strong>Реплика клиента</strong> (синий) — что говорит клиент оператору</li>
+                <li>✅ <strong>Ответ оператора</strong> (зелёный) — вариант ответа специалиста, отмечается как верный/частичный/неверный</li>
+                <li>❓ <strong>Условие</strong> (оранжевый) — ветвление по лояльности</li>
+                <li>🏁 <strong>Конец диалога</strong> (красный) — завершение сценария</li>
             </ul>
-            <p style="margin-top: 15px; color: #666;">
+            <p style="margin-top: 12px; color: #333;"><strong>Как строить диалог:</strong></p>
+            <ol style="margin-top: 6px; font-size: 13px; color: #666;">
+                <li>Добавьте "Реплику клиента" — это первый шаг сценария</li>
+                <li>Нажмите "Добавить ответ оператора" в панели справа</li>
+                <li>Для ветвления: соедините ответ стрелкой со следующей репликой</li>
+                <li>Завершите диалог блоком "Конец диалога"</li>
+            </ol>
+            <p style="margin-top: 12px; color: #333;"><strong>Управление:</strong></p>
+            <ul style="font-size: 13px; color: #666;">
+                <li>Перетаскивание: зажмите и тяните узел</li>
+                <li>Соединение: тяните от точки выхода (⬤) к точке входа</li>
+                <li>Масштаб: Ctrl + колесо мыши или кнопки +/-</li>
+            </ul>
+            <p style="margin-top: 12px; color: #666; font-size: 12px;">
                 <strong>Горячие клавиши:</strong><br>
-                Ctrl+Z — Отменить | Ctrl+Y — Повторить<br>
-                Ctrl+C — Копировать | Ctrl+V — Вставить<br>
-                Ctrl+D — Дублировать | Ctrl+S — Сохранить
+                Ctrl+S — Сохранить &nbsp;|&nbsp; Ctrl+Z — Отменить &nbsp;|&nbsp; Ctrl+Y — Повторить<br>
+                Ctrl+C — Копировать &nbsp;|&nbsp; Ctrl+V — Вставить &nbsp;|&nbsp; Delete — Удалить
             </p>
-            <p style="margin-top: 15px; color: #666;">
-                <strong>Типы узлов:</strong><br>
-                Реплика (синий) - сообщение клиента<br>
-                Ответ (зеленый) - варианты ответа оператора<br>
-                Условие (оранжевый) - проверка условий<br>
-                Конец (красный) - завершение сценария
-            </p>
-            <button class="help-close" onclick="hideHelp()">Закрыть</button>
+            <button class="help-close" onclick="hideHelp()">Понятно!</button>
         </div>
     </div>
 
@@ -995,6 +1055,7 @@
             historyIndex = history.length - 1;
 
             updateHistoryUI();
+            markUnsaved();
         }
 
         function undo() {
@@ -1266,12 +1327,14 @@
         function startDrag(e, node) {
             if (e.target.classList.contains('conn-point') || e.target.classList.contains('node-delete')) return;
 
+            e.preventDefault();
             draggingNode = node;
-            const rect = document.getElementById(node.id).getBoundingClientRect();
             const containerRect = canvasContainer.getBoundingClientRect();
 
-            dragOffset.x = e.clientX - rect.left + canvasContainer.scrollLeft;
-            dragOffset.y = e.clientY - rect.top + canvasContainer.scrollTop;
+            // Смещение мыши относительно левого-верхнего угла узла в canvas-координатах
+            // Учитываем zoom: canvas-координаты = экранные / zoom
+            dragOffset.x = (e.clientX - containerRect.left + canvasContainer.scrollLeft) / zoom - node.x;
+            dragOffset.y = (e.clientY - containerRect.top + canvasContainer.scrollTop) / zoom - node.y;
 
             document.addEventListener('mousemove', onDrag);
             document.addEventListener('mouseup', stopDrag);
@@ -1281,8 +1344,9 @@
             if (!draggingNode) return;
 
             const containerRect = canvasContainer.getBoundingClientRect();
-            const x = e.clientX - containerRect.left + canvasContainer.scrollLeft - dragOffset.x + 100;
-            const y = e.clientY - containerRect.top + canvasContainer.scrollTop - dragOffset.y + 50;
+            // Переводим экранные координаты в canvas-координаты и вычитаем начальное смещение
+            const x = (e.clientX - containerRect.left + canvasContainer.scrollLeft) / zoom - dragOffset.x;
+            const y = (e.clientY - containerRect.top + canvasContainer.scrollTop) / zoom - dragOffset.y;
 
             draggingNode.x = Math.max(0, x);
             draggingNode.y = Math.max(0, y);
@@ -1295,6 +1359,9 @@
         }
 
         function stopDrag() {
+            if (draggingNode) {
+                saveState(); // Фиксируем позицию в истории после перетаскивания
+            }
             draggingNode = null;
             document.removeEventListener('mousemove', onDrag);
             document.removeEventListener('mouseup', stopDrag);
@@ -1375,7 +1442,24 @@
             return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
         }
 
+        function expandCanvas() {
+            // Расширяем canvas под самый дальний узел + отступ
+            const PADDING = 400;
+            let maxX = 3000, maxY = 2000;
+            nodes.forEach(n => {
+                const el = document.getElementById(n.id);
+                if (!el) return;
+                maxX = Math.max(maxX, n.x + el.offsetWidth + PADDING);
+                maxY = Math.max(maxY, n.y + el.offsetHeight + PADDING);
+            });
+            canvas.style.width = maxX + 'px';
+            canvas.style.height = maxY + 'px';
+            connectionsSvg.style.width = maxX + 'px';
+            connectionsSvg.style.height = maxY + 'px';
+        }
+
         function updateConnections() {
+            expandCanvas();
             // Clear existing connection lines
             connectionsSvg.querySelectorAll('.connection-line:not(.temp-line)').forEach(l => l.remove());
 
@@ -1447,7 +1531,7 @@
                 case 'client':
                     html = `
                         <div class="prop-group">
-                            <label class="prop-label">Сообщение клиента</label>
+                            <label class="prop-label">💬 Сообщение клиента</label>
                             <textarea class="prop-textarea" onchange="updateNodeData('message', this.value)">${escapeHtml(node.data.message || '')}</textarea>
                         </div>
                         <div class="prop-group">
@@ -1455,16 +1539,29 @@
                             <input class="prop-input" value="${escapeHtml(node.data.clientName || 'Клиент')}" onchange="updateNodeData('clientName', this.value)">
                         </div>
                         <div class="prop-group">
-                            <label class="prop-label">Начальная эмоция</label>
+                            <label class="prop-label">Начальная эмоция клиента</label>
                             <select class="prop-select" onchange="updateNodeData('mood', this.value)">
-                                <option value="neutral" ${node.data.mood === 'neutral' ? 'selected' : ''}>Нейтрально</option>
-                                <option value="anger" ${node.data.mood === 'anger' ? 'selected' : ''}>Гнев</option>
-                                <option value="irritation" ${node.data.mood === 'irritation' ? 'selected' : ''}>Раздражение</option>
-                                <option value="satisfaction" ${node.data.mood === 'satisfaction' ? 'selected' : ''}>Удовлетворение</option>
-                                <option value="delight" ${node.data.mood === 'delight' ? 'selected' : ''}>Восторг</option>
+                                <option value="neutral" ${node.data.mood === 'neutral' ? 'selected' : ''}>😐 Нейтрально</option>
+                                <option value="anger" ${node.data.mood === 'anger' ? 'selected' : ''}>😡 Гнев</option>
+                                <option value="irritation" ${node.data.mood === 'irritation' ? 'selected' : ''}>😤 Раздражение</option>
+                                <option value="satisfaction" ${node.data.mood === 'satisfaction' ? 'selected' : ''}>😊 Удовлетворение</option>
+                                <option value="delight" ${node.data.mood === 'delight' ? 'selected' : ''}>😄 Восторг</option>
                             </select>
                         </div>
-                        <p style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 10px;">Добавляйте ответы через кнопку "Ответ" в тулбаре и соединяйте стрелками</p>
+                        <div class="prop-group" style="margin-top: 16px;">
+                            <label class="prop-label" style="color: rgba(255,255,255,0.5); font-size: 11px; margin-bottom: 8px;">БЫСТРЫЕ ДЕЙСТВИЯ</label>
+                            <button onclick="addAnswerToNode('${node.id}')" style="width:100%; padding:10px; background:rgba(33,150,243,0.2); border:1px solid rgba(33,150,243,0.5); border-radius:6px; color:#2196F3; cursor:pointer; font-size:13px; text-align:left;">
+                                ✅ Добавить ответ оператора
+                            </button>
+                            <div style="font-size:11px; color:rgba(255,255,255,0.35); margin-top:6px;">
+                                Ответов к этой реплике: <b style="color:rgba(255,255,255,0.6)">${connections.filter(c=>c.from===node.id && nodes.find(n=>n.id===c.to&&n.type==='answer')).length}</b>
+                            </div>
+                        </div>
+                        <div class="prop-group">
+                            <button onclick="deleteNode('${node.id}')" style="width:100%; padding:8px; background:rgba(233,69,96,0.15); border:1px solid rgba(233,69,96,0.4); border-radius:6px; color:#e94560; cursor:pointer; font-size:12px;">
+                                🗑 Удалить этот шаг
+                            </button>
+                        </div>
                     `;
                     break;
                 case 'condition':
@@ -1478,7 +1575,7 @@
                 case 'answer':
                     html = `
                         <div class="prop-group">
-                            <label class="prop-label">Текст ответа</label>
+                            <label class="prop-label">✅ Текст ответа оператора</label>
                             <textarea class="prop-textarea" onchange="updateNodeData('text', this.value)">${escapeHtml(node.data.text || '')}</textarea>
                         </div>
                         <div class="prop-group">
@@ -1522,9 +1619,20 @@
                             <input class="prop-input" placeholder="https://..." value="${escapeHtml(node.data.knowledgeLink || '')}" onchange="updateNodeData('knowledgeLink', this.value)">
                         </div>
                         <div class="prop-group">
-                            <label class="prop-label">Следующий шаг (ветвление)</label>
-                            <div class="prop-input" style="background: #f5f5f5; color: #666; cursor: default;">${getNextStepLabel(node)}</div>
-                            <small style="color: #999;">Определяется стрелкой от ответа к шагу клиента</small>
+                            <label class="prop-label">Ветвление (следующий шаг)</label>
+                            <div style="padding:8px; background:rgba(255,255,255,0.05); border-radius:6px; font-size:12px; color:rgba(255,255,255,0.6);">
+                                ${getNextStepLabel(node) || 'Не задано — конец диалога'}
+                            </div>
+                            <small style="color:rgba(255,255,255,0.35); font-size:11px;">Нарисуйте стрелку от этого ответа к нужной реплике клиента</small>
+                        </div>
+                        <div class="prop-group" style="margin-top: 16px;">
+                            <label class="prop-label" style="color: rgba(255,255,255,0.5); font-size: 11px; margin-bottom: 8px;">БЫСТРЫЕ ДЕЙСТВИЯ</label>
+                            <button onclick="addReplicaToAnswer('${node.id}')" style="width:100%; padding:10px; background:rgba(233,69,96,0.15); border:1px solid rgba(233,69,96,0.4); border-radius:6px; color:#e94560; cursor:pointer; font-size:13px; text-align:left; margin-bottom:6px;">
+                                💬 Добавить следующую реплику клиента
+                            </button>
+                            <button onclick="deleteNode('${node.id}')" style="width:100%; padding:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:rgba(255,255,255,0.5); cursor:pointer; font-size:12px;">
+                                🗑 Удалить этот ответ
+                            </button>
                         </div>
                     `;
                     break;
@@ -1771,12 +1879,61 @@
                 const result = await response.json();
 
                 if (result.success) {
+                    // Применяем маппинг ID: сервер пересоздал шаги с новыми ID
+                    if (result.id_remap && Object.keys(result.id_remap).length > 0) {
+                        applyIdRemap(result.id_remap);
+                    }
+                    markSaved();
                     showToast('Сохранено!', false);
                 } else {
                     showToast('Ошибка: ' + result.error, true);
                 }
             } catch (error) {
                 showToast('Ошибка соединения', true);
+            }
+        }
+
+        // === СИНХРОНИЗАЦИЯ ID ПОСЛЕ СОХРАНЕНИЯ ===
+        function applyIdRemap(idRemap) {
+            // Обновляем ID в массиве узлов и DOM
+            nodes.forEach(node => {
+                const newId = idRemap[node.id];
+                if (newId) {
+                    const el = document.getElementById(node.id);
+                    if (el) el.id = newId;
+                    node.id = newId;
+                }
+            });
+            // Обновляем соединения
+            connections.forEach(conn => {
+                if (idRemap[conn.from]) conn.from = idRemap[conn.from];
+                if (idRemap[conn.to]) conn.to = idRemap[conn.to];
+            });
+            // Обновляем выбранный узел
+            if (selectedNode && idRemap[selectedNode.id]) {
+                selectedNode.id = idRemap[selectedNode.id];
+            }
+            updateConnections();
+        }
+
+        // === ИНДИКАТОР НЕСОХРАНЁННЫХ ИЗМЕНЕНИЙ ===
+        let hasUnsavedChanges = false;
+
+        function markUnsaved() {
+            hasUnsavedChanges = true;
+            const saveBtn = document.querySelector('.btn-save');
+            if (saveBtn && !saveBtn.textContent.includes('*')) {
+                saveBtn.textContent = '* Сохранить';
+                saveBtn.style.background = 'linear-gradient(135deg, #e94560, #c0392b)';
+            }
+        }
+
+        function markSaved() {
+            hasUnsavedChanges = false;
+            const saveBtn = document.querySelector('.btn-save');
+            if (saveBtn) {
+                saveBtn.textContent = 'Сохранить';
+                saveBtn.style.background = '';
             }
         }
 
@@ -1787,6 +1944,14 @@
             toast.className = 'toast show' + (isError ? ' error' : '');
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
+
+        // Предупреждение при уходе со страницы с несохранёнными изменениями
+        window.addEventListener('beforeunload', (e) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = 'Есть несохранённые изменения. Уйти?';
+            }
+        });
 
         // Help
         function showHelp() {
@@ -1853,5 +2018,6 @@
             }
         });
     </script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

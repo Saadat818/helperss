@@ -1,0 +1,151 @@
+/* ===== КНОПКА ПЕРЕКЛЮЧЕНИЯ ТЕМЫ ===== */
+.theme-toggle {
+    background: var(--card, #1a1a1a);
+    border: 1px solid var(--border, #2a2a2a);
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 9999;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+}
+.theme-toggle:hover { transform: scale(1.12); }
+body.light .theme-toggle { background: #fff !important; border-color: #b8c4d0 !important; }
+
+/* ===== СВЕТЛАЯ ТЕМА: ГЛОБАЛЬНЫЕ ПЕРЕОПРЕДЕЛЕНИЯ ===== */
+
+/* Фон страницы */
+body.light { background-color: #dde2ea !important; color: #1a1a2e !important; }
+
+/* Карточки / панели с hardcoded dark цветами */
+body.light .content-card,
+body.light .card,
+body.light .panel,
+body.light .modal {
+    background: #ffffff !important;
+    border-color: #b8c4d0 !important;
+    color: #1a1a2e !important;
+}
+
+/* Заголовки */
+body.light h1, body.light h2, body.light h3,
+body.light h4, body.light h5, body.light h6 {
+    color: #1a1a2e !important;
+}
+
+/* Текст */
+body.light p, body.light span, body.light label,
+body.light td, body.light th, body.light li {
+    color: #1a1a2e !important;
+}
+body.light .muted, body.light .text-muted,
+body.light .subtitle, body.light .scenario-desc {
+    color: #606070 !important;
+}
+
+/* Таблицы */
+body.light table { background: #ffffff !important; }
+body.light thead, body.light thead tr { background: #e8edf4 !important; }
+body.light thead th { color: #1a1a2e !important; border-color: #b8c4d0 !important; }
+body.light tbody tr { background: #ffffff !important; border-color: #dde2ea !important; }
+body.light tbody tr:nth-child(even) { background: #f5f7fa !important; }
+body.light tbody tr:hover { background: #edf0f7 !important; }
+body.light td, body.light th { border-color: #dde2ea !important; }
+
+/* Инпуты, селекты, текстarea */
+body.light input,
+body.light select,
+body.light textarea {
+    background: #ffffff !important;
+    color: #1a1a2e !important;
+    border-color: #b8c4d0 !important;
+}
+body.light input::placeholder,
+body.light textarea::placeholder { color: #8890a0 !important; }
+body.light input:focus,
+body.light select:focus,
+body.light textarea:focus {
+    border-color: #00a651 !important;
+    outline: none;
+}
+
+/* Ссылки навигации */
+body.light .back-link { color: #00a651 !important; }
+body.light .back-link:hover { color: #009448 !important; }
+
+/* Badges */
+body.light .badge-inactive { background: #dde2ea !important; color: #606070 !important; }
+
+/* Sidebar / nav */
+body.light .sidebar,
+body.light nav,
+body.light .navbar { background: #f0f2f5 !important; border-color: #b8c4d0 !important; }
+
+/* Модальные окна */
+body.light .modal-overlay { background: rgba(0,0,0,0.4) !important; }
+body.light .modal { background: #ffffff !important; border-color: #b8c4d0 !important; }
+body.light .modal h3 { color: #1a1a2e !important; }
+body.light .modal p { color: #606070 !important; }
+body.light .modal input { background: #f5f7fa !important; color: #1a1a2e !important; }
+
+/* Специфичные для admin_trainer страниц */
+body.light .scenarios-table { background: #ffffff !important; }
+body.light .scenarios-table .scenario-title { color: #1a1a2e !important; }
+body.light .scenarios-table .scenario-desc { color: #606070 !important; }
+body.light .filter-bar { background: #edf0f7 !important; border-color: #b8c4d0 !important; }
+body.light .filter-group select { background: #ffffff !important; color: #1a1a2e !important; }
+body.light .header-buttons .btn { /* buttons keep their colors */ }
+body.light .stats-grid .stat-card { background: #ffffff !important; border-color: #b8c4d0 !important; }
+body.light .stat-value { color: #1a1a2e !important; }
+body.light .stat-label { color: #606070 !important; }
+
+/* Специфичные для admin_dashboard */
+body.light .panel,
+body.light [class*="panel"] { background: #ffffff !important; border-color: #b8c4d0 !important; }
+
+/* Hover эффекты кнопок в светлой теме */
+body.light .btn-primary:hover { box-shadow: 0 4px 12px rgba(0,123,255,0.25) !important; }
+body.light .btn-success:hover { box-shadow: 0 4px 12px rgba(0,166,81,0.25) !important; }
+body.light .btn-danger:hover  { box-shadow: 0 4px 12px rgba(220,53,69,0.25) !important; }
+
+/* Dropdown статуса */
+body.light .status-menu { background: #ffffff !important; border-color: #b8c4d0 !important; }
+body.light .status-option { color: #1a1a2e !important; }
+body.light .status-option:hover { background: rgba(0,0,0,0.05) !important; }
+
+/* CodeEditor / steps в admin_trainer_edit */
+body.light .step-card { background: #ffffff !important; border-color: #b8c4d0 !important; }
+body.light .answer-item { background: #f5f7fa !important; border-color: #b8c4d0 !important; }
+
+/* admin_dashboard — заголовки карточек мануалов */
+body.light .manual-title { color: #1a1a2e !important; }
+body.light .subproblems-count { color: #606070 !important; }
+body.light .manual-card {
+    background: #ffffff !important;
+    border-color: #b8c4d0 !important;
+    border-left-color: #00a651 !important;
+}
+
+/* Кнопки каналов в search_topics — убираем чёрный ховер */
+body.light .channel-btn:hover {
+    background: linear-gradient(180deg, #edf0f7, #e0e5ef) !important;
+    color: #1a1a2e !important;
+}
+
+/* Кнопка «назад» (dark pill) — делаем светлой */
+body.light .back-link {
+    background: rgba(255,255,255,0.95) !important;
+    border-color: #b8c4d0 !important;
+    color: #1a1a2e !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+}
+body.light .back-link:hover {
+    background: rgba(0,166,81,0.08) !important;
+    border-color: #00a651 !important;
+    color: #00a651 !important;
+}

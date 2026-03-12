@@ -208,6 +208,9 @@ class TrainerManager:
         # Миграция: аватары сценариев
         self._migrate_avatar_images()
 
+        # Миграция: таблица посещений сценариев
+        self._migrate_visits_table()
+
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
         cursor = self.conn.cursor()
@@ -281,6 +284,24 @@ class TrainerManager:
             cursor.execute("SELECT correct_topics FROM trainer_scenarios LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN correct_topics TEXT")
+
+        # Черновики сценариев
+        try:
+            cursor.execute("SELECT is_draft FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_draft BOOLEAN DEFAULT 0")
+
+        # Архив сценариев
+        try:
+            cursor.execute("SELECT is_archived FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_archived BOOLEAN DEFAULT 0")
+
+        # Время начала прохождения
+        try:
+            cursor.execute("SELECT started_at FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN started_at TIMESTAMP")
 
         self.conn.commit()
 
@@ -379,6 +400,23 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_results ADD COLUMN scenario_version INTEGER")
 
+        self.conn.commit()
+
+    def _migrate_visits_table(self):
+        """Миграция: таблица посещений сценариев (запуск без завершения)"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trainer_visits (
+                id INTEGER PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                scenario_id INTEGER NOT NULL,
+                visited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trainer_visits_user
+            ON trainer_visits(user_id, scenario_id)
+        """)
         self.conn.commit()
 
     def _migrate_feedback_table(self):
@@ -864,6 +902,8 @@ class TrainerManager:
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
                 WHERE s.level_id = ? AND s.category_id = ? AND s.is_active = 1
+                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY s.order_num
             """, (level['id'], category_id))
         else:
@@ -873,6 +913,8 @@ class TrainerManager:
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
                 WHERE s.level_id = ? AND s.is_active = 1
+                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY s.order_num
             """, (level['id'],))
         return [dict(row) for row in cursor.fetchall()]
@@ -891,7 +933,7 @@ class TrainerManager:
         return dict(row) if row else None
 
     def get_all_scenarios(self, include_inactive: bool = False) -> List[Dict]:
-        """Получить все сценарии"""
+        """Получить все сценарии (без черновиков и архивных)"""
         cursor = self.conn.cursor()
         if include_inactive:
             cursor.execute("""
@@ -899,6 +941,8 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
+                WHERE (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY l.order_num, s.order_num
             """)
         else:
@@ -908,9 +952,88 @@ class TrainerManager:
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
                 WHERE s.is_active = 1
+                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY l.order_num, s.order_num
             """)
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_archived_scenarios(self) -> List[Dict]:
+        """Получить все архивные сценарии"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
+            FROM trainer_scenarios s
+            JOIN trainer_levels l ON s.level_id = l.id
+            LEFT JOIN trainer_categories c ON s.category_id = c.id
+            WHERE s.is_archived = 1
+            ORDER BY s.created_at DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_archived_count(self) -> int:
+        """Количество архивных сценариев"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_archived = 1")
+        return cursor.fetchone()[0]
+
+    def archive_scenario(self, scenario_id: int) -> Dict:
+        """Отправить сценарий в архив"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE trainer_scenarios SET is_archived = 1, is_active = 0 WHERE id = ?",
+                (scenario_id,)
+            )
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def restore_from_archive(self, scenario_id: int) -> Dict:
+        """Восстановить сценарий из архива"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE trainer_scenarios SET is_archived = 0, is_active = 1 WHERE id = ?",
+                (scenario_id,)
+            )
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_draft_scenarios(self) -> List[Dict]:
+        """Получить все черновики сценариев"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
+            FROM trainer_scenarios s
+            JOIN trainer_levels l ON s.level_id = l.id
+            LEFT JOIN trainer_categories c ON s.category_id = c.id
+            WHERE s.is_draft = 1
+            ORDER BY s.created_at DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_draft_count(self) -> int:
+        """Количество черновиков"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = 1")
+        return cursor.fetchone()[0]
+
+    def publish_draft(self, scenario_id: int) -> Dict:
+        """Опубликовать черновик — сделать активным сценарием"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE trainer_scenarios SET is_draft = 0, is_active = 1 WHERE id = ?",
+                (scenario_id,)
+            )
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def get_scenario_steps(self, scenario_id: int) -> List[Dict]:
         """Получить шаги сценария"""
@@ -982,10 +1105,10 @@ class TrainerManager:
         for level in levels:
             level_code = level['code']
 
-            # Считаем сценарии на уровне
+            # Считаем сценарии на уровне (без черновиков)
             cursor.execute("""
                 SELECT COUNT(*) FROM trainer_scenarios
-                WHERE level_id = ? AND is_active = 1
+                WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
             """, (level['id'],))
             total = cursor.fetchone()[0]
 
@@ -1052,9 +1175,9 @@ class TrainerManager:
         if not level:
             return
 
-        # Считаем сценарии
+        # Считаем сценарии (без черновиков)
         cursor.execute("""
-            SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1
+            SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
         """, (level['id'],))
         total = cursor.fetchone()[0]
 
@@ -1088,7 +1211,8 @@ class TrainerManager:
 
     def save_result(self, user_id: str, scenario_id: int, score: int, max_score: int, answers: List[Dict],
                     final_loyalty: int = None, is_game_over: bool = False, timeout_count: int = 0,
-                    selected_topic_id: int = None, selected_topic_name: str = None) -> Dict:
+                    selected_topic_id: int = None, selected_topic_name: str = None,
+                    started_at: str = None) -> Dict:
         """Сохранить результат прохождения"""
         percent = min(100, round((score / max_score) * 100)) if max_score > 0 else 0
         grade = self.calculate_grade(percent)
@@ -1101,11 +1225,11 @@ class TrainerManager:
         cursor.execute("""
             INSERT INTO trainer_results (user_id, scenario_id, score, max_score, percent, grade, answers_json,
                                         final_loyalty, is_game_over, timeout_count, selected_topic_id, selected_topic_name,
-                                        scenario_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        scenario_version, started_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (user_id, scenario_id, score, max_score, percent, grade, json.dumps(answers, ensure_ascii=False),
               final_loyalty, 1 if is_game_over else 0, timeout_count, selected_topic_id, selected_topic_name,
-              scenario_version))
+              scenario_version, started_at))
 
         self.conn.commit()
         result_id = cursor.lastrowid
@@ -1193,8 +1317,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num, timer_seconds, initial_loyalty, client_info_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num, timer_seconds, initial_loyalty, client_info_json, is_draft)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 data.get('level_id'),
                 data.get('category_id'),
@@ -1206,7 +1330,8 @@ class TrainerManager:
                 data.get('order_num', 0),
                 data.get('timer_seconds', 15),
                 data.get('initial_loyalty', 100),
-                data.get('client_info_json')
+                data.get('client_info_json'),
+                data.get('is_draft', 0)
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
@@ -1221,7 +1346,7 @@ class TrainerManager:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
                             'estimated_time', 'total_points', 'is_active', 'order_num',
                             'timer_seconds', 'initial_loyalty', 'client_info_json',
-                            'correct_topics', 'avatar_images', 'silence_messages']
+                            'correct_topics', 'avatar_images', 'silence_messages', 'is_draft']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -1250,6 +1375,63 @@ class TrainerManager:
             print(f"[TrainerManager] Ошибка: {e}")
             traceback.print_exc()
             return {"success": False, "error": "Внутренняя ошибка сервера"}
+
+    def duplicate_scenario(self, scenario_id: int) -> Dict:
+        """Дублировать сценарий в черновики"""
+        try:
+            cursor = self.conn.cursor()
+
+            # Копируем сценарий
+            cursor.execute("SELECT * FROM trainer_scenarios WHERE id = ?", (scenario_id,))
+            orig = dict(cursor.fetchone())
+
+            cursor.execute("""
+                INSERT INTO trainer_scenarios
+                    (level_id, category_id, title, description, estimated_time, total_points,
+                     is_active, order_num, timer_seconds, initial_loyalty, client_info_json,
+                     correct_topics, avatar_images, silence_messages, visual_data, is_draft)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """, (
+                orig['level_id'], orig['category_id'],
+                'Копия: ' + orig['title'],
+                orig['description'], orig['estimated_time'], orig['total_points'],
+                orig['order_num'], orig['timer_seconds'], orig['initial_loyalty'],
+                orig['client_info_json'], orig['correct_topics'],
+                orig['avatar_images'], orig['silence_messages'], orig['visual_data'],
+            ))
+            new_scenario_id = cursor.lastrowid
+
+            # Копируем шаги, строим маппинг old_step_id → new_step_id
+            cursor.execute("SELECT * FROM trainer_steps WHERE scenario_id = ? ORDER BY step_num", (scenario_id,))
+            steps = [dict(r) for r in cursor.fetchall()]
+            step_id_map = {}
+            for step in steps:
+                cursor.execute("""
+                    INSERT INTO trainer_steps (scenario_id, step_num, client_message, client_avatar, client_name, initial_mood)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (new_scenario_id, step['step_num'], step['client_message'],
+                      step['client_avatar'], step['client_name'], step['initial_mood']))
+                step_id_map[step['id']] = cursor.lastrowid
+
+            # Копируем ответы, ремапим next_step_id
+            for old_step_id, new_step_id in step_id_map.items():
+                cursor.execute("SELECT * FROM trainer_answers WHERE step_id = ?", (old_step_id,))
+                answers = [dict(r) for r in cursor.fetchall()]
+                for ans in answers:
+                    new_next = step_id_map.get(ans['next_step_id']) if ans['next_step_id'] else None
+                    cursor.execute("""
+                        INSERT INTO trainer_answers
+                            (step_id, answer_text, is_correct, is_partial, points, feedback,
+                             order_num, mood_impact, knowledge_link, next_step_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (new_step_id, ans['answer_text'], ans['is_correct'], ans['is_partial'],
+                          ans['points'], ans['feedback'], ans['order_num'], ans['mood_impact'],
+                          ans['knowledge_link'], new_next))
+
+            self.conn.commit()
+            return {"success": True, "id": new_scenario_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def delete_scenario(self, scenario_id: int) -> Dict:
         """Удалить сценарий"""
@@ -1467,8 +1649,8 @@ class TrainerManager:
         """Получить общую статистику тренажера"""
         cursor = self.conn.cursor()
 
-        # Общее количество сценариев
-        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_active = 1")
+        # Общее количество сценариев (без черновиков)
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)")
         total_scenarios = cursor.fetchone()[0]
 
         # Количество прохождений
@@ -1488,7 +1670,7 @@ class TrainerManager:
         levels_stats = []
         for level in self.get_all_levels():
             cursor.execute("""
-                SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1
+                SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
             """, (level['id'],))
             scenarios = cursor.fetchone()[0]
 
@@ -1507,12 +1689,24 @@ class TrainerManager:
                 'avg_percent': round(row[1] or 0, 1)
             })
 
-        # Топ пользователей
+        # Топ пользователей — суммируем только последнее прохождение каждого сценария
         cursor.execute("""
-            SELECT user_id, COUNT(*) as completions, AVG(percent) as avg_percent
-            FROM trainer_results
+            SELECT user_id,
+                   COUNT(*) as completions,
+                   AVG(percent) as avg_percent,
+                   SUM(score) as total_score
+            FROM (
+                SELECT user_id, scenario_id,
+                       score, percent
+                FROM trainer_results r1
+                WHERE id = (
+                    SELECT id FROM trainer_results r2
+                    WHERE r2.user_id = r1.user_id AND r2.scenario_id = r1.scenario_id
+                    ORDER BY completed_at DESC LIMIT 1
+                )
+            )
             GROUP BY user_id
-            ORDER BY avg_percent DESC, completions DESC
+            ORDER BY total_score DESC, completions DESC
         """)
         top_users = [dict(row) for row in cursor.fetchall()]
 
@@ -1697,6 +1891,7 @@ class TrainerManager:
                 r.score,
                 r.max_score,
                 r.percent,
+                r.started_at,
                 r.completed_at,
                 r.is_game_over,
                 r.final_loyalty
@@ -1715,12 +1910,157 @@ class TrainerManager:
                 'score': row['score'],
                 'max_score': row['max_score'],
                 'percent': row['percent'],
+                'started_at': row['started_at'],
                 'completed_at': row['completed_at'],
                 'is_game_over': row['is_game_over'],
                 'final_loyalty': row['final_loyalty']
             })
 
         return results
+
+    def log_visit(self, user_id: str, scenario_id: int):
+        """Записываем факт открытия сценария пользователем"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT INTO trainer_visits (user_id, scenario_id) VALUES (?, ?)",
+                (user_id, scenario_id)
+            )
+            self.conn.commit()
+        except Exception:
+            pass  # не ломаем основной флоу
+
+    def get_completion_matrix(self, passing_percent: int = 70) -> Dict:
+        """
+        Матрица прохождения: кто прошёл какой сценарий.
+        Пользователи берутся из trainer_results (кто хоть раз запускал тренажёр).
+        Возвращает:
+          levels  — список уровней с их сценариями
+          users   — список пользователей
+          matrix  — dict[user_id][scenario_id] = {status, best_percent, attempts}
+          summary — dict[user_id] = {passed, total, percent_done}
+        """
+        cursor = self.conn.cursor()
+
+        # Все уровни и их активные сценарии
+        cursor.execute("""
+            SELECT l.id as level_id, l.name as level_name, l.code as level_code,
+                   s.id as scenario_id, s.title as scenario_title, s.order_num
+            FROM trainer_levels l
+            JOIN trainer_scenarios s ON s.level_id = l.id
+            WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL)
+            ORDER BY l.id, s.order_num
+        """)
+        rows = cursor.fetchall()
+
+        # Группируем по уровням
+        levels = {}
+        all_scenario_ids = []
+        for r in rows:
+            lid = r['level_id']
+            if lid not in levels:
+                levels[lid] = {'id': lid, 'name': r['level_name'], 'code': r['level_code'], 'scenarios': []}
+            levels[lid]['scenarios'].append({'id': r['scenario_id'], 'title': r['scenario_title']})
+            all_scenario_ids.append(r['scenario_id'])
+
+        # Все пользователи: из trainer_results ИЛИ из trainer_visits
+        cursor.execute("""
+            SELECT user_id FROM trainer_results
+            UNION
+            SELECT user_id FROM trainer_visits
+            ORDER BY user_id
+        """)
+        users = [r['user_id'] for r in cursor.fetchall()]
+
+        # Лучший результат каждого пользователя по каждому сценарию
+        cursor.execute("""
+            SELECT user_id, scenario_id,
+                   MAX(percent) as best_percent,
+                   COUNT(*) as attempts,
+                   MAX(CASE WHEN percent >= ? THEN 1 ELSE 0 END) as is_passed
+            FROM trainer_results
+            GROUP BY user_id, scenario_id
+        """, (passing_percent,))
+
+        results_by_user = {}
+        for r in cursor.fetchall():
+            uid = r['user_id']
+            if uid not in results_by_user:
+                results_by_user[uid] = {}
+            results_by_user[uid][r['scenario_id']] = {
+                'best_percent': r['best_percent'],
+                'attempts': r['attempts'],
+                'is_passed': bool(r['is_passed'])
+            }
+
+        # Посещения (запустил, но не дошёл до конца)
+        cursor.execute("""
+            SELECT user_id, scenario_id, COUNT(*) as visit_count,
+                   MAX(visited_at) as last_visit
+            FROM trainer_visits
+            GROUP BY user_id, scenario_id
+        """)
+        visits_by_user = {}
+        for r in cursor.fetchall():
+            uid = r['user_id']
+            if uid not in visits_by_user:
+                visits_by_user[uid] = {}
+            visits_by_user[uid][r['scenario_id']] = {
+                'visit_count': r['visit_count'],
+                'last_visit': r['last_visit']
+            }
+
+        # Строим матрицу: статусы
+        # passed      — завершил с результатом >= passing_percent
+        # failed      — завершил, но результат < passing_percent
+        # visited     — открывал сценарий, но так и не завершил ни разу
+        # not_started — никогда не открывал
+        matrix = {u: {} for u in users}
+        for uid in users:
+            for sid in all_scenario_ids:
+                res = results_by_user.get(uid, {}).get(sid)
+                vis = visits_by_user.get(uid, {}).get(sid)
+                if res:
+                    status = 'passed' if res['is_passed'] else 'failed'
+                    matrix[uid][sid] = {
+                        'status': status,
+                        'best_percent': res['best_percent'],
+                        'attempts': res['attempts']
+                    }
+                elif vis:
+                    matrix[uid][sid] = {
+                        'status': 'visited',
+                        'best_percent': None,
+                        'attempts': 0,
+                        'visit_count': vis['visit_count'],
+                        'last_visit': vis['last_visit']
+                    }
+                else:
+                    matrix[uid][sid] = {'status': 'not_started', 'best_percent': None, 'attempts': 0}
+
+        # Итоги по каждому пользователю
+        total_scenarios = len(all_scenario_ids)
+        summary = {}
+        for uid in users:
+            passed   = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'passed')
+            failed   = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'failed')
+            visited  = sum(1 for sid in all_scenario_ids if matrix[uid][sid]['status'] == 'visited')
+            summary[uid] = {
+                'passed': passed,
+                'failed': failed,
+                'visited': visited,
+                'not_started': total_scenarios - passed - failed - visited,
+                'total': total_scenarios,
+                'percent_done': round(passed / total_scenarios * 100) if total_scenarios else 0
+            }
+
+        return {
+            'levels': list(levels.values()),
+            'users': users,
+            'matrix': matrix,
+            'summary': summary,
+            'passing_percent': passing_percent
+        }
 
     # ==================== ОБРАТНАЯ СВЯЗЬ ====================
 
@@ -1886,7 +2226,7 @@ class TrainerManager:
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
             JOIN trainer_scenario_tags st ON s.id = st.scenario_id
-            WHERE st.tag_id = ? AND s.is_active = 1
+            WHERE st.tag_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL)
             ORDER BY l.order_num, s.order_num
         """, (tag_id,))
         return [dict(row) for row in cursor.fetchall()]

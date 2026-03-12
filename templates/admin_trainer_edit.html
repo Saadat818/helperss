@@ -637,9 +637,46 @@
                 flex-direction: column;
             }
         }
+
+        /* ===== СВЕТЛАЯ ТЕМА ===== */
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --panel: #ffffff;
+            --panel-2: #f8f9fa;
+            --panel-3: #f0f2f5;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+            --input-bg: #ffffff;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--card, #1a1a1a);
+            border: 1px solid var(--border, #333);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 9999;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        }
+        .theme-toggle:hover { transform: scale(1.12); }
+        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <a href="{{ url_for('admin_trainer') }}" class="back-link">
         &larr; К списку сценариев
     </a>
@@ -731,8 +768,17 @@
 
                 <div class="form-group">
                     <div class="checkbox-group">
+                        <input type="checkbox" id="is_draft" name="is_draft"
+                               {% if (scenario and scenario.is_draft) or (not scenario and request.args.get('draft') == '1') %}checked{% endif %}
+                               onchange="this.form.is_active.disabled = this.checked">
+                        <label for="is_draft" style="color: #f39c12;">✏️ Черновик (не виден пользователям)</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
                         <input type="checkbox" id="is_active" name="is_active"
-                               {% if not scenario or scenario.is_active %}checked{% endif %}>
+                               {% if not scenario or scenario.is_active %}checked{% endif %}
+                               {% if scenario and scenario.is_draft %}disabled{% endif %}>
                         <label for="is_active">Сценарий активен (виден пользователям)</label>
                     </div>
                 </div>
@@ -777,7 +823,7 @@
                 <div style="margin-bottom: 15px;">
                     <input type="text" id="topicSearchInput" placeholder="Поиск тематики..."
                            style="width: 100%; padding: 12px 15px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 14px;">
-                    <div id="topicSearchResults" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; margin-top: 5px; display: none; background: white;"></div>
+                    <div id="topicSearchResults" style="max-height: 200px; overflow-y: auto; border: 1px solid #2a2a3e; border-radius: 8px; margin-top: 5px; display: none; background: #16213e;"></div>
                 </div>
 
                 <div id="selectedTopicsList" style="display: flex; flex-direction: column; gap: 8px;">
@@ -1217,11 +1263,11 @@
             container.innerHTML = '';
             correctTopics.forEach((topic, idx) => {
                 const div = document.createElement('div');
-                div.style.cssText = 'display:flex; align-items:center; gap:10px; background:#fff; padding:10px 14px; border-radius:8px; border:1px solid #ddd;';
+                div.style.cssText = 'display:flex; align-items:center; gap:10px; background:#16213e; padding:10px 14px; border-radius:8px; border:1px solid #2a2a3e;';
                 div.innerHTML = `
                     <span style="flex:1; font-size:14px;">
-                        <strong>${topic.topic}</strong>
-                        <span style="color:#888; font-size:12px; margin-left:8px;">${topic.channel || ''}</span>
+                        <strong style="color:#e0e0e0;">${topic.topic}</strong>
+                        <span style="color:#aaa; font-size:12px; margin-left:8px;">${topic.channel || ''}</span>
                     </span>
                     <button type="button" onclick="removeCorrectTopic(${idx})" style="background:#f44336; color:#fff; border:none; border-radius:50%; width:24px; height:24px; cursor:pointer; font-size:14px; line-height:1;">✕</button>
                 `;
@@ -1272,16 +1318,16 @@
                         resultsDiv.innerHTML = '';
                         data.results.slice(0, 15).forEach(r => {
                             const item = document.createElement('div');
-                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #eee; font-size:13px; transition:background 0.2s;';
-                            item.onmouseenter = () => item.style.background = '#f0f0f0';
+                            item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #2a2a3e; font-size:13px; transition:background 0.2s; color:#e0e0e0;';
+                            item.onmouseenter = () => item.style.background = '#2a2a3e';
                             item.onmouseleave = () => item.style.background = '';
-                            item.innerHTML = `<strong>${escapeHtml(r.topic)}</strong> <span style="color:#888; font-size:11px;">${escapeHtml(r.channel || '')}</span>`;
+                            item.innerHTML = `<strong style="color:var(--text, #fff);">${escapeHtml(r.topic)}</strong> <span style="color:var(--muted, #aaa); font-size:11px;">${escapeHtml(r.channel || '')}</span>`;
                             item.onclick = () => addCorrectTopic(r);
                             resultsDiv.appendChild(item);
                         });
                         resultsDiv.style.display = 'block';
                     } else {
-                        resultsDiv.innerHTML = '<div style="padding:10px 14px; color:#888; font-size:13px;">Ничего не найдено</div>';
+                        resultsDiv.innerHTML = '<div style="padding:10px 14px; color:#aaa; font-size:13px;">Ничего не найдено</div>';
                         resultsDiv.style.display = 'block';
                     }
                 } catch (e) {
@@ -1343,5 +1389,6 @@
             }
         }
     </script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

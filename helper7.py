@@ -1,4 +1,5 @@
 import os
+import random
 import sqlite3
 import threading
 import json
@@ -2484,9 +2485,24 @@ def trainer_play(scenario_id):
     user_id = session.get('user_info', {}).get('username', 'admin_preview') if not preview_mode else 'admin_preview'
     scenario = trainer_mgr.get_scenario(scenario_id)
 
+    # Логируем факт открытия сценария (для отчёта посещений)
+    if not preview_mode and user_id != 'admin_preview':
+        trainer_mgr.log_visit(user_id, scenario_id)
+        # Запоминаем время начала прохождения
+        session[f'scenario_start_{scenario_id}'] = datetime.now().isoformat()
+
     if not scenario:
         flash('Сценарий не найден')
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
+
+    # Черновики и скрытые сценарии недоступны для обычных пользователей
+    if not preview_mode:
+        if scenario.get('is_draft'):
+            flash('Сценарий недоступен')
+            return redirect(url_for('trainer_menu'))
+        if not scenario.get('is_active'):
+            flash('Сценарий недоступен')
+            return redirect(url_for('trainer_menu'))
 
     # Check level access (skip in preview mode)
     if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):
@@ -2557,6 +2573,8 @@ def trainer_get_step(scenario_id, step_num):
             'answer_text': answer['answer_text'],
             'order_num': answer['order_num']
         })
+    # Перемешиваем ответы — нельзя запомнить позицию правильного
+    random.shuffle(safe_answers)
 
     # Парсим карточку клиента из JSON
     client_info = None
@@ -2604,6 +2622,8 @@ def trainer_get_step_by_id(step_id):
             'answer_text': answer['answer_text'],
             'order_num': answer['order_num']
         })
+    # Перемешиваем ответы — нельзя запомнить позицию правильного
+    random.shuffle(safe_answers)
 
     return jsonify({
         'success': True,
@@ -2716,6 +2736,9 @@ def trainer_complete():
 
         user_id = session['user_info'].get('username', 'anonymous')
 
+        # Извлекаем время начала из сессии
+        started_at = session.pop(f'scenario_start_{scenario_id}', None)
+
         # Сохраняем результат с новыми полями геймификации
         result = trainer_mgr.save_result(
             user_id, scenario_id, score, max_score, answers,
@@ -2723,7 +2746,8 @@ def trainer_complete():
             is_game_over=is_game_over,
             timeout_count=timeout_count,
             selected_topic_id=selected_topic_id,
-            selected_topic_name=selected_topic_name
+            selected_topic_name=selected_topic_name,
+            started_at=started_at
         )
 
         return jsonify({
@@ -2886,7 +2910,15 @@ def admin_trainer():
     if tag_id:
         scenarios = [s for s in scenarios if any(t['id'] == tag_id for t in s['tags'])]
 
+    # Добавляем архивные в конец общего списка
+    archived_scenarios = trainer_mgr.get_archived_scenarios()
+    for s in archived_scenarios:
+        s['steps_count'] = trainer_mgr.get_steps_count(s['id'])
+        s['tags'] = trainer_mgr.get_scenario_tags(s['id'])
+    scenarios = scenarios + archived_scenarios
+
     unread_feedback = trainer_mgr.get_unread_feedback_count()
+    draft_count = trainer_mgr.get_draft_count()
 
     return render_template('admin_trainer.html',
                          stats=stats,
@@ -2897,7 +2929,8 @@ def admin_trainer():
                          current_level=level_code,
                          current_category=category_id,
                          current_tag=tag_id,
-                         unread_feedback=unread_feedback)
+                         unread_feedback=unread_feedback,
+                         draft_count=draft_count)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
@@ -2908,6 +2941,7 @@ def admin_trainer_create():
     categories = trainer_mgr.get_all_categories()
 
     if request.method == 'POST':
+        is_draft = 1 if request.form.get('is_draft') else 0
         data = {
             'level_id': request.form.get('level_id', type=int),
             'category_id': request.form.get('category_id', type=int) or None,
@@ -2915,8 +2949,9 @@ def admin_trainer_create():
             'description': request.form.get('description', '').strip(),
             'estimated_time': request.form.get('estimated_time', 5, type=int),
             'total_points': request.form.get('total_points', 100, type=int),
-            'is_active': 1 if request.form.get('is_active') else 0,
-            'order_num': request.form.get('order_num', 0, type=int)
+            'is_active': 0 if is_draft else (1 if request.form.get('is_active') else 0),
+            'order_num': request.form.get('order_num', 0, type=int),
+            'is_draft': is_draft
         }
 
         if not data['title']:
@@ -2938,7 +2973,10 @@ def admin_trainer_create():
                 changes=data,
                 ip_address=request.remote_addr
             )
-            flash('Сценарий успешно создан!')
+            if is_draft:
+                flash('Черновик создан! Добавьте шаги и опубликуйте когда будет готов.')
+            else:
+                flash('Сценарий успешно создан!')
             return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
         else:
             flash(f'Ошибка: {result.get("error")}')
@@ -2985,6 +3023,7 @@ def admin_trainer_edit(scenario_id):
         correct_topics_raw = request.form.get('correct_topics', '').strip()
         correct_topics_val = correct_topics_raw if correct_topics_raw else None
 
+        is_draft = 1 if request.form.get('is_draft') else 0
         data = {
             'level_id': request.form.get('level_id', type=int),
             'category_id': request.form.get('category_id', type=int) or None,
@@ -2992,13 +3031,14 @@ def admin_trainer_edit(scenario_id):
             'description': request.form.get('description', '').strip(),
             'estimated_time': request.form.get('estimated_time', 5, type=int),
             'total_points': request.form.get('total_points', 100, type=int),
-            'is_active': 1 if request.form.get('is_active') else 0,
+            'is_active': 0 if is_draft else (1 if request.form.get('is_active') else 0),
             'order_num': request.form.get('order_num', 0, type=int),
             'timer_seconds': request.form.get('timer_seconds', 15, type=int),
             'initial_loyalty': request.form.get('initial_loyalty', 100, type=int),
             'client_info_json': client_info_json,
             'correct_topics': correct_topics_val,
-            'silence_messages': request.form.get('silence_messages', '').strip()
+            'silence_messages': request.form.get('silence_messages', '').strip(),
+            'is_draft': is_draft
         }
 
         # Сохраняем снимок текущей версии перед обновлением
@@ -3197,6 +3237,111 @@ def admin_trainer_delete(scenario_id):
     return redirect(url_for('admin_trainer'))
 
 
+@app.route('/admin/trainer/drafts')
+@AdminAuth.login_required
+def admin_trainer_drafts():
+    """Черновики сценариев"""
+    drafts = trainer_mgr.get_draft_scenarios()
+    for d in drafts:
+        d['steps_count'] = trainer_mgr.get_steps_count(d['id'])
+        d['tags'] = trainer_mgr.get_scenario_tags(d['id'])
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+    return render_template('admin_trainer_drafts.html',
+                           drafts=drafts,
+                           levels=levels,
+                           categories=categories)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/publish', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_publish(scenario_id):
+    """Опубликовать черновик"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.publish_draft(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='publish',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий опубликован!')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+    return redirect(url_for('admin_trainer_drafts'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/archive', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_archive(scenario_id):
+    """Отправить сценарий в архив"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.archive_scenario(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='archive',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий перемещён в архив.')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+    return redirect(url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/restore', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_restore(scenario_id):
+    """Восстановить сценарий из архива"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.restore_from_archive(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='restore',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий восстановлен из архива и снова активен.')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+    return redirect(url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/duplicate', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_duplicate(scenario_id):
+    """Дублировать сценарий в черновики"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    result = trainer_mgr.duplicate_scenario(scenario_id)
+    if result['success']:
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='duplicate',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
+            ip_address=request.remote_addr
+        )
+        flash('Сценарий продублирован и сохранён в черновиках!')
+        return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
+    else:
+        flash(f'Ошибка дублирования: {result.get("error")}')
+        return redirect(url_for('admin_trainer'))
+
+
 @app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])
 @AdminAuth.trainer_required
 def admin_trainer_create_step(scenario_id):
@@ -3382,10 +3527,34 @@ def admin_trainer_visual_save(scenario_id):
             if answer_db_id and target_step_id:
                 trainer_mgr.update_answer(answer_db_id, {'next_step_id': target_step_id})
 
+        # Строим маппинг старых visual-ID → новых DB-ID
+        # (нужен потому что DELETE+CREATE присваивает новые ID шагам/ответам)
+        id_remap = {}
+        for old_id, new_step_id in node_to_step.items():
+            id_remap[old_id] = f"step_{new_step_id}"
+        for old_id, new_answer_id in node_to_answer.items():
+            id_remap[old_id] = f"answer_{new_answer_id}"
+
+        # Обновляем ID узлов в visual_data на актуальные DB-ID
+        updated_nodes = []
+        for node in nodes:
+            new_node = dict(node)
+            new_node['id'] = id_remap.get(node['id'], node['id'])
+            updated_nodes.append(new_node)
+
+        # Обновляем fromId/toId в соединениях
+        updated_connections = []
+        for conn in connections:
+            new_conn = dict(conn)
+            new_conn['fromId'] = id_remap.get(conn.get('fromId', ''), conn.get('fromId', ''))
+            new_conn['toId'] = id_remap.get(conn.get('toId', ''), conn.get('toId', ''))
+            new_conn['id'] = f"conn_{new_conn['fromId']}_{new_conn['toId']}"
+            updated_connections.append(new_conn)
+
         # Сохраняем визуальную структуру для последующего восстановления
         visual_data = {
-            'nodes': nodes,
-            'connections': connections
+            'nodes': updated_nodes,
+            'connections': updated_connections
         }
 
         # Сохраняем визуальные данные в отдельное поле сценария
@@ -3417,7 +3586,7 @@ def admin_trainer_visual_save(scenario_id):
             ip_address=request.remote_addr
         )
 
-        return jsonify({'success': True, 'message': 'Сценарий сохранен'})
+        return jsonify({'success': True, 'message': 'Сценарий сохранен', 'id_remap': id_remap})
 
     except Exception as e:
         print(f"[API] Ошибка сохранения сценария: {e}")
@@ -3668,17 +3837,40 @@ def admin_trainer_export():
                 results_df = pd.DataFrame(detailed_results)
                 results_df.columns = [
                     'Сотрудник',
-                    'Сценарий',
+                    'Название кейса',
                     'Уровень',
                     'Баллы',
                     'Макс. баллов',
                     'Процент (%)',
-                    'Дата прохождения',
+                    'Время начала',
+                    'Время окончания',
                     'Game Over',
                     'Лояльность клиента'
                 ]
                 # Преобразуем Game Over в понятный формат
                 results_df['Game Over'] = results_df['Game Over'].apply(lambda x: 'Да' if x else 'Нет')
+                # Вычисляем длительность прохождения
+                def calc_duration(row):
+                    try:
+                        if row['Время начала'] and row['Время окончания']:
+                            from datetime import datetime as dt
+                            fmt = '%Y-%m-%d %H:%M:%S'
+                            start = dt.fromisoformat(str(row['Время начала']))
+                            end = dt.fromisoformat(str(row['Время окончания']))
+                            secs = int((end - start).total_seconds())
+                            mins, s = divmod(abs(secs), 60)
+                            return f'{mins} мин {s} сек'
+                    except Exception:
+                        pass
+                    return '—'
+                results_df['Длительность'] = results_df.apply(calc_duration, axis=1)
+                # Итоговый порядок колонок
+                results_df = results_df[[
+                    'Сотрудник', 'Название кейса', 'Уровень',
+                    'Баллы', 'Макс. баллов', 'Процент (%)',
+                    'Время начала', 'Время окончания', 'Длительность',
+                    'Game Over', 'Лояльность клиента'
+                ]]
                 results_df.to_excel(writer, sheet_name='Все прохождения', index=False)
 
             # Лист 4: Статистика по уровням
@@ -3686,6 +3878,175 @@ def admin_trainer_export():
                 levels_df = pd.DataFrame(stats['levels'])
                 levels_df.columns = ['Уровень', 'Код', 'Сценариев', 'Прохождений', 'Средний балл (%)']
                 levels_df.to_excel(writer, sheet_name='По уровням', index=False)
+
+            # Лист 5: Матрица "Пройдено / Не пройдено" по уровням
+            try:
+                from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+                from openpyxl.utils import get_column_letter
+
+                matrix_data = trainer_mgr.get_completion_matrix(passing_percent=70)
+                ws = writer.book.create_sheet('Пройдено - Не пройдено')
+
+                # Цвета
+                fill_passed      = PatternFill('solid', fgColor='C8E6C9')  # зелёный
+                fill_failed      = PatternFill('solid', fgColor='FFCDD2')  # красный
+                fill_visited     = PatternFill('solid', fgColor='FFF9C4')  # жёлтый — зашёл, не завершил
+                fill_not_started = PatternFill('solid', fgColor='F5F5F5')  # серый
+                fill_header      = PatternFill('solid', fgColor='1A237E')  # тёмно-синий
+                fill_level       = PatternFill('solid', fgColor='3949AB')  # синий уровень
+                fill_summary     = PatternFill('solid', fgColor='E8EAF6')  # светло-синий
+
+                font_white  = Font(color='FFFFFF', bold=True)
+                font_bold   = Font(bold=True)
+                font_passed = Font(color='1B5E20', bold=True)
+                font_failed = Font(color='B71C1C')
+                font_grey   = Font(color='9E9E9E')
+
+                thin = Side(style='thin', color='DDDDDD')
+                border = Border(left=thin, right=thin, top=thin, bottom=thin)
+                center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+                levels    = matrix_data['levels']
+                users     = matrix_data['users']
+                matrix    = matrix_data['matrix']
+                summary   = matrix_data['summary']
+                passing_p = matrix_data['passing_percent']
+
+                # === Строка 1: Заголовок ===
+                total_cols = 1 + sum(len(lv['scenarios']) for lv in levels) + 2  # сотрудник + сценарии + итого пройдено + %
+                ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
+                title_cell = ws.cell(row=1, column=1,
+                    value=f'Матрица прохождения сценариев (порог: {passing_p}%)')
+                title_cell.fill = fill_header
+                title_cell.font = Font(color='FFFFFF', bold=True, size=12)
+                title_cell.alignment = center
+
+                # === Строка 2: Группировка по уровням ===
+                col = 2
+                ws.cell(row=2, column=1, value='Сотрудник').fill = fill_header
+                ws.cell(row=2, column=1).font = font_white
+                ws.cell(row=2, column=1).alignment = center
+
+                level_col_ranges = []  # для итогов по уровням
+                for lv in levels:
+                    n = len(lv['scenarios'])
+                    if n == 0:
+                        continue
+                    ws.merge_cells(start_row=2, start_column=col, end_row=2, end_column=col + n - 1)
+                    lv_cell = ws.cell(row=2, column=col, value=lv['name'])
+                    lv_cell.fill = fill_level
+                    lv_cell.font = font_white
+                    lv_cell.alignment = center
+                    level_col_ranges.append({'level': lv, 'start_col': col, 'end_col': col + n - 1})
+                    col += n
+
+                ws.cell(row=2, column=col, value='Пройдено').fill = fill_header
+                ws.cell(row=2, column=col).font = font_white
+                ws.cell(row=2, column=col).alignment = center
+                ws.cell(row=2, column=col + 1, value='% выполнения').fill = fill_header
+                ws.cell(row=2, column=col + 1).font = font_white
+                ws.cell(row=2, column=col + 1).alignment = center
+
+                # === Строка 3: Названия сценариев ===
+                ws.cell(row=3, column=1).fill = fill_header
+                col = 2
+                for lv in levels:
+                    for sc in lv['scenarios']:
+                        sc_cell = ws.cell(row=3, column=col, value=sc['title'])
+                        sc_cell.fill = fill_summary
+                        sc_cell.font = font_bold
+                        sc_cell.alignment = center
+                        col += 1
+                ws.cell(row=3, column=col).fill = fill_summary
+                ws.cell(row=3, column=col + 1).fill = fill_summary
+
+                # Фиксируем ширину первого столбца
+                ws.column_dimensions['A'].width = 20
+                for c in range(2, total_cols + 1):
+                    ws.column_dimensions[get_column_letter(c)].width = 14
+
+                # === Строки данных: по одной на пользователя ===
+                for row_idx, uid in enumerate(users):
+                    data_row = 4 + row_idx
+                    # Имя пользователя
+                    name_cell = ws.cell(row=data_row, column=1, value=uid)
+                    name_cell.font = font_bold
+                    name_cell.alignment = Alignment(vertical='center')
+                    name_cell.border = border
+
+                    col = 2
+                    for lv in levels:
+                        for sc in lv['scenarios']:
+                            cell_data = matrix[uid].get(sc['id'], {'status': 'not_started', 'best_percent': None, 'attempts': 0})
+                            status = cell_data['status']
+                            pct    = cell_data['best_percent']
+                            att    = cell_data['attempts']
+
+                            if status == 'passed':
+                                text  = f'✓ {pct}%'
+                                fill  = fill_passed
+                                fnt   = font_passed
+                            elif status == 'failed':
+                                text  = f'✗ {pct}%\n({att} поп.)'
+                                fill  = fill_failed
+                                fnt   = font_failed
+                            elif status == 'visited':
+                                vc = cell_data.get('visit_count', 1)
+                                text  = f'👁 открывал\n({vc} раз)'
+                                fill  = fill_visited
+                                fnt   = Font(color='F57F17')
+                            else:
+                                text  = '—'
+                                fill  = fill_not_started
+                                fnt   = font_grey
+
+                            cell = ws.cell(row=data_row, column=col, value=text)
+                            cell.fill = fill
+                            cell.font = fnt
+                            cell.alignment = center
+                            cell.border = border
+                            col += 1
+
+                    # Итог по пользователю
+                    sm = summary[uid]
+                    parts = [f'✓{sm["passed"]}']
+                    if sm['failed']:   parts.append(f'✗{sm["failed"]}')
+                    if sm['visited']:  parts.append(f'👁{sm["visited"]}')
+                    if sm['not_started']: parts.append(f'—{sm["not_started"]}')
+                    total_cell = ws.cell(row=data_row, column=col,
+                        value=' / '.join(parts))
+                    total_cell.font = font_bold
+                    total_cell.alignment = center
+                    total_cell.border = border
+
+                    pct_cell = ws.cell(row=data_row, column=col + 1,
+                        value=f'{sm["percent_done"]}%')
+                    pct_cell.alignment = center
+                    pct_cell.border = border
+                    if sm['percent_done'] == 100:
+                        pct_cell.fill = fill_passed
+                        pct_cell.font = font_passed
+                    elif sm['percent_done'] >= 50:
+                        pct_cell.fill = PatternFill('solid', fgColor='FFF9C4')
+                        pct_cell.font = Font(color='F57F17', bold=True)
+                    else:
+                        pct_cell.fill = fill_failed
+                        pct_cell.font = font_failed
+
+                # === Строки высота ===
+                ws.row_dimensions[1].height = 22
+                ws.row_dimensions[2].height = 20
+                ws.row_dimensions[3].height = 40
+                for i in range(len(users)):
+                    ws.row_dimensions[4 + i].height = 32
+
+                # Закрепляем первые 3 строки и первый столбец
+                ws.freeze_panes = 'B4'
+
+            except Exception as e_matrix:
+                print(f'[export] Ошибка листа матрицы: {e_matrix}')
+                import traceback as tb
+                tb.print_exc()
 
         return send_file(
             tmp_path,

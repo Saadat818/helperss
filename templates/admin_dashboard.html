@@ -393,6 +393,21 @@
         }
         .theme-toggle:hover { transform: scale(1.12); }
         body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
+
+        /* Light theme overrides for hardcoded dark colors */
+        body.light .manual-card { background: #fff !important; border-color: #d0d7de !important; }
+        body.light .manual-title { color: #1a1a2e !important; }
+        body.light th { background: #f0f2f5 !important; color: #1a1a2e !important; border-bottom: 1px solid #d0d7de !important; }
+        body.light td { background: #fff !important; color: #1a1a2e !important; border-bottom: 1px solid #e8eaed !important; }
+        body.light tr:nth-child(even) td { background: #f8f9fa !important; }
+        body.light tr:hover td { background: #eef1f5 !important; }
+        body.light input[type="text"], body.light input[type="number"], body.light input[type="password"], body.light input[type="email"], body.light textarea, body.light select { background: #fff !important; border: 1px solid #d0d7de !important; color: #1a1a2e !important; }
+        body.light .period-btn { background: #f0f2f5 !important; color: #1a1a2e !important; border-color: #d0d7de !important; }
+        body.light .back-link { background: rgba(255,255,255,0.95) !important; border: 1px solid #d0d7de !important; color: #1a1a2e !important; box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important; }
+        body.light details { background: #fff !important; border-color: #d0d7de !important; }
+        body.light details summary { color: #606070 !important; }
+        body.light .alert-success { color: #155724 !important; }
+        body.light .alert-danger, body.light .danger { color: #721c24 !important; }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
@@ -459,8 +474,8 @@
             </div>
 
             <!-- Список онлайн-пользователей (сворачиваемый) -->
-            <details style="background: #141414; border: 1px solid #242424; border-radius: 14px; padding: 0;">
-                <summary style="padding: 14px 18px; cursor: pointer; color: #b5b5b5; font-size: 13px; font-weight: 600; user-select: none;">
+            <details style="background: var(--panel-3, #141414); border: 1px solid var(--border, #242424); border-radius: 14px; padding: 0;">
+                <summary style="padding: 14px 18px; cursor: pointer; color: var(--muted, #b5b5b5); font-size: 13px; font-weight: 600; user-select: none;">
                     👁️ Подробности — кто онлайн и кто заходил сегодня
                 </summary>
                 <div style="padding: 0 18px 14px;">

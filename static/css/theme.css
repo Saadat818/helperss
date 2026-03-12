@@ -121,3 +121,22 @@ body.light .status-option:hover { background: rgba(0,0,0,0.05) !important; }
 /* CodeEditor / steps в admin_trainer_edit */
 body.light .step-card { background: #ffffff !important; border-color: #b8c4d0 !important; }
 body.light .answer-item { background: #f5f7fa !important; border-color: #b8c4d0 !important; }
+
+/* Кнопки каналов в search_topics — убираем чёрный ховер */
+body.light .channel-btn:hover {
+    background: linear-gradient(180deg, #edf0f7, #e0e5ef) !important;
+    color: #1a1a2e !important;
+}
+
+/* Кнопка «назад» (dark pill) — делаем светлой */
+body.light .back-link {
+    background: rgba(255,255,255,0.95) !important;
+    border-color: #b8c4d0 !important;
+    color: #1a1a2e !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+}
+body.light .back-link:hover {
+    background: rgba(0,166,81,0.08) !important;
+    border-color: #00a651 !important;
+    color: #00a651 !important;
+}

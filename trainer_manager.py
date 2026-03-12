@@ -296,6 +296,12 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_archived BOOLEAN DEFAULT 0")
 
+        # Время начала прохождения
+        try:
+            cursor.execute("SELECT started_at FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN started_at TIMESTAMP")
+
         self.conn.commit()
 
     def _migrate_hard_level(self):
@@ -1204,7 +1210,8 @@ class TrainerManager:
 
     def save_result(self, user_id: str, scenario_id: int, score: int, max_score: int, answers: List[Dict],
                     final_loyalty: int = None, is_game_over: bool = False, timeout_count: int = 0,
-                    selected_topic_id: int = None, selected_topic_name: str = None) -> Dict:
+                    selected_topic_id: int = None, selected_topic_name: str = None,
+                    started_at: str = None) -> Dict:
         """Сохранить результат прохождения"""
         percent = min(100, round((score / max_score) * 100)) if max_score > 0 else 0
         grade = self.calculate_grade(percent)
@@ -1217,11 +1224,11 @@ class TrainerManager:
         cursor.execute("""
             INSERT INTO trainer_results (user_id, scenario_id, score, max_score, percent, grade, answers_json,
                                         final_loyalty, is_game_over, timeout_count, selected_topic_id, selected_topic_name,
-                                        scenario_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        scenario_version, started_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (user_id, scenario_id, score, max_score, percent, grade, json.dumps(answers, ensure_ascii=False),
               final_loyalty, 1 if is_game_over else 0, timeout_count, selected_topic_id, selected_topic_name,
-              scenario_version))
+              scenario_version, started_at))
 
         self.conn.commit()
         result_id = cursor.lastrowid
@@ -1865,6 +1872,7 @@ class TrainerManager:
                 r.score,
                 r.max_score,
                 r.percent,
+                r.started_at,
                 r.completed_at,
                 r.is_game_over,
                 r.final_loyalty
@@ -1883,6 +1891,7 @@ class TrainerManager:
                 'score': row['score'],
                 'max_score': row['max_score'],
                 'percent': row['percent'],
+                'started_at': row['started_at'],
                 'completed_at': row['completed_at'],
                 'is_game_over': row['is_game_over'],
                 'final_loyalty': row['final_loyalty']

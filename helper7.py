@@ -2023,6 +2023,8 @@ def trainer_play(scenario_id):
     # Логируем факт открытия сценария (для отчёта посещений)
     if not preview_mode and user_id != 'admin_preview':
         trainer_mgr.log_visit(user_id, scenario_id)
+        # Запоминаем время начала прохождения
+        session[f'scenario_start_{scenario_id}'] = datetime.now().isoformat()
 
     if not scenario:
         flash('Сценарий не найден')
@@ -2269,6 +2271,9 @@ def trainer_complete():
 
         user_id = session['user_info'].get('username', 'anonymous')
 
+        # Извлекаем время начала из сессии
+        started_at = session.pop(f'scenario_start_{scenario_id}', None)
+
         # Сохраняем результат с новыми полями геймификации
         result = trainer_mgr.save_result(
             user_id, scenario_id, score, max_score, answers,
@@ -2276,7 +2281,8 @@ def trainer_complete():
             is_game_over=is_game_over,
             timeout_count=timeout_count,
             selected_topic_id=selected_topic_id,
-            selected_topic_name=selected_topic_name
+            selected_topic_name=selected_topic_name,
+            started_at=started_at
         )
 
         return jsonify({
@@ -3364,17 +3370,40 @@ def admin_trainer_export():
                 results_df = pd.DataFrame(detailed_results)
                 results_df.columns = [
                     'Сотрудник',
-                    'Сценарий',
+                    'Название кейса',
                     'Уровень',
                     'Баллы',
                     'Макс. баллов',
                     'Процент (%)',
-                    'Дата прохождения',
+                    'Время начала',
+                    'Время окончания',
                     'Game Over',
                     'Лояльность клиента'
                 ]
                 # Преобразуем Game Over в понятный формат
                 results_df['Game Over'] = results_df['Game Over'].apply(lambda x: 'Да' if x else 'Нет')
+                # Вычисляем длительность прохождения
+                def calc_duration(row):
+                    try:
+                        if row['Время начала'] and row['Время окончания']:
+                            from datetime import datetime as dt
+                            fmt = '%Y-%m-%d %H:%M:%S'
+                            start = dt.fromisoformat(str(row['Время начала']))
+                            end = dt.fromisoformat(str(row['Время окончания']))
+                            secs = int((end - start).total_seconds())
+                            mins, s = divmod(abs(secs), 60)
+                            return f'{mins} мин {s} сек'
+                    except Exception:
+                        pass
+                    return '—'
+                results_df['Длительность'] = results_df.apply(calc_duration, axis=1)
+                # Итоговый порядок колонок
+                results_df = results_df[[
+                    'Сотрудник', 'Название кейса', 'Уровень',
+                    'Баллы', 'Макс. баллов', 'Процент (%)',
+                    'Время начала', 'Время окончания', 'Длительность',
+                    'Game Over', 'Лояльность клиента'
+                ]]
                 results_df.to_excel(writer, sheet_name='Все прохождения', index=False)
 
             # Лист 4: Статистика по уровням

@@ -122,6 +122,15 @@ body.light .status-option:hover { background: rgba(0,0,0,0.05) !important; }
 body.light .step-card { background: #ffffff !important; border-color: #b8c4d0 !important; }
 body.light .answer-item { background: #f5f7fa !important; border-color: #b8c4d0 !important; }
 
+/* admin_dashboard — заголовки карточек мануалов */
+body.light .manual-title { color: #1a1a2e !important; }
+body.light .subproblems-count { color: #606070 !important; }
+body.light .manual-card {
+    background: #ffffff !important;
+    border-color: #b8c4d0 !important;
+    border-left-color: #00a651 !important;
+}
+
 /* Кнопки каналов в search_topics — убираем чёрный ховер */
 body.light .channel-btn:hover {
     background: linear-gradient(180deg, #edf0f7, #e0e5ef) !important;

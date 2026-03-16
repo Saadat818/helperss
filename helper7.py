@@ -6152,12 +6152,22 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
     problems_map: dict[str, dict] = {}
     departments_map: dict[str, dict] = {}
 
-    def _bump_group(m: dict, key: str, total_inc: int, helped_inc: int, not_helped_inc: int, key_name: str):
+    def _bump_group(m: dict, key: str, total_inc: int, helped_inc: int, not_helped_inc: int, key_name: str, event_type: str = ''):
         if key not in m:
-            m[key] = {key_name: key, 'count': 0, 'helped': 0, 'not_helped': 0}
+            m[key] = {key_name: key, 'count': 0, 'helped': 0, 'not_helped': 0,
+                      'video_helped': 0, 'manual_helped': 0,
+                      'video_not_helped': 0, 'ticket_created': 0}
         m[key]['count'] += total_inc
         m[key]['helped'] += helped_inc
         m[key]['not_helped'] += not_helped_inc
+        if event_type == 'video_helped':
+            m[key]['video_helped'] += int(total_inc or helped_inc)
+        elif event_type in ('manual_helped', 'ticket_solved_by_helper'):
+            m[key]['manual_helped'] += int(total_inc or helped_inc)
+        elif event_type == 'video_not_helped':
+            m[key]['video_not_helped'] += int(total_inc or not_helped_inc)
+        elif event_type == 'ticket_created':
+            m[key]['ticket_created'] += int(total_inc or not_helped_inc)
 
     if ANALYTICS_USE_POSTGRES:
         with _pg_connect() as conn:
@@ -6210,7 +6220,7 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
                     helped_inc = c if et in helped_events else 0
                     not_helped_inc = c if et in not_helped_events else 0
                     if total_inc or helped_inc or not_helped_inc:
-                        _bump_group(problems_map, p, total_inc, helped_inc, not_helped_inc, 'problem')
+                        _bump_group(problems_map, p, total_inc, helped_inc, not_helped_inc, 'problem', et)
 
                 # group by department/event_type
                 cur.execute("""
@@ -6283,7 +6293,7 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
                 helped_inc = c if et in helped_events else 0
                 not_helped_inc = c if et in not_helped_events else 0
                 if total_inc or helped_inc or not_helped_inc:
-                    _bump_group(problems_map, p, total_inc, helped_inc, not_helped_inc, 'problem')
+                    _bump_group(problems_map, p, total_inc, helped_inc, not_helped_inc, 'problem', et)
 
             cur.execute("""
                 SELECT COALESCE(NULLIF(TRIM(department), ''), 'Не указан') as department,
@@ -7405,28 +7415,48 @@ def admin_stats_export():
             # 2. По дням
             if timeline:
                 tl_df = pd.DataFrame(timeline)
+                tl_df.rename(columns={'date': 'Дата', 'total': 'Всего', 'helped': 'Помогло', 'not_helped': 'Не помогло'}, inplace=True)
                 tl_df.to_excel(writer, sheet_name='По дням', index=False)
 
             # 3. Топ проблем
             if top_problems:
                 tp_df = pd.DataFrame(top_problems)
+                tp_rename = {
+                    'problem': 'Проблема',
+                    'count': 'Всего',
+                    'helped': 'Помогло',
+                    'not_helped': 'Не помогло',
+                    'video_helped': 'Видео помогло',
+                    'manual_helped': 'Текст помог',
+                    'video_not_helped': 'Видео не помогло',
+                    'ticket_created': 'Заявка создана'
+                }
+                tp_df.rename(columns=tp_rename, inplace=True)
                 tp_df.to_excel(writer, sheet_name='Топ проблем', index=False)
 
             # 4. По отделам
             if departments:
                 dep_df = pd.DataFrame(departments)
+                dep_df.rename(columns={'department': 'Отдел', 'total': 'Всего', 'helped': 'Помогло', 'not_helped': 'Не помогло'}, inplace=True)
                 dep_df.to_excel(writer, sheet_name='По отделам', index=False)
 
             # 5. По специалистам
             if users:
                 u_df = pd.DataFrame(users)
-                u_df.columns = ['Специалист', 'Отдел', 'Мануалы', 'Заявки', 'Всего'][:len(u_df.columns)]
+                u_df.rename(columns={
+                    'name': 'Специалист', 'department': 'Отдел',
+                    'manuals_opened': 'Мануалы открыто', 'tickets_created': 'Заявки создано',
+                    'total_actions': 'Всего действий'
+                }, inplace=True)
                 u_df.to_excel(writer, sheet_name='По специалистам', index=False)
 
             # 6. Использование по отделам
             if dept_usage:
                 du_df = pd.DataFrame(dept_usage)
-                du_df.columns = ['Отдел', 'Мануалы', 'Заявки', 'Всего'][:len(du_df.columns)]
+                du_df.rename(columns={
+                    'department': 'Отдел', 'manuals_opened': 'Мануалы открыто',
+                    'tickets_created': 'Заявки создано', 'total_actions': 'Всего действий'
+                }, inplace=True)
                 du_df.to_excel(writer, sheet_name='Использование по отделам', index=False)
 
             # 7. Техподдержка

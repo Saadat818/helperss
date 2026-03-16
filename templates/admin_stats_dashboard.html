@@ -635,21 +635,11 @@
             </div>
         </div>
 
-        <div class="two-column">
-            <!-- Топ проблем -->
-            <div class="problems-list">
-                <h2>🔥 Топ-10 проблем</h2>
-                <div id="topProblems">
-                    <div class="loading">Загрузка...</div>
-                </div>
-            </div>
-
-            <!-- Статистика по отделам -->
-            <div class="departments-table">
-                <h2>🏢 Статистика по отделам</h2>
-                <div id="departmentsTable">
-                    <div class="loading">Загрузка...</div>
-                </div>
+        <!-- Топ проблем (полная ширина) -->
+        <div class="problems-list" style="margin-bottom: 30px;">
+            <h2>🔥 Топ-10 проблем</h2>
+            <div id="topProblems">
+                <div class="loading">Загрузка...</div>
             </div>
         </div>
 
@@ -723,11 +713,10 @@
 
             // Загружаем все данные параллельно
             try {
-                const [summary, timeline, problems, departments, users, deptUsage, staff, pending, journal] = await Promise.all([
+                const [summary, timeline, problems, users, deptUsage, staff, pending, journal] = await Promise.all([
                     fetch(`/api/stats/summary?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/timeline?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/top_problems?days=${days}&limit=10`).then(r => r.json()),
-                    fetch(`/api/stats/departments?days=${days}`).then(r => r.json()),
                     fetch(`/api/stats/users?days=${days}&limit=20`).then(r => r.json()),
                     fetch(`/api/stats/departments_usage?days=${days}&limit=30`).then(r => r.json()),
                     fetch(`/api/stats/staff?days=${days}`).then(r => r.json()),
@@ -745,10 +734,6 @@
 
                 if (problems.success) {
                     updateProblems(problems.data);
-                }
-
-                if (departments.success) {
-                    updateDepartments(departments.data);
                 }
 
                 if (users.success) {
@@ -922,49 +907,7 @@
             container.innerHTML = html;
         }
 
-        // Обновление таблицы по отделам
-        function updateDepartments(data) {
-            const container = document.getElementById('departmentsTable');
-
-            if (data.length === 0) {
-                container.innerHTML = '<div class="loading">Нет данных за выбранный период</div>';
-                return;
-            }
-
-            let html = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Отдел</th>
-                            <th style="text-align: center;">Всего</th>
-                            <th style="text-align: center;">Помогло</th>
-                            <th style="text-align: center;">Не помогло</th>
-                            <th style="text-align: center;">% успеха</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            data.forEach(dept => {
-                const successRate = dept.total > 0 ? ((dept.helped / dept.total) * 100).toFixed(1) : 0;
-                html += `
-                    <tr>
-                        <td>${escapeHtml(dept.department)}</td>
-                        <td style="text-align: center;"><strong>${dept.total}</strong></td>
-                        <td style="text-align: center; color: #28a745;">${dept.helped}</td>
-                        <td style="text-align: center; color: #dc3545;">${dept.not_helped}</td>
-                        <td style="text-align: center;"><strong>${successRate}%</strong></td>
-                    </tr>
-                `;
-            });
-
-            html += `
-                    </tbody>
-                </table>
-            `;
-
-            container.innerHTML = html;
-        }
+        // updateDepartments removed — используется только "Использование Helper по отделам"
 
         function updateUsers(data) {
             const container = document.getElementById('usersTable');

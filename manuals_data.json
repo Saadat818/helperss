@@ -472,6 +472,37 @@
     "7": {
       "title": "7. Другая проблема",
       "photos": []
+    },
+    "8": {
+      "title": "8. sdfdsfsdf",
+      "subproblems": {
+        "8.1": {
+          "title": "sadfasdf",
+          "photos": [
+            {
+              "id": "AgACAgIAAyEGAAS2wnenAAIKnGmzvMafsoiHUBOSO8sWwC4BBy4MAAKKFWsb8H6ZSexbgH9ujSoyAQADAgADeQADOgQ",
+              "caption": "Это описание с проблемы 8 подроблены 8.1 и скрин тоже от сюда"
+            }
+          ],
+          "video": {
+            "id": "BAACAgIAAyEGAAS2wnenAAIKsmmzyjF9wi_1eyG-TO8PvqJJGbq_AAK4lwACKUmgSdmxgI3WLoemOgQ",
+            "caption": "тест"
+          }
+        },
+        "8.2": {
+          "title": "Подпроблема какая то",
+          "photos": [
+            {
+              "id": null,
+              "caption": "текст подроблены 8.2"
+            }
+          ],
+          "video": {
+            "id": "BAACAgIAAyEGAAS2wnenAAIKsGmzyUcXuNaSTLpsV7Si2IiH0_P_AAKtlwACKUmgSeTz4dUmPhxiOgQ",
+            "caption": "Видео под под проблемы. 8.2"
+          }
+        }
+      }
     }
   }
 }

@@ -183,7 +183,7 @@
 
         .video-feedback-container button:first-child {
             background: var(--green);
-            color: #041a0f;
+            color: #fff;
         }
 
         .video-feedback-container button:first-child:hover {
@@ -234,7 +234,7 @@
 
         .solved-button {
             background: var(--green);
-            color: #041a0f;
+            color: #fff;
         }
 
         .solved-button:hover {
@@ -331,8 +331,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    {% if problem_id %}
-    <a href="{{ url_for('select_problem', problem_id=problem_id) }}" class="back-link">
+    {% if back_url %}
+    <a href="{{ back_url }}" class="back-link">
         ⬅️ Назад
     </a>
     {% endif %}

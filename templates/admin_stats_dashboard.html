@@ -689,7 +689,10 @@
 
         <!-- Журнал заявок -->
         <div class="departments-table" style="margin-top: 30px; border-left-color: #007bff;">
-            <h2>📋 Журнал заявок (полная сводка)</h2>
+            <h2 style="display: flex; align-items: center; gap: 12px;">
+                📋 Журнал заявок (полная сводка)
+                <button onclick="refreshJournal()" style="padding: 6px 14px; font-size: 12px; font-weight: 600; background: linear-gradient(135deg, #007bff, #0056b3); color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform=''">🔄 Обновить</button>
+            </h2>
             <div id="journalTable">
                 <div class="loading">Загрузка...</div>
             </div>
@@ -1191,6 +1194,21 @@
             });
             html += '</tbody></table>';
             container.innerHTML = html;
+        }
+
+        async function refreshJournal() {
+            const container = document.getElementById('journalTable');
+            container.innerHTML = '<div class="loading">Обновление...</div>';
+            try {
+                const [pendingResp, journalResp] = await Promise.all([
+                    fetch('/api/stats/pending_tickets').then(r => r.json()),
+                    fetch(`/api/stats/tickets_journal?days=${currentPeriod}&limit=200`).then(r => r.json())
+                ]);
+                if (pendingResp.success) updatePending(pendingResp.data, pendingResp.total);
+                if (journalResp.success) updateJournal(journalResp.data);
+            } catch (e) {
+                container.innerHTML = '<div class="loading">Ошибка обновления</div>';
+            }
         }
 
         function exportExcel() {

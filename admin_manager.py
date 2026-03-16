@@ -9,8 +9,66 @@ import secrets
 import re
 from typing import Dict, Any, Optional, List
 from functools import wraps
-from flask import session, redirect, url_for, flash
+from flask import session, redirect, url_for, flash, render_template_string
 from werkzeug.security import generate_password_hash, check_password_hash
+
+ACCESS_DENIED_PAGE = '''<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Нет доступа</title>
+    <style>
+        :root {
+            --bg: #0c0c0c; --card: #1a1a1a; --card2: #202020;
+            --text: #e8e8e8; --muted: #b5b5b5; --border: #242424;
+            --accent: #00a651; --accent2: #009448; --danger: #e94b5a;
+        }
+        body.light {
+            --bg: #dde2ea; --card: #ffffff; --card2: #f8f9fa;
+            --text: #1a1a2e; --muted: #606070; --border: #b8c4d0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg); color: var(--text);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+        }
+        .denied-card {
+            text-align: center; max-width: 460px; padding: 50px 40px;
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border); border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .denied-icon { font-size: 72px; margin-bottom: 18px; }
+        h1 { font-size: 24px; margin-bottom: 10px; }
+        .denied-msg { font-size: 15px; color: var(--muted); line-height: 1.6; margin-bottom: 28px; }
+        .btn-back {
+            display: inline-block; padding: 12px 30px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: #fff; text-decoration: none; border-radius: 12px;
+            font-size: 15px; font-weight: 600; transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,166,81,0.25);
+        }
+        .btn-back:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,166,81,0.35); }
+    </style>
+</head>
+<body>
+    <div class="denied-card">
+        <div class="denied-icon">&#x1F6AB;</div>
+        <h1>Нет доступа</h1>
+        <p class="denied-msg">У вас нет прав для этого раздела.<br>Обратитесь к администратору.</p>
+        <a href="javascript:history.back()" class="btn-back">&larr; Назад</a>
+    </div>
+    <script>
+        (function() {
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.classList.add('light');
+            }
+        })();
+    </script>
+</body>
+</html>'''
 
 
 class AdminManager:
@@ -151,8 +209,6 @@ class AdminManager:
         """Обновить фото в мануале"""
         if not self.validate_manual_id(manual_id):
             return False
-        if not self.validate_subproblem_id(subproblem_id):
-            return False
         if not self.validate_photo_id(new_photo_id):
             return False
 
@@ -165,10 +221,15 @@ class AdminManager:
 
         manual = manuals[manual_id]
 
-        if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
-            return False
-
-        subproblem = manual['subproblems'][subproblem_id]
+        # Поддержка простых мануалов (без подпроблем)
+        if 'subproblems' in manual:
+            if not self.validate_subproblem_id(subproblem_id):
+                return False
+            if subproblem_id not in manual['subproblems']:
+                return False
+            subproblem = manual['subproblems'][subproblem_id]
+        else:
+            subproblem = manual
 
         if 'photos' not in subproblem or not isinstance(subproblem['photos'], list):
             subproblem['photos'] = []
@@ -189,8 +250,6 @@ class AdminManager:
         """Удалить фото из мануала (оставляет текст, удаляет только фото)"""
         if not self.validate_manual_id(manual_id):
             return False
-        if not self.validate_subproblem_id(subproblem_id):
-            return False
 
         manuals = self.load_manuals()
 
@@ -199,10 +258,15 @@ class AdminManager:
 
         manual = manuals[manual_id]
 
-        if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
-            return False
-
-        subproblem = manual['subproblems'][subproblem_id]
+        # Поддержка простых мануалов (без подпроблем)
+        if 'subproblems' in manual:
+            if not self.validate_subproblem_id(subproblem_id):
+                return False
+            if subproblem_id not in manual['subproblems']:
+                return False
+            subproblem = manual['subproblems'][subproblem_id]
+        else:
+            subproblem = manual
 
         if 'photos' not in subproblem or not isinstance(subproblem['photos'], list):
             return False
@@ -218,10 +282,8 @@ class AdminManager:
 
     def add_video_to_subproblem(self, manual_id: str, subproblem_id: str,
                                 video_file_id: str, caption: str) -> bool:
-        """Добавить Telegram видео в подпроблему"""
+        """Добавить Telegram видео в подпроблему или простой мануал"""
         if not self.validate_manual_id(manual_id):
-            return False
-        if not self.validate_subproblem_id(subproblem_id):
             return False
         if not self.validate_video_id(video_file_id):
             return False
@@ -235,12 +297,17 @@ class AdminManager:
 
         manual = manuals[manual_id]
 
-        if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
-            return False
+        # Поддержка простых мануалов (без подпроблем)
+        if 'subproblems' in manual:
+            if not self.validate_subproblem_id(subproblem_id):
+                return False
+            if subproblem_id not in manual['subproblems']:
+                return False
+            subproblem = manual['subproblems'][subproblem_id]
+        else:
+            subproblem = manual
 
-        subproblem = manual['subproblems'][subproblem_id]
-
-        # Добавляем video_id в подпроблему (только один видео-мануал на подпроблему)
+        # Добавляем video_id (только один видео-мануал)
         subproblem['video'] = {
             'id': video_file_id,
             'caption': caption
@@ -249,10 +316,8 @@ class AdminManager:
         return self.save_manuals(manuals)
 
     def delete_video(self, manual_id: str, subproblem_id: str) -> bool:
-        """Удалить видео из подпроблемы"""
+        """Удалить видео из подпроблемы или простого мануала"""
         if not self.validate_manual_id(manual_id):
-            return False
-        if not self.validate_subproblem_id(subproblem_id):
             return False
 
         manuals = self.load_manuals()
@@ -262,10 +327,15 @@ class AdminManager:
 
         manual = manuals[manual_id]
 
-        if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
-            return False
-
-        subproblem = manual['subproblems'][subproblem_id]
+        # Поддержка простых мануалов (без подпроблем)
+        if 'subproblems' in manual:
+            if not self.validate_subproblem_id(subproblem_id):
+                return False
+            if subproblem_id not in manual['subproblems']:
+                return False
+            subproblem = manual['subproblems'][subproblem_id]
+        else:
+            subproblem = manual
 
         # Удаляем видео если оно есть
         if 'video' in subproblem:
@@ -638,8 +708,7 @@ class AdminAuth:
             if perm in admin_permissions:
                 return None
 
-        flash('Доступ запрещён. У вас нет прав для этого раздела.')
-        return redirect(url_for('admin_dashboard'))
+        return render_template_string(ACCESS_DENIED_PAGE)
 
     @staticmethod
     def login_required(f):

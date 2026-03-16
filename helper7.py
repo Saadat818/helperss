@@ -349,9 +349,12 @@ def trainer_maintenance_check():
 
 
 @app.after_request
-def no_cache_admin(response):
-    """Запрет кэширования админских страниц — защита от Alt+← после logout."""
-    if request.path.startswith('/admin') or request.path.startswith('/trainer'):
+def no_cache_protected(response):
+    """Запрет кэширования админских и пользовательских страниц — защита от Alt+← после logout."""
+    no_cache_paths = ('/admin', '/trainer', '/send_final_ticket', '/finish_solved',
+                      '/finish_unsolved', '/success', '/select_problem', '/manual/',
+                      '/choose_help_type', '/show_problems', '/login')
+    if any(request.path.startswith(p) for p in no_cache_paths):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
@@ -1219,6 +1222,12 @@ def handle_ticket_done(call):
         resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
         ticket_number = extract_ticket_number_from_text(original_message)
         parsed = _parse_ticket_text_fields(original_message)
+
+        if ticket_number is None:
+            print(f"⚠️ [handle_ticket_done] Не удалось извлечь номер заявки из текста: {original_message[:100]}")
+
+        print(f"📋 [handle_ticket_done] ticket_number={ticket_number}, resolver={resolver_name}")
+
         actor_override = {
             'name': resolver_name,
             'username': call.from_user.username or str(call.from_user.id),
@@ -1255,7 +1264,7 @@ def handle_ticket_done(call):
             }
         )
 
-        print("✅ Кнопка 'Готово' успешно обработана!")
+        print(f"✅ Кнопка 'Готово' успешно обработана! ticket_number={ticket_number}")
 
     except Exception as e:
         print(f"❌ Ошибка при обработке кнопки 'Готово': {e}")
@@ -1460,15 +1469,21 @@ def show_manual_steps():
     # Получаем фото
     photo_urls_with_captions = []
     for photo in data.get('photos', []):
-        url = get_file_url(photo.get('id'))
-        if not url:
-            continue
+        photo_id = photo.get('id')
+        url = get_file_url(photo_id) if photo_id else None
         caption = photo.get('caption', '')
         safe_caption = m_escape(str(caption).strip()[:300])
+        # Добавляем ВСЕ шаги, даже если фото отсутствует (url = None)
         photo_urls_with_captions.append({'url': url, 'caption': safe_caption})
 
     safe_manual_data = deep_escape(data)
     safe_photos = deep_escape(photo_urls_with_captions)
+
+    # Формируем back_url в зависимости от типа мануала
+    if subproblem_id:
+        back_url = url_for('select_problem', problem_id=problem_id)
+    else:
+        back_url = url_for('show_problems')
 
     return render_template(
         'manual.html',
@@ -1477,7 +1492,8 @@ def show_manual_steps():
         photo_urls_with_captions=safe_photos,
         video_data=None,  # Не показываем видео
         skip_video_feedback=True,  # Флаг чтобы не показывать опрос по видео
-        problem_id=problem_id
+        problem_id=problem_id,
+        back_url=back_url
     )
 
 @app.route('/')
@@ -1589,11 +1605,11 @@ def select_problem(problem_id):
         return redirect(url_for('show_problems'))
 
     problem_data = manuals.get(problem_id, {})
+    safe_problem_id = m_escape(problem_id)
 
     # --- Есть подпроблемы ---
     if 'subproblems' in problem_data and isinstance(problem_data['subproblems'], dict):
         session['problem_id'] = problem_id
-        safe_problem_id = m_escape(problem_id)
 
         sanitized_subproblems = {}
         for sid, sub in problem_data['subproblems'].items():
@@ -1636,6 +1652,9 @@ def select_problem(problem_id):
 
     # --- Нет подпроблем — показываем мануал ---
     else:
+        session['problem_id'] = problem_id
+        session.pop('current_subproblem_id', None)  # Очищаем старый subproblem_id
+
         raw_manual_title = problem_data.get('title', 'Проблема')
         manual_title = m_escape(str(raw_manual_title).strip()[:200])
         session['problem_title'] = manual_title
@@ -1687,7 +1706,8 @@ def select_problem(problem_id):
             manual_title=manual_title,
             photo_urls_with_captions=safe_photos,
             video_data=video_data,
-            problem_id=safe_problem_id
+            problem_id=safe_problem_id,
+            back_url=url_for('show_problems')
         )
 
 @app.route('/show_manual/<string:subproblem_id>')
@@ -1769,7 +1789,8 @@ def show_manual(subproblem_id):
         manual_title=manual_title,
         photo_urls_with_captions=safe_photos,
         video_data=safe_video,
-        problem_id=problem_id
+        problem_id=problem_id,
+        back_url=url_for('select_problem', problem_id=problem_id)
     )
 
 
@@ -1978,16 +1999,22 @@ def finish_unsolved():
 
 @app.route('/go_home')
 def go_home():
-    # Сбрасываем флаги отправки при возврате на главную
-    session.pop('ticket_sent', None)
-    session.pop('solved_sent', None)
-    session.modified = True
+    # НЕ сбрасываем ticket_sent/solved_sent здесь — они очищаются при выборе нового мануала
+    # (строка 1724-1726). Это защищает от повторной отправки заявки при возврате через стрелки браузера.
 
     # Security: don't log session content
     if 'user_info' in session:
         return redirect(url_for('show_problems'))
     else:
         return redirect(url_for('index'))
+
+
+@app.route('/user_logout')
+def user_logout():
+    """Выход обычного пользователя из системы."""
+    session.clear()
+    return redirect(url_for('user_login'))
+
 
 # ============================================
 # API ДЛЯ ПОИСКА ТЕМАТИК
@@ -5175,9 +5202,12 @@ def admin_delete_photo():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+    # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
+    manual_check = admin_manager.get_manual(manual_id)
+    if manual_check and 'subproblems' in manual_check:
+        if not admin_manager.validate_subproblem_id(subproblem_id):
+            flash('Некорректный ID подпроблемы')
+            return redirect(url_for('admin_dashboard'))
 
     try:
         photo_index = int(photo_index_str)
@@ -5285,9 +5315,12 @@ def admin_delete_video():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+    # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
+    manual_check = admin_manager.get_manual(manual_id)
+    if manual_check and 'subproblems' in manual_check:
+        if not admin_manager.validate_subproblem_id(subproblem_id):
+            flash('Некорректный ID подпроблемы')
+            return redirect(url_for('admin_dashboard'))
 
     # Удаляем видео
     if admin_manager.delete_video(manual_id, subproblem_id):
@@ -5316,9 +5349,12 @@ def admin_upload_photo():
             flash('Некорректный ID мануала')
             return redirect(url_for('admin_dashboard'))
 
-        if not admin_manager.validate_subproblem_id(subproblem_id):
-            flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
+        # Для простых мануалов subproblem_id = manual_id (только цифры), пропускаем проверку формата X.Y
+        manual = admin_manager.get_manual(manual_id)
+        if manual and 'subproblems' in manual:
+            if not admin_manager.validate_subproblem_id(subproblem_id):
+                flash('Некорректный ID подпроблемы')
+                return redirect(url_for('admin_dashboard'))
 
         try:
             photo_index = int(photo_index)
@@ -5343,9 +5379,12 @@ def admin_upload_photo():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+    # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
+    manual_for_check = admin_manager.get_manual(manual_id)
+    if manual_for_check and 'subproblems' in manual_for_check:
+        if not admin_manager.validate_subproblem_id(subproblem_id):
+            flash('Некорректный ID подпроблемы')
+            return redirect(url_for('admin_dashboard'))
 
     try:
         photo_index = int(photo_index_str)
@@ -5406,9 +5445,11 @@ def admin_upload_photo():
 
             current_caption = ""
             if 'subproblems' in manual and subproblem_id in manual['subproblems']:
-                subproblem = manual['subproblems'][subproblem_id]
-                if 'photos' in subproblem and photo_index < len(subproblem['photos']):
-                    current_caption = subproblem['photos'][photo_index].get('caption', '')
+                target_obj = manual['subproblems'][subproblem_id]
+            else:
+                target_obj = manual
+            if 'photos' in target_obj and photo_index < len(target_obj['photos']):
+                current_caption = target_obj['photos'][photo_index].get('caption', '')
 
             # Обновляем фото
             if admin_manager.update_photo(manual_id, subproblem_id, photo_index, new_photo_id, current_caption):

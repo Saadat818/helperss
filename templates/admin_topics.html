@@ -430,7 +430,10 @@
                 <a href="{{ url_for('admin_list_topics') }}" class="btn btn-primary">📋 Список</a>
                 <a href="{{ url_for('admin_topics_archive') }}" class="btn btn-warning">📦 Архив{% if archived_count %} ({{ archived_count }}){% endif %}</a>
                 <a href="{{ url_for('admin_import_topics') }}" class="btn btn-primary">📥 Импорт из Excel</a>
-                <a href="{{ url_for('admin_stats_dashboard') }}" class="btn btn-primary">📊 Статистика</a>
+                {% set perms = session.get('admin_permissions', []) %}
+                {% if 'super_admin' in perms or 'admin_manuals' in perms %}
+                    <a href="{{ url_for('admin_stats_dashboard') }}" class="btn btn-primary">📊 Статистика</a>
+                {% endif %}
                 <a href="{{ url_for('choose_help_type') }}" class="btn btn-secondary">← Назад</a>
             </div>
         </div>

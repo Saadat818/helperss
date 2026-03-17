@@ -290,6 +290,12 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_draft BOOLEAN DEFAULT 0")
 
+        # Визуальные данные редактора сценариев
+        try:
+            cursor.execute("SELECT visual_data FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN visual_data TEXT")
+
         # Архив сценариев
         try:
             cursor.execute("SELECT is_archived FROM trainer_scenarios LIMIT 1")

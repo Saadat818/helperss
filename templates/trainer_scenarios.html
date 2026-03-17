@@ -668,6 +668,7 @@
         });
     </script>
     <script>
+        const csrfToken = '{{ csrf_token() }}';
         function openFeedback() {
             document.getElementById('feedbackModal').classList.add('show');
             document.getElementById('feedbackMessage').focus();
@@ -692,7 +693,7 @@
             try {
                 const resp = await fetch('/api/trainer/feedback', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
                     body: JSON.stringify({message: msg, level_code: '{{ level.code }}'})
                 });
                 const data = await resp.json();

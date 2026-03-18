@@ -3872,7 +3872,8 @@ def admin_trainer_export():
                     'Время начала',
                     'Время окончания',
                     'Game Over',
-                    'Лояльность клиента'
+                    'Лояльность клиента',
+                    'Ответ сотрудника'
                 ]
                 # Преобразуем Game Over в понятный формат
                 results_df['Game Over'] = results_df['Game Over'].apply(lambda x: 'Да' if x else 'Нет')
@@ -3896,9 +3897,20 @@ def admin_trainer_export():
                     'Сотрудник', 'Название кейса', 'Уровень',
                     'Баллы', 'Макс. баллов', 'Процент (%)',
                     'Время начала', 'Время окончания', 'Длительность',
-                    'Game Over', 'Лояльность клиента'
+                    'Game Over', 'Лояльность клиента', 'Ответ сотрудника'
                 ]]
                 results_df.to_excel(writer, sheet_name='Все прохождения', index=False)
+                # Выделяем заголовок колонки «Ответ сотрудника» жёлтым цветом
+                from openpyxl.styles import PatternFill as _PF, Font as _Fnt, Alignment as _Aln
+                _ws = writer.sheets['Все прохождения']
+                _ans_col = results_df.columns.get_loc('Ответ сотрудника') + 1  # 1-based
+                _header_cell = _ws.cell(row=1, column=_ans_col)
+                _header_cell.fill = _PF('solid', fgColor='FFFF00')
+                _header_cell.font = _Fnt(bold=True)
+                _header_cell.alignment = _Aln(horizontal='center', vertical='center', wrap_text=True)
+                # Делаем колонку широкой для удобства чтения
+                from openpyxl.utils import get_column_letter as _gcl
+                _ws.column_dimensions[_gcl(_ans_col)].width = 60
 
             # Лист 4: Статистика по уровням
             if stats['levels']:

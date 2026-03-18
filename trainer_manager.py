@@ -291,6 +291,12 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_draft BOOLEAN DEFAULT 0")
 
+        # Визуальные данные редактора сценариев
+        try:
+            cursor.execute("SELECT visual_data FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN visual_data TEXT")
+
         # Архив сценариев
         try:
             cursor.execute("SELECT is_archived FROM trainer_scenarios LIMIT 1")
@@ -1894,7 +1900,8 @@ class TrainerManager:
                 r.started_at,
                 r.completed_at,
                 r.is_game_over,
-                r.final_loyalty
+                r.final_loyalty,
+                r.answers_json
             FROM trainer_results r
             JOIN trainer_scenarios s ON r.scenario_id = s.id
             JOIN trainer_levels l ON s.level_id = l.id
@@ -1903,6 +1910,20 @@ class TrainerManager:
 
         results = []
         for row in cursor.fetchall():
+            # Формируем строку с ответами сотрудника
+            answers_text = ''
+            if row['answers_json']:
+                try:
+                    answers = json.loads(row['answers_json'])
+                    parts = []
+                    for a in answers:
+                        step = a.get('step_num', '')
+                        text = a.get('answer_text', '')
+                        if text:
+                            parts.append(f"Шаг {step}: {text}")
+                    answers_text = ' | '.join(parts)
+                except Exception:
+                    pass
             results.append({
                 'user_id': row['user_id'],
                 'scenario_title': row['scenario_title'],
@@ -1913,7 +1934,8 @@ class TrainerManager:
                 'started_at': row['started_at'],
                 'completed_at': row['completed_at'],
                 'is_game_over': row['is_game_over'],
-                'final_loyalty': row['final_loyalty']
+                'final_loyalty': row['final_loyalty'],
+                'employee_answers': answers_text
             })
 
         return results

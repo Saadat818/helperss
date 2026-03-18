@@ -131,9 +131,24 @@
         <form action="{{ url_for('other_problem') }}" method="POST">
          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
          <textarea name="problem" rows="10" required></textarea><br><br>
-      <button type="submit">Отправить заявку</button>
+      <button type="submit" id="submitBtn">Отправить заявку</button>
     </form>
     </div>
+    <script>
+    (function() {
+        const form = document.querySelector('form');
+        const btn = document.getElementById('submitBtn');
+        let submitted = false;
+        form.addEventListener('submit', function(e) {
+            if (submitted) { e.preventDefault(); return false; }
+            submitted = true;
+            btn.disabled = true;
+            btn.textContent = '⏳ Отправка...';
+            btn.style.opacity = '0.6';
+            btn.style.cursor = 'not-allowed';
+        });
+    })();
+    </script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

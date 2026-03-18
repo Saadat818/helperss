@@ -382,12 +382,28 @@
          </div>
          {% endif %}
 
-      <button type="submit">Отправить заявку</button>
+      <button type="submit" id="submitBtn">Отправить заявку</button>
     </form>
     </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Блокировка кнопки после первого нажатия — защита от дублей
+    const form = document.querySelector('form');
+    const submitBtn = document.getElementById('submitBtn');
+    let submitted = false;
+    form.addEventListener('submit', function(e) {
+        if (submitted) {
+            e.preventDefault();
+            return false;
+        }
+        submitted = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Отправка...';
+        submitBtn.style.opacity = '0.6';
+        submitBtn.style.cursor = 'not-allowed';
+    });
+
     const slots = document.querySelectorAll('.screenshot-slot');
     let activeSlot = null;
 

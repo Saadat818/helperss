@@ -1452,15 +1452,23 @@
             }
         }
 
+        let _hasUnsavedChanges = false;
+
         function scheduleAutoSave() {
-            clearTimeout(_autoSaveTimer);
-            _autoSaveTimer = setTimeout(autoSave, 1500);
+            _hasUnsavedChanges = true;
         }
 
         if (scenarioId) {
             const form = document.getElementById('scenarioForm');
             form.addEventListener('input', scheduleAutoSave);
             form.addEventListener('change', scheduleAutoSave);
+            // Автосохранение каждые 30 секунд если есть изменения
+            setInterval(() => {
+                if (_hasUnsavedChanges) {
+                    _hasUnsavedChanges = false;
+                    autoSave();
+                }
+            }, 30000);
         }
 
         // Tags functions

@@ -701,6 +701,7 @@
 
         <form method="POST" id="scenarioForm" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next_action" id="nextAction" value="">
 
             <!-- Basic Info Section -->
             <div class="form-section">
@@ -1054,9 +1055,9 @@
                     {% if scenario %}Сохранить изменения{% else %}Создать сценарий{% endif %}
                 </button>
                 {% if scenario %}
-                <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
+                <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);" onclick="document.getElementById('nextAction').value='preview'">
                     👁️ Предпросмотр
-                </a>
+                </button>
                 <a href="{{ url_for('admin_trainer_visual', scenario_id=scenario.id) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">
                     🎨 Визуальный редактор
                 </a>

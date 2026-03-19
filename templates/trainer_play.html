@@ -706,7 +706,7 @@
     {% if preview_mode %}
     <div class="preview-banner">
         <span>👁️ Режим предпросмотра — результаты не сохраняются</span>
-        <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="close-preview">← Вернуться к редактированию</a>
+        <a href="{{ back_url }}" class="close-preview">← Вернуться к редактированию</a>
     </div>
     {% endif %}
 
@@ -831,7 +831,7 @@
             <div class="modal-icon">😤</div>
             <div class="modal-title">Клиент бросил трубку!</div>
             <div class="modal-text">Уровень раздражения достиг максимума.</div>
-            <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">Вернуться</a>
+            <a href="{{ back_url if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Вернуться' }}</a>
         </div>
     </div>
 
@@ -852,7 +852,7 @@
                 </div>
             </div>
 
-            <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">Продолжить</a>
+            <a href="{{ back_url if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Продолжить' }}</a>
         </div>
     </div>
 

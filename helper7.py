@@ -2006,6 +2006,8 @@ def trainer_play(scenario_id):
     """Страница прохождения сценария"""
     # Check for preview mode
     preview_mode = request.args.get('preview') == '1'
+    # Откуда пришли: 'visual' или 'edit' (для кнопки возврата из предпросмотра)
+    back_editor = request.args.get('back', 'edit')
 
     # In preview mode, admin must be logged in
     if preview_mode:
@@ -2076,10 +2078,20 @@ def trainer_play(scenario_id):
         except:
             pass
 
+    # URL для кнопки «Вернуться» в режиме предпросмотра
+    if preview_mode:
+        if back_editor == 'visual':
+            back_url = url_for('admin_trainer_visual', scenario_id=scenario_id)
+        else:
+            back_url = url_for('admin_trainer_edit', scenario_id=scenario_id)
+    else:
+        back_url = None
+
     return render_template('trainer_play.html',
                          scenario=scenario,
                          total_steps=total_steps,
                          preview_mode=preview_mode,
+                         back_url=back_url,
                          correct_topics=correct_topics,
                          avatar_images=avatar_images,
                          client_name=client_name)
@@ -2650,6 +2662,9 @@ def admin_trainer_edit(scenario_id):
                     })
 
             flash('Сценарий успешно обновлен!')
+            # Если нажали «Предпросмотр» — сохранить и перейти в предпросмотр
+            if request.form.get('next_action') == 'preview':
+                return redirect(url_for('trainer_play', scenario_id=scenario_id, preview=1, back='edit'))
         else:
             flash(f'Ошибка: {result.get("error")}')
 

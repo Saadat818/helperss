@@ -672,6 +672,27 @@
         }
         .theme-toggle:hover { transform: scale(1.12); }
         body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
+
+        /* Аккордеоны */
+        .accordion-header { cursor: pointer; user-select: none; }
+        .accordion-chevron {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 12px;
+            color: #888;
+            transition: transform 0.25s;
+            vertical-align: middle;
+        }
+        .accordion-header.collapsed .accordion-chevron { transform: rotate(-90deg); }
+        .accordion-body {
+            overflow: hidden;
+            max-height: 5000px;
+            opacity: 1;
+            transition: max-height 0.3s ease, opacity 0.25s ease;
+        }
+        .accordion-body.collapsed { max-height: 0 !important; opacity: 0; pointer-events: none; }
+        .step-header.accordion-header { cursor: pointer; }
+        .step-header.accordion-header.collapsed { margin-bottom: 0; border-bottom: none; }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
@@ -863,7 +884,8 @@
 
             <!-- Client Card Section -->
             <div class="client-card-section">
-                <h2>Карточка клиента</h2>
+                <h2 class="accordion-header" id="acc-client-card">Карточка клиента <span class="accordion-chevron">▼</span></h2>
+                <div class="accordion-body" id="acc-body-client-card">
                 <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
                     Эти данные будут доступны оператору во время диалога через кнопку "Карточка клиента".
                 </p>
@@ -899,12 +921,14 @@
                         <div class="form-hint">Формат JSON: {"Ключ": "Значение", ...}. Оставьте пустым если не нужны.</div>
                     </div>
                 </div>
+                </div><!-- /accordion-body client-card -->
             </div>
 
             <!-- Аватары клиента (5 эмоций) -->
             {% if scenario %}
             <div class="form-section">
-                <h2>Аватар клиента</h2>
+                <h2 class="accordion-header" id="acc-avatars">Аватар клиента <span class="accordion-chevron">▼</span></h2>
+                <div class="accordion-body" id="acc-body-avatars">
                 <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
                     Загрузите изображения для каждой эмоции. Если не загружены — используется стандартный аватар (Максим).
                 </p>
@@ -930,6 +954,7 @@
                     </div>
                     {% endfor %}
                 </div>
+                </div><!-- /accordion-body avatars -->
             </div>
             {% endif %}
 
@@ -941,16 +966,17 @@
                 <div id="steps-container">
                     {% for step in steps %}
                     <div class="step-card" data-step-id="{{ step.id }}">
-                        <div class="step-header">
+                        <div class="step-header accordion-header" id="acc-step-{{ step.id }}">
                             <div class="step-number">
                                 <span>{{ loop.index }}</span>
-                                Шаг {{ loop.index }}
+                                Шаг {{ loop.index }} <span class="accordion-chevron">▼</span>
                             </div>
                             <div class="step-actions">
                                 <button type="button" class="btn btn-danger btn-sm" onclick="deleteStep({{ step.id }})">Удалить шаг</button>
                             </div>
                         </div>
 
+                        <div class="accordion-body" id="acc-body-step-{{ step.id }}">
                         <div class="step-message-block">
                             <div class="block-title">💬 Реплика клиента</div>
                             <div class="client-message-input" style="margin-bottom: 0;">
@@ -1040,6 +1066,7 @@
                             </button>
                             </div>
                         </div>
+                        </div><!-- /accordion-body step -->
                     </div>
                     {% endfor %}
                 </div>
@@ -1069,12 +1096,14 @@
         {% if scenario and version_history %}
         <!-- Version History Section -->
         <div class="version-history-section" style="margin-top: 30px; background: linear-gradient(135deg, #1a1a2e, #16213e); border: 1px solid #2a2a3e; border-radius: 12px; padding: 20px;">
-            <h2 style="color: #00d4aa; margin-bottom: 15px; font-size: 18px;">
+            <h2 class="accordion-header collapsed" id="acc-versions" style="color: #00d4aa; margin-bottom: 15px; font-size: 18px;">
                 📋 История версий
                 <span style="font-size: 13px; color: #888; font-weight: normal; margin-left: 10px;">
                     Текущая: v{{ scenario.version or 1 }}
                 </span>
+                <span class="accordion-chevron">▼</span>
             </h2>
+            <div class="accordion-body collapsed" id="acc-body-versions">
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr style="border-bottom: 1px solid #2a2a3e; color: #888; font-size: 13px;">
@@ -1102,6 +1131,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div><!-- /accordion-body versions -->
         </div>
         {% endif %}
     </div>
@@ -1181,6 +1211,35 @@
                 alert('Ошибка соединения');
             }
         }
+
+        // Инициализация аккордеонов
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', function(e) {
+                if (e.target.closest('button') || e.target.closest('a')) return;
+                const bodyId = this.id.replace('acc-', 'acc-body-');
+                const body = document.getElementById(bodyId);
+                if (!body) return;
+                this.classList.toggle('collapsed');
+                body.classList.toggle('collapsed');
+                // Сохраняем состояние
+                const key = 'acc_' + this.id;
+                localStorage.setItem(key, this.classList.contains('collapsed') ? '1' : '0');
+            });
+            // Восстанавливаем состояние из localStorage
+            const key = 'acc_' + header.id;
+            const saved = localStorage.getItem(key);
+            if (saved === '1' && !header.classList.contains('collapsed')) {
+                header.classList.add('collapsed');
+                const bodyId = header.id.replace('acc-', 'acc-body-');
+                const body = document.getElementById(bodyId);
+                if (body) body.classList.add('collapsed');
+            } else if (saved === '0' && header.classList.contains('collapsed')) {
+                header.classList.remove('collapsed');
+                const bodyId = header.id.replace('acc-', 'acc-body-');
+                const body = document.getElementById(bodyId);
+                if (body) body.classList.remove('collapsed');
+            }
+        });
 
         async function deleteStep(stepId) {
             if (!confirm('Удалить этот шаг и все его варианты ответов?')) return;

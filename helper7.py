@@ -2602,15 +2602,16 @@ def admin_trainer_edit(scenario_id):
                 pass
 
         emotion_keys = ['angry', 'irritated', 'neutral', 'satisfied', 'delighted']
+        avatars_dir = os.path.join(app.static_folder, 'uploads', 'avatars')
+        os.makedirs(avatars_dir, exist_ok=True)
         for emo in emotion_keys:
             file = request.files.get(f'avatar_{emo}')
             if file and file.filename:
-                import os
                 from werkzeug.utils import secure_filename
                 ext = os.path.splitext(file.filename)[1].lower()
                 if ext in ['.png', '.jpg', '.jpeg', '.webp']:
                     fname = f"scenario_{scenario_id}_{emo}{ext}"
-                    fpath = os.path.join('static', 'uploads', 'avatars', fname)
+                    fpath = os.path.join(avatars_dir, fname)
                     file.save(fpath)
                     avatar_images[emo] = f"uploads/avatars/{fname}"
 

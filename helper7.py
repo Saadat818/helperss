@@ -22,6 +22,9 @@ from collections import defaultdict
 # Загружаем переменные окружения ПЕРЕД импортом admin_manager
 load_dotenv()
 
+# Абсолютный путь к директории приложения — нужен для корректной работы на сервере
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 from flask_wtf.csrf import CSRFProtect
 from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES
 from topics_manager import TopicsManager
@@ -201,9 +204,9 @@ APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
 
 TRUSTED_PROXY_IP = os.getenv("TRUSTED_PROXY_IP")
-TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', 'topics.db')
+TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', os.path.join(BASE_DIR, 'topics.db'))
 TICKET_NUMBER_START = int(os.getenv('TICKET_NUMBER_START', '125'))
-AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', 'topics.db')
+AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', os.path.join(BASE_DIR, 'topics.db'))
 ANALYTICS_BACKEND = os.getenv('ANALYTICS_BACKEND', 'postgres').lower()
 ANALYTICS_USE_POSTGRES = ANALYTICS_BACKEND == 'postgres' and psycopg2 is not None
 POSTGRES_CONFIG = {
@@ -711,10 +714,10 @@ def extract_ticket_number_from_text(text: str) -> int | None:
         return None
 
 # Инициализация TopicsManager
-tm = TopicsManager("topics.db")
+tm = TopicsManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация TrainerManager
-trainer_mgr = TrainerManager("topics.db")
+trainer_mgr = TrainerManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация счётчика заявок
 _init_ticket_counter_table()

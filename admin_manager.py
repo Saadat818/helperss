@@ -12,6 +12,9 @@ from functools import wraps
 from flask import session, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# Абсолютный путь к директории модуля — для корректной работы на сервере
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 class AdminManager:
     """Безопасное управление мануалами"""
@@ -653,6 +656,6 @@ class AdminAuth:
         return secrets.token_urlsafe(32)
 
 
-# Глобальные экземпляры
-admin_manager = AdminManager()
-admins_manager = AdminsManager()
+# Глобальные экземпляры — абсолютные пути к файлам данных
+admin_manager = AdminManager(os.path.join(_BASE_DIR, 'manuals_data.json'))
+admins_manager = AdminsManager(os.path.join(_BASE_DIR, 'admins.json'))

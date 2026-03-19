@@ -1081,6 +1081,7 @@
                 <button type="submit" class="btn btn-success">
                     {% if scenario %}Сохранить изменения{% else %}Создать сценарий{% endif %}
                 </button>
+                <span id="autoSaveStatus" style="font-size: 13px; margin-left: 8px; transition: color 0.3s;"></span>
                 {% if scenario %}
                 <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);" onclick="document.getElementById('nextAction').value='preview'">
                     👁️ Предпросмотр
@@ -1189,6 +1190,10 @@
                 return;
             }
 
+            // Сохраняем текущие изменения полей перед reload
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
+
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
             formData.append('client_message', 'Новое сообщение клиента');
@@ -1244,6 +1249,9 @@
         async function deleteStep(stepId) {
             if (!confirm('Удалить этот шаг и все его варианты ответов?')) return;
 
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
+
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
 
@@ -1264,6 +1272,9 @@
         }
 
         async function addAnswer(stepId) {
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
+
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
             formData.append('answer_text', 'Новый вариант ответа');
@@ -1288,6 +1299,9 @@
 
         async function deleteAnswer(answerId) {
             if (!confirm('Удалить этот вариант ответа?')) return;
+
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
 
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
@@ -1397,6 +1411,57 @@
                 resultsDiv.style.display = 'none';
             }
         });
+
+        // ==================== Автосохранение ====================
+        let _autoSaveTimer = null;
+
+        function showSaveStatus(status) {
+            const el = document.getElementById('autoSaveStatus');
+            if (!el) return;
+            if (status === 'saving') {
+                el.textContent = '💾 Сохранение...';
+                el.style.color = '#888';
+            } else if (status === 'saved') {
+                el.textContent = '✓ Сохранено';
+                el.style.color = '#4caf50';
+                setTimeout(() => { if (el.textContent === '✓ Сохранено') el.textContent = ''; }, 3000);
+            } else if (status === 'error') {
+                el.textContent = '✗ Ошибка';
+                el.style.color = '#f44336';
+            }
+        }
+
+        async function autoSave() {
+            if (!scenarioId) return;
+            showSaveStatus('saving');
+            try {
+                const form = document.getElementById('scenarioForm');
+                const formData = new FormData(form);
+                formData.set('next_action', '');
+                // Не переотправляем файлы при автосохранении
+                form.querySelectorAll('input[type="file"]').forEach(inp => {
+                    if (inp.name) formData.delete(inp.name);
+                });
+                const response = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    body: formData
+                });
+                showSaveStatus(response.ok ? 'saved' : 'error');
+            } catch (e) {
+                showSaveStatus('error');
+            }
+        }
+
+        function scheduleAutoSave() {
+            clearTimeout(_autoSaveTimer);
+            _autoSaveTimer = setTimeout(autoSave, 1500);
+        }
+
+        if (scenarioId) {
+            const form = document.getElementById('scenarioForm');
+            form.addEventListener('input', scheduleAutoSave);
+            form.addEventListener('change', scheduleAutoSave);
+        }
 
         // Tags functions
         async function addNewTag() {

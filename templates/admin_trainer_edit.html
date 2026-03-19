@@ -945,12 +945,14 @@
                         <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #e0e0e0;">{{ emo_label }}</div>
                         <div style="font-size: 11px; color: #888; margin-bottom: 10px;">{{ emo_hint }}</div>
                         {% if avatar_images and avatar_images.get(emo_key) %}
-                        <img src="{{ url_for('static', filename=avatar_images[emo_key]) }}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e;">
+                        <img id="avatar-preview-{{ emo_key }}" src="{{ url_for('static', filename=avatar_images[emo_key]) }}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e;">
                         {% else %}
-                        <div style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
+                        <img id="avatar-preview-{{ emo_key }}" src="" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e; display: none;">
+                        <div id="avatar-placeholder-{{ emo_key }}" style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
                         {% endif %}
                         <input type="file" name="avatar_{{ emo_key }}" accept="image/*"
-                               style="font-size: 11px; color: #999; width: 100%;">
+                               style="font-size: 11px; color: #999; width: 100%;"
+                               onchange="previewAvatar(this, '{{ emo_key }}')">
                     </div>
                     {% endfor %}
                 </div>
@@ -1411,6 +1413,19 @@
                 resultsDiv.style.display = 'none';
             }
         });
+
+        // Мгновенное превью аватара при выборе файла
+        function previewAvatar(input, emoKey) {
+            if (!input.files || !input.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('avatar-preview-' + emoKey);
+                const placeholder = document.getElementById('avatar-placeholder-' + emoKey);
+                if (img) { img.src = e.target.result; img.style.display = 'block'; }
+                if (placeholder) placeholder.style.display = 'none';
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
 
         // ==================== Автосохранение ====================
         let _autoSaveTimer = null;

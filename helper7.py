@@ -2104,7 +2104,7 @@ def trainer_play(scenario_id):
 @rate_limit(max_requests=120, window=60)
 def trainer_get_step(scenario_id, step_num):
     """API: получить шаг сценария"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
 
     step = trainer_mgr.get_step_by_num(scenario_id, step_num)
@@ -2155,7 +2155,7 @@ def trainer_get_step(scenario_id, step_num):
 @rate_limit(max_requests=120, window=60)
 def trainer_get_step_by_id(step_id):
     """API: получить шаг по ID (для ветвления диалога)"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
 
     step = trainer_mgr.get_step_by_id(step_id)
@@ -2194,7 +2194,7 @@ def trainer_get_step_by_id(step_id):
 @rate_limit(max_requests=60, window=60)
 def trainer_submit_answer():
     """API: отправить ответ"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
 
     try:
@@ -2266,8 +2266,13 @@ def trainer_submit_answer():
 @rate_limit(max_requests=30, window=60)
 def trainer_complete():
     """API: завершить сценарий"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    is_admin_preview = session.get('admin_logged_in') and 'user_info' not in session
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    # В режиме предпросмотра результаты не сохраняем
+    if is_admin_preview:
+        return jsonify({'success': True, 'result_id': None, 'percent': 0, 'grade': 'preview', 'is_game_over': False})
 
     try:
         data = request.get_json()

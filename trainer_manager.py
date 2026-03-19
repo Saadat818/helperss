@@ -302,6 +302,18 @@ class TrainerManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN is_archived BOOLEAN DEFAULT 0")
 
+        # Штраф за таймаут (% раздражения за каждое молчание)
+        try:
+            cursor.execute("SELECT emotion_timeout_penalty FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN emotion_timeout_penalty INTEGER DEFAULT 20")
+
+        # Пассивный рост раздражения (% каждые 2 сек, 0 = отключено)
+        try:
+            cursor.execute("SELECT emotion_passive_rate FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN emotion_passive_rate INTEGER DEFAULT 0")
+
         # Время начала прохождения
         try:
             cursor.execute("SELECT started_at FROM trainer_results LIMIT 1")
@@ -1349,7 +1361,8 @@ class TrainerManager:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
                             'estimated_time', 'total_points', 'is_active', 'order_num',
                             'timer_seconds', 'initial_loyalty', 'client_info_json',
-                            'correct_topics', 'avatar_images', 'silence_messages', 'is_draft']
+                            'correct_topics', 'avatar_images', 'silence_messages', 'is_draft',
+                            'emotion_timeout_penalty', 'emotion_passive_rate']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:

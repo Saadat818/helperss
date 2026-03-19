@@ -2588,7 +2588,9 @@ def admin_trainer_edit(scenario_id):
             'client_info_json': client_info_json,
             'correct_topics': correct_topics_val,
             'silence_messages': request.form.get('silence_messages', '').strip(),
-            'is_draft': is_draft
+            'is_draft': is_draft,
+            'emotion_timeout_penalty': request.form.get('emotion_timeout_penalty', 20, type=int),
+            'emotion_passive_rate': request.form.get('emotion_passive_rate', 0, type=int),
         }
 
         # Сохраняем снимок текущей версии перед обновлением

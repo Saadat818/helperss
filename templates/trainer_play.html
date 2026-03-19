@@ -864,6 +864,8 @@
         const csrfToken = '{{ csrf_token() }}';
         const isPreviewMode = {{ 'true' if preview_mode else 'false' }};
         const correctTopics = {{ correct_topics | tojson }};
+        const emotionTimeoutPenalty = {{ (scenario.emotion_timeout_penalty if scenario.emotion_timeout_penalty is not none else 20) | int }};
+        const emotionPassiveRate = {{ (scenario.emotion_passive_rate if scenario.emotion_passive_rate is not none else 0) | int }};
 
         let currentStepNum = 0;
         let score = 0;
@@ -1127,7 +1129,9 @@
         function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
 
         function startEmotionTimer() {
-            emotionTimer = setInterval(() => updateEmotion(2), 2000);
+            if (emotionPassiveRate > 0) {
+                emotionTimer = setInterval(() => updateEmotion(emotionPassiveRate), 2000);
+            }
         }
 
         function stopEmotionTimer() { if (emotionTimer) { clearInterval(emotionTimer); emotionTimer = null; } }
@@ -1140,7 +1144,7 @@
             answerLocked = true;
             document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.add('disabled'));
 
-            updateEmotion(20);
+            updateEmotion(emotionTimeoutPenalty);
             addBubble("...", 'operator', true);
 
             // Фиксируем таймаут в истории для аналитики

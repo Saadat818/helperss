@@ -673,6 +673,36 @@
         .theme-toggle:hover { transform: scale(1.12); }
         body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
 
+        /* Дополнительные поля карточки клиента */
+        .client-extra-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+        .client-extra-row input {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            color: #e0e0e0;
+            padding: 7px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            width: 100%;
+        }
+        .client-extra-row input:focus { border-color: #00d4aa; outline: none; }
+        .client-extra-remove {
+            background: #c62828;
+            border: none;
+            color: #fff;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
         /* Аккордеоны */
         .accordion-header { cursor: pointer; user-select: none; }
         .accordion-chevron {
@@ -929,10 +959,11 @@
 
                 <div class="client-card-extra">
                     <div class="form-group">
-                        <label for="client_extra">Дополнительные поля (JSON)</label>
-                        <textarea id="client_extra" name="client_extra"
-                                  placeholder='{"Телефон": "+7 999 123-45-67", "Дата подключения": "01.01.2023"}'>{{ client_extra if client_extra else '' }}</textarea>
-                        <div class="form-hint">Формат JSON: {"Ключ": "Значение", ...}. Оставьте пустым если не нужны.</div>
+                        <label>Дополнительные поля карточки</label>
+                        <div id="clientExtraFields" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;"></div>
+                        <button type="button" onclick="addClientField()" class="add-btn" style="margin-top: 0; padding: 7px 16px; font-size: 13px;">+ Добавить поле</button>
+                        <input type="hidden" name="client_extra" id="clientExtraInput" value="{{ client_extra if client_extra else '' }}">
+                        <div class="form-hint" style="margin-top: 8px;">Произвольные поля: телефон, дата подключения, договор и т.д.</div>
                     </div>
                 </div>
                 </div><!-- /accordion-body client-card -->
@@ -1232,6 +1263,45 @@
                 alert('Ошибка соединения');
             }
         }
+
+        // ==================== Карточка клиента — динамические поля ====================
+        const _clientExtraInput = document.getElementById('clientExtraInput');
+        const _clientExtraContainer = document.getElementById('clientExtraFields');
+
+        function serializeClientExtra() {
+            const rows = _clientExtraContainer.querySelectorAll('.client-extra-row');
+            const result = {};
+            rows.forEach(row => {
+                const key = row.querySelector('.extra-key').value.trim();
+                const val = row.querySelector('.extra-val').value.trim();
+                if (key) result[key] = val;
+            });
+            _clientExtraInput.value = Object.keys(result).length ? JSON.stringify(result, null, 0) : '';
+        }
+
+        function addClientField(key = '', val = '') {
+            const row = document.createElement('div');
+            row.className = 'client-extra-row';
+            row.innerHTML = `
+                <input class="extra-key" type="text" placeholder="Название поля (напр. Телефон)" value="${key.replace(/"/g, '&quot;')}">
+                <input class="extra-val" type="text" placeholder="Значение" value="${val.replace(/"/g, '&quot;')}">
+                <button type="button" class="client-extra-remove" onclick="this.closest('.client-extra-row').remove(); serializeClientExtra();">✕</button>
+            `;
+            row.querySelector('.extra-key').addEventListener('input', serializeClientExtra);
+            row.querySelector('.extra-val').addEventListener('input', serializeClientExtra);
+            _clientExtraContainer.appendChild(row);
+            serializeClientExtra();
+        }
+
+        // Заполняем из существующих данных
+        (function initClientExtra() {
+            const raw = _clientExtraInput.value.trim();
+            if (!raw) return;
+            try {
+                const data = JSON.parse(raw);
+                Object.entries(data).forEach(([k, v]) => addClientField(k, v));
+            } catch(e) {}
+        })();
 
         // Инициализация аккордеонов
         document.querySelectorAll('.accordion-header').forEach(header => {

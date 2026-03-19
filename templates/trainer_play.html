@@ -864,8 +864,8 @@
         const csrfToken = '{{ csrf_token() }}';
         const isPreviewMode = {{ 'true' if preview_mode else 'false' }};
         const correctTopics = {{ correct_topics | tojson }};
-        const emotionTimeoutPenalty = {{ (scenario.emotion_timeout_penalty if scenario.emotion_timeout_penalty is not none else 20) | int }};
-        const emotionPassiveRate = {{ (scenario.emotion_passive_rate if scenario.emotion_passive_rate is not none else 0) | int }};
+        const emotionTimeoutPenalty = {{ (scenario.get('emotion_timeout_penalty') or 20) | int }};
+        const emotionPassiveRate = {{ (scenario.get('emotion_passive_rate') or 0) | int }};
 
         let currentStepNum = 0;
         let score = 0;

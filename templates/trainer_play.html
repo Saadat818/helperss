@@ -706,7 +706,7 @@
     {% if preview_mode %}
     <div class="preview-banner">
         <span>👁️ Режим предпросмотра — результаты не сохраняются</span>
-        <a href="#" onclick="if(backUrl){window.location.href=backUrl;}return false;" class="close-preview">← Вернуться к редактированию</a>
+        <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="close-preview">← Вернуться к редактированию</a>
     </div>
     {% endif %}
 
@@ -752,7 +752,7 @@
                     <div class="score-badge">⭐ <span id="scoreValue">0</span>/<span id="maxScoreValue">{{ scenario.total_points }}</span></div>
                     <div class="timer-badge" id="timerBadge">⏱️ <span id="timerValue">{{ scenario.timer_seconds or 15 }}</span>с</div>
                 </div>
-                <a href="#" onclick="window.location.href = isPreviewMode ? backUrl : '{{ url_for('trainer_menu') }}'; return false;" class="exit-btn">✕ Выход</a>
+                {% if not preview_mode %}<a href="{{ url_for('trainer_menu') }}" class="exit-btn">✕ Выход</a>{% endif %}
             </div>
 
             <div class="dialog-area" id="dialogArea">
@@ -831,7 +831,7 @@
             <div class="modal-icon">😤</div>
             <div class="modal-title">Клиент бросил трубку!</div>
             <div class="modal-text">Уровень раздражения достиг максимума.</div>
-            <a href="#" onclick="window.location.href = isPreviewMode ? backUrl : '{{ url_for('trainer_level', level_code=scenario.level_code) }}'; return false;" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Вернуться' }}</a>
+            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Вернуться' }}</a>
         </div>
     </div>
 
@@ -852,7 +852,7 @@
                 </div>
             </div>
 
-            <a href="#" id="resultNavBtn" onclick="window.location.href = isPreviewMode ? backUrl : '{{ url_for('trainer_level', level_code=scenario.level_code) }}'; return false;" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Продолжить' }}</a>
+            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" id="resultNavBtn" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Продолжить' }}</a>
         </div>
     </div>
 
@@ -1498,8 +1498,7 @@
                 if (result.success && result.result_id) {
                     const resultNavBtn = document.getElementById('resultNavBtn');
                     if (resultNavBtn) {
-                        const resultUrl = `/trainer/results/${result.result_id}`;
-                        resultNavBtn.onclick = () => { window.location.href = resultUrl; return false; };
+                        resultNavBtn.href = `/trainer/results/${result.result_id}`;
                     }
                 }
             } catch (e) { console.error(e); }

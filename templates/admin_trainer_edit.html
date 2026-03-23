@@ -1088,6 +1088,14 @@
                                             <option value="-100" class="negative" {% if answer.mood_impact == -100 %}selected{% endif %}>-100% (Game Over)</option>
                                         </select>
                                     </div>
+                                    <div class="form-group" style="max-width: 160px;">
+                                        <label>😤 Раздражение клиента (%)</label>
+                                        <input type="number" name="answer_{{ answer.id }}_irritation_impact"
+                                               min="-100" max="100"
+                                               value="{{ answer.irritation_impact if answer.irritation_impact is not none else 0 }}"
+                                               placeholder="0">
+                                        <div class="form-hint">Минус = успокаивает, плюс = злит. Пример: −15 (верно), +25 (ошибка)</div>
+                                    </div>
                                     <div class="form-group">
                                         <label>Ссылка на Базу Знаний</label>
                                         <input type="text" name="answer_{{ answer.id }}_knowledge_link"
@@ -1366,6 +1374,7 @@
             formData.append('answer_text', 'Новый вариант ответа');
             formData.append('points', '0');
             formData.append('mood_impact', '0');
+            formData.append('irritation_impact', '0');
 
             try {
                 const response = await fetch(`/admin/trainer/step/${stepId}/answer/create`, {

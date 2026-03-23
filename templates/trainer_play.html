@@ -1069,8 +1069,13 @@
                     const isPartial = result.is_partial;
                     addBubble(answer.answer_text, 'operator', isWrong, isPartial);
 
-                    // Эмоция (инвертируем mood_impact, т.к. у нас шкала раздражения)
-                    let change = result.is_correct ? -15 : (result.is_partial ? 5 : 25);
+                    // Раздражение: используем irritation_impact из БД, если задан; иначе дефолт
+                    let change;
+                    if (result.irritation_impact !== 0 && result.irritation_impact !== null && result.irritation_impact !== undefined) {
+                        change = result.irritation_impact;
+                    } else {
+                        change = result.is_correct ? -15 : (result.is_partial ? 5 : 25);
+                    }
                     updateEmotion(change);
 
                     // Очки

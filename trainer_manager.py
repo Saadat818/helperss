@@ -248,6 +248,11 @@ class TrainerManager:
             cursor.execute("ALTER TABLE trainer_answers ADD COLUMN mood_impact INTEGER DEFAULT 0")
 
         try:
+            cursor.execute("SELECT irritation_impact FROM trainer_answers LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_answers ADD COLUMN irritation_impact INTEGER DEFAULT 0")
+
+        try:
             cursor.execute("SELECT knowledge_link FROM trainer_answers LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE trainer_answers ADD COLUMN knowledge_link TEXT")
@@ -1525,8 +1530,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num, mood_impact, knowledge_link, next_step_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num, mood_impact, irritation_impact, knowledge_link, next_step_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 step_id,
                 data.get('answer_text', ''),
@@ -1536,6 +1541,7 @@ class TrainerManager:
                 data.get('feedback', ''),
                 data.get('order_num', 0),
                 data.get('mood_impact', 0),
+                data.get('irritation_impact', 0),
                 data.get('knowledge_link'),
                 data.get('next_step_id')
             ))
@@ -1547,7 +1553,7 @@ class TrainerManager:
     def update_answer(self, answer_id: int, data: Dict) -> Dict:
         """Обновить вариант ответа"""
         try:
-            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num', 'mood_impact', 'knowledge_link', 'next_step_id']
+            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num', 'mood_impact', 'irritation_impact', 'knowledge_link', 'next_step_id']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:

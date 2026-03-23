@@ -2249,6 +2249,7 @@ def trainer_submit_answer():
             'points_earned': selected_answer['points'],
             'feedback': selected_answer['feedback'] or '',
             'mood_impact': mood_impact,
+            'irritation_impact': selected_answer.get('irritation_impact', 0),
             'new_mood': new_mood,
             'new_loyalty': new_loyalty,
             'knowledge_link': selected_answer.get('knowledge_link'),
@@ -2668,6 +2669,7 @@ def admin_trainer_edit(scenario_id):
                         'points': request.form.get(f'answer_{answer_id}_points', 0, type=int),
                         'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip(),
                         'mood_impact': request.form.get(f'answer_{answer_id}_mood_impact', 0, type=int),
+                        'irritation_impact': request.form.get(f'answer_{answer_id}_irritation_impact', 0, type=int),
                         'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None,
                         'next_step_id': request.form.get(f'answer_{answer_id}_next_step_id', type=int) or None
                     })
@@ -2946,7 +2948,9 @@ def admin_trainer_create_answer(step_id):
         'is_correct': 0,
         'is_partial': 0,
         'points': request.form.get('points', 0, type=int),
-        'feedback': ''
+        'feedback': '',
+        'mood_impact': request.form.get('mood_impact', 0, type=int),
+        'irritation_impact': request.form.get('irritation_impact', 0, type=int),
     }
 
     result = trainer_mgr.create_answer(step_id, data)

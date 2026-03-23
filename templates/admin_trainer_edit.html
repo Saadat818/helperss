@@ -1138,7 +1138,7 @@
                 </button>
                 <span id="autoSaveStatus" style="font-size: 13px; margin-left: 8px; transition: color 0.3s;"></span>
                 {% if scenario %}
-                <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);" onclick="document.getElementById('nextAction').value='preview'">
+                <button type="submit" name="next_action" value="preview" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
                     👁️ Предпросмотр
                 </button>
                 <a href="{{ url_for('admin_trainer_visual', scenario_id=scenario.id) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">

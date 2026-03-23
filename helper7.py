@@ -2383,8 +2383,8 @@ def trainer_results(result_id):
                             'is_partial': answer.get('is_partial', False),
                             'is_timeout': ans.get('is_timeout', False),
                             'mood_impact': ans.get('mood_impact', 0),
-                            'knowledge_link': ans.get('knowledge_link') or answer.get('knowledge_link'),
-                            'feedback': answer.get('feedback', '')
+                            'knowledge_link': ans.get('knowledge_link') or answer.get('knowledge_link') or '',
+                            'feedback': answer.get('feedback') or ans.get('feedback') or ''
                         })
                         break
 

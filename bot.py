@@ -13,12 +13,104 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # Загружаем переменные окружения
 load_dotenv()
 
+import re
+import sqlite3
+from datetime import datetime
+
 APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
 TECH_SUPPORT_CHAT_ID = int(os.getenv('TECH_SUPPORT_CHAT_ID', '0'))
 NEW_TICKETS_THREAD_ID = int(os.getenv('NEW_TICKETS_THREAD_ID', '0'))
 IN_PROGRESS_THREAD_ID = int(os.getenv('IN_PROGRESS_THREAD_ID', '0'))
 SOLVED_TICKETS_THREAD_ID = int(os.getenv('SOLVED_TICKETS_THREAD_ID', '0'))
+
+# --- Аналитика: запись событий в БД ---
+ANALYTICS_BACKEND = os.getenv('ANALYTICS_BACKEND', 'sqlite')
+AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', 'audit.log')
+
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    psycopg2 = None
+
+ANALYTICS_USE_POSTGRES = ANALYTICS_BACKEND == 'postgres' and psycopg2 is not None
+
+
+def _pg_connect():
+    return psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', '5432')),
+        database=os.getenv('POSTGRES_DB', 'helper_analytics'),
+        user=os.getenv('POSTGRES_USER', 'ruslan'),
+        password=os.getenv('POSTGRES_PASSWORD', ''),
+        cursor_factory=psycopg2.extras.RealDictCursor,
+        connect_timeout=10
+    )
+
+
+def extract_ticket_number(text: str):
+    """Извлекает номер заявки из текста вида 'НОВАЯ ЗАЯВКА №123'."""
+    if not text:
+        return None
+    match = re.search(r'№\s*(\d+)', text)
+    return int(match.group(1)) if match else None
+
+
+def parse_ticket_fields(text: str) -> dict:
+    """Извлекает поля из текста заявки."""
+    fields = {}
+    for line in text.split('\n'):
+        if ':' in line:
+            key, _, val = line.partition(':')
+            key = key.strip().lower()
+            val = val.strip()
+            if 'отдел' in key:
+                fields['department'] = val
+            elif 'имя' in key:
+                fields['name'] = val
+            elif 'рабочее место' in key:
+                fields['workplace'] = val
+            elif 'проблема' in key:
+                fields['problem'] = val
+    return fields
+
+
+def log_ticket_event(event_type, ticket_number=None, problem='',
+                     department='', user_name='', workplace='',
+                     actor_name='', actor_username=''):
+    """Записывает событие заявки в БД."""
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        payload = (now, event_type, ticket_number, problem[:500],
+                   department[:200], user_name[:200], workplace[:100],
+                   '', '', 0, actor_name[:200], actor_username[:200], 'staff')
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO ticket_events (
+                            created_at, event_type, ticket_number, problem,
+                            department, user_name, workplace,
+                            channel, topic_name, is_cisco,
+                            actor_name, actor_username, actor_role
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, payload)
+                conn.commit()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.execute("""
+                    INSERT INTO ticket_events (
+                        created_at, event_type, ticket_number, problem,
+                        department, user_name, workplace,
+                        channel, topic_name, is_cisco,
+                        actor_name, actor_username, actor_role
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, payload)
+                conn.commit()
+        print(f"[analytics] Записано: {event_type} ticket_number={ticket_number}")
+    except Exception as e:
+        print(f"[analytics] Ошибка логирования: {e}")
 
 if not BOT_TOKEN:
     print("❌ Ошибка: BOT_TOKEN не найден в .env файле")
@@ -68,6 +160,20 @@ def handle_ticket_done(call):
             reply_markup=None
         )
 
+        # Логируем в БД
+        ticket_number = extract_ticket_number(original_message)
+        parsed = parse_ticket_fields(original_message)
+        log_ticket_event(
+            event_type='ticket_resolved_by_staff',
+            ticket_number=ticket_number,
+            problem=parsed.get('problem', original_message),
+            department=parsed.get('department', ''),
+            user_name=parsed.get('name', ''),
+            workplace=parsed.get('workplace', ''),
+            actor_name=resolver_name,
+            actor_username=call.from_user.username or str(call.from_user.id)
+        )
+
         bot.answer_callback_query(call.id, "✅ Заявка перемещена в 'В работе'")
         print("✅ Callback 'Готово' обработан успешно")
 
@@ -93,12 +199,28 @@ def handle_ticket_not_relevant(call):
         )
 
         # Отправляем отдельное сообщение о том, что заявка не актуальна
+        original_message = call.message.text or call.message.caption or ""
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
             f"❌ ЗАЯВКА НЕ АКТУАЛЬНА ❌\n\n"
             f"Заявка отмечена сотрудником {call.from_user.first_name} как не актуальная.\n"
             f"Никаких действий не требуется.",
             message_thread_id=NEW_TICKETS_THREAD_ID
+        )
+
+        # Логируем в БД
+        ticket_number = extract_ticket_number(original_message)
+        parsed = parse_ticket_fields(original_message)
+        resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
+        log_ticket_event(
+            event_type='ticket_not_relevant',
+            ticket_number=ticket_number,
+            problem=parsed.get('problem', original_message),
+            department=parsed.get('department', ''),
+            user_name=parsed.get('name', ''),
+            workplace=parsed.get('workplace', ''),
+            actor_name=resolver_name,
+            actor_username=call.from_user.username or str(call.from_user.id)
         )
 
         bot.answer_callback_query(call.id, "✅ Заявка отмечена как неактуальная")

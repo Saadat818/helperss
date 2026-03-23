@@ -1137,7 +1137,7 @@
                 </button>
                 <span id="autoSaveStatus" style="font-size: 13px; margin-left: 8px; transition: color 0.3s;"></span>
                 {% if scenario %}
-                <button type="submit" name="next_action" value="preview" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
+                <button type="button" onclick="saveAndPreview()" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
                     👁️ Предпросмотр
                 </button>
                 <a href="{{ url_for('admin_trainer_visual', scenario_id=scenario.id) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">
@@ -1536,6 +1536,11 @@
                 el.textContent = '✗ Ошибка';
                 el.style.color = '#f44336';
             }
+        }
+
+        async function saveAndPreview() {
+            await autoSave();
+            window.location.href = "{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1&back=edit";
         }
 
         async function autoSave() {

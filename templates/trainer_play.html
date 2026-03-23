@@ -347,6 +347,8 @@
             background: rgba(22,33,62,0.95);
             padding: 15px 20px;
             border-top: 2px solid #e94560;
+            overflow-y: auto;
+            max-height: 40vh;
         }
 
         .answers-title {
@@ -612,6 +614,7 @@
 
         body.preview-mode .game-container {
             margin-top: 40px;
+            height: calc(100vh - 40px);
         }
 
         body.preview-mode .top-bar {

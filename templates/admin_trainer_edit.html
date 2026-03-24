@@ -990,13 +990,20 @@
                         <div style="font-size: 11px; color: #888; margin-bottom: 10px;">{{ emo_hint }}</div>
                         {% if avatar_images and avatar_images.get(emo_key) %}
                         <img id="avatar-preview-{{ emo_key }}" src="{{ url_for('static', filename=avatar_images[emo_key]) }}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e;">
+                        <div id="avatar-placeholder-{{ emo_key }}" style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: none; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
                         {% else %}
                         <img id="avatar-preview-{{ emo_key }}" src="" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e; display: none;">
                         <div id="avatar-placeholder-{{ emo_key }}" style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
                         {% endif %}
+                        <input type="hidden" name="avatar_{{ emo_key }}_delete" id="avatar-delete-{{ emo_key }}" value="0">
                         <input type="file" name="avatar_{{ emo_key }}" accept="image/*"
-                               style="font-size: 11px; color: #999; width: 100%;"
+                               style="font-size: 11px; color: #999; width: 100%; margin-bottom: 6px;"
                                onchange="previewAvatar(this, '{{ emo_key }}')">
+                        <button type="button" id="avatar-del-btn-{{ emo_key }}"
+                                onclick="deleteAvatar('{{ emo_key }}')"
+                                style="display: {% if avatar_images and avatar_images.get(emo_key) %}inline-block{% else %}none{% endif %}; font-size: 11px; padding: 3px 10px; background: #c0392b; color: #fff; border: none; border-radius: 5px; cursor: pointer;">
+                            Удалить
+                        </button>
                     </div>
                     {% endfor %}
                 </div>
@@ -1513,10 +1520,27 @@
             reader.onload = function(e) {
                 const img = document.getElementById('avatar-preview-' + emoKey);
                 const placeholder = document.getElementById('avatar-placeholder-' + emoKey);
+                const delBtn = document.getElementById('avatar-del-btn-' + emoKey);
+                const delInput = document.getElementById('avatar-delete-' + emoKey);
                 if (img) { img.src = e.target.result; img.style.display = 'block'; }
                 if (placeholder) placeholder.style.display = 'none';
+                if (delBtn) delBtn.style.display = 'inline-block';
+                if (delInput) delInput.value = '0';
             };
             reader.readAsDataURL(input.files[0]);
+        }
+
+        function deleteAvatar(emoKey) {
+            const img = document.getElementById('avatar-preview-' + emoKey);
+            const placeholder = document.getElementById('avatar-placeholder-' + emoKey);
+            const delBtn = document.getElementById('avatar-del-btn-' + emoKey);
+            const delInput = document.getElementById('avatar-delete-' + emoKey);
+            const fileInput = document.querySelector('input[name="avatar_' + emoKey + '"][type="file"]');
+            if (img) { img.src = ''; img.style.display = 'none'; }
+            if (placeholder) placeholder.style.display = 'flex';
+            if (delBtn) delBtn.style.display = 'none';
+            if (delInput) delInput.value = '1';
+            if (fileInput) fileInput.value = '';
         }
 
         // ==================== Автосохранение ====================

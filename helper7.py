@@ -2615,6 +2615,15 @@ def admin_trainer_edit(scenario_id):
         avatars_dir = os.path.join(app.static_folder, 'uploads', 'avatars')
         os.makedirs(avatars_dir, exist_ok=True)
         for emo in emotion_keys:
+            # Удаление аватара
+            if request.form.get(f'avatar_{emo}_delete') == '1':
+                old_path = avatar_images.pop(emo, None)
+                if old_path:
+                    full_path = os.path.join(app.static_folder, old_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                continue
+            # Загрузка нового аватара
             file = request.files.get(f'avatar_{emo}')
             if file and file.filename:
                 from werkzeug.utils import secure_filename

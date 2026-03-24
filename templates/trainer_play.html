@@ -347,6 +347,8 @@
             background: rgba(22,33,62,0.95);
             padding: 15px 20px;
             border-top: 2px solid #e94560;
+            overflow-y: auto;
+            max-height: 40vh;
         }
 
         .answers-title {
@@ -612,6 +614,7 @@
 
         body.preview-mode .game-container {
             margin-top: 40px;
+            height: calc(100vh - 40px);
         }
 
         body.preview-mode .top-bar {
@@ -752,7 +755,7 @@
                     <div class="score-badge">⭐ <span id="scoreValue">0</span>/<span id="maxScoreValue">{{ scenario.total_points }}</span></div>
                     <div class="timer-badge" id="timerBadge">⏱️ <span id="timerValue">{{ scenario.timer_seconds or 15 }}</span>с</div>
                 </div>
-                <a href="{{ url_for('trainer_menu') }}" class="exit-btn">✕ Выход</a>
+                {% if not preview_mode %}<a href="{{ url_for('trainer_menu') }}" class="exit-btn">✕ Выход</a>{% endif %}
             </div>
 
             <div class="dialog-area" id="dialogArea">
@@ -831,7 +834,7 @@
             <div class="modal-icon">😤</div>
             <div class="modal-title">Клиент бросил трубку!</div>
             <div class="modal-text">Уровень раздражения достиг максимума.</div>
-            <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">Вернуться</a>
+            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Вернуться' }}</a>
         </div>
     </div>
 
@@ -852,7 +855,7 @@
                 </div>
             </div>
 
-            <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">Продолжить</a>
+            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" id="resultNavBtn" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Продолжить' }}</a>
         </div>
     </div>
 
@@ -871,7 +874,10 @@
         const totalPoints = {{ scenario.total_points }};
         const csrfToken = '{{ csrf_token() }}';
         const isPreviewMode = {{ 'true' if preview_mode else 'false' }};
+        const backUrl = {{ (back_url or '') | tojson }};
         const correctTopics = {{ correct_topics | tojson }};
+        const emotionTimeoutPenalty = {{ (scenario.get('emotion_timeout_penalty') or 20) | int }};
+        const emotionPassiveRate = {{ (scenario.get('emotion_passive_rate') or 0) | int }};
 
         let currentStepNum = 0;
         let score = 0;
@@ -1071,8 +1077,13 @@
                     const isPartial = result.is_partial;
                     addBubble(answer.answer_text, 'operator', isWrong, isPartial);
 
-                    // Эмоция (инвертируем mood_impact, т.к. у нас шкала раздражения)
-                    let change = result.is_correct ? -15 : (result.is_partial ? 5 : 25);
+                    // Раздражение: используем irritation_impact из БД, если задан; иначе дефолт
+                    let change;
+                    if (result.irritation_impact !== 0 && result.irritation_impact !== null && result.irritation_impact !== undefined) {
+                        change = result.irritation_impact;
+                    } else {
+                        change = result.is_correct ? -15 : (result.is_partial ? 5 : 25);
+                    }
                     updateEmotion(change);
 
                     // Очки
@@ -1135,7 +1146,9 @@
         function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
 
         function startEmotionTimer() {
-            emotionTimer = setInterval(() => updateEmotion(2), 2000);
+            if (emotionPassiveRate > 0) {
+                emotionTimer = setInterval(() => updateEmotion(emotionPassiveRate), 2000);
+            }
         }
 
         function stopEmotionTimer() { if (emotionTimer) { clearInterval(emotionTimer); emotionTimer = null; } }
@@ -1148,7 +1161,7 @@
             answerLocked = true;
             document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.add('disabled'));
 
-            updateEmotion(20);
+            updateEmotion(emotionTimeoutPenalty);
             addBubble("...", 'operator', true);
 
             // Фиксируем таймаут в истории для аналитики
@@ -1497,11 +1510,11 @@
                 });
                 const result = await response.json();
 
-                // Если есть result_id, обновляем ссылку "Продолжить" на страницу результатов
+                // Если есть result_id, обновляем кнопку "Продолжить" на страницу результатов
                 if (result.success && result.result_id) {
-                    const resultBtn = document.querySelector('#resultModal .modal-btn');
-                    if (resultBtn) {
-                        resultBtn.href = `/trainer/results/${result.result_id}`;
+                    const resultNavBtn = document.getElementById('resultNavBtn');
+                    if (resultNavBtn) {
+                        resultNavBtn.href = `/trainer/results/${result.result_id}`;
                     }
                 }
             } catch (e) { console.error('Operation error'); }

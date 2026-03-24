@@ -758,7 +758,7 @@
         </div>
         <div class="header-actions">
             <button class="btn btn-add" onclick="showHelp()">?</button>
-            <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1" class="btn" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: white;">👁️ Предпросмотр</a>
+            <button class="btn" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: white;" onclick="saveAndPreview()">👁️ Предпросмотр</button>
             <button class="btn btn-save" onclick="saveScenario()">Сохранить</button>
         </div>
     </div>
@@ -1820,6 +1820,12 @@
                 }
             }
         });
+
+        // Сохранить и открыть предпросмотр
+        async function saveAndPreview() {
+            await saveScenario();
+            window.location.href = "{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1&back=visual";
+        }
 
         // Save scenario
         async function saveScenario() {

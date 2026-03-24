@@ -705,6 +705,17 @@
                 </a>
                 {% endif %}
             </div>
+            {% elif answer.is_partial and answer.knowledge_link %}
+            <div class="error-item">
+                <div class="error-question">Вопрос {{ answer.step_num }}</div>
+                <div class="error-given">{{ answer.answer_text }}</div>
+                {% if answer.feedback %}
+                <div class="error-feedback">{{ answer.feedback }}</div>
+                {% endif %}
+                <a href="{{ answer.knowledge_link }}" class="knowledge-link" target="_blank">
+                    &#128218; Изучить в Базе Знаний
+                </a>
+            </div>
             {% endif %}
             {% endfor %}
         </div>
@@ -734,10 +745,13 @@
                         </span>
                         {% endif %}
                     </div>
-                    {% if answer.knowledge_link and not answer.is_correct %}
+                    {% if answer.knowledge_link %}
                     <a href="{{ answer.knowledge_link }}" class="knowledge-link" target="_blank">
                         &#128218; База Знаний
                     </a>
+                    {% endif %}
+                    {% if answer.feedback and not answer.is_correct %}
+                    <div class="error-feedback" style="margin-top:6px; font-size:13px;">{{ answer.feedback }}</div>
                     {% endif %}
                 </div>
             </div>

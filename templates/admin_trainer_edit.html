@@ -672,6 +672,57 @@
         }
         .theme-toggle:hover { transform: scale(1.12); }
         body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
+
+        /* Дополнительные поля карточки клиента */
+        .client-extra-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+        .client-extra-row input {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            color: #e0e0e0;
+            padding: 7px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            width: 100%;
+        }
+        .client-extra-row input:focus { border-color: #00d4aa; outline: none; }
+        .client-extra-remove {
+            background: #c62828;
+            border: none;
+            color: #fff;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        /* Аккордеоны */
+        .accordion-header { cursor: pointer; user-select: none; }
+        .accordion-chevron {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 12px;
+            color: #888;
+            transition: transform 0.25s;
+            vertical-align: middle;
+        }
+        .accordion-header.collapsed .accordion-chevron { transform: rotate(-90deg); }
+        .accordion-body {
+            overflow: hidden;
+            max-height: 5000px;
+            opacity: 1;
+            transition: max-height 0.3s ease, opacity 0.25s ease;
+        }
+        .accordion-body.collapsed { max-height: 0 !important; opacity: 0; pointer-events: none; }
+        .step-header.accordion-header { cursor: pointer; }
+        .step-header.accordion-header.collapsed { margin-bottom: 0; border-bottom: none; }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
@@ -840,7 +891,21 @@
                         <label for="timer_seconds">Время на ответ (секунд)</label>
                         <input type="number" id="timer_seconds" name="timer_seconds" min="5" max="120"
                                value="{{ scenario.timer_seconds if scenario else 15 }}">
-                        <div class="form-hint">От 5 до 120 секунд. При истечении времени применяется штраф -20 к лояльности.</div>
+                        <div class="form-hint">От 5 до 120 секунд.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="emotion_timeout_penalty">Штраф за таймаут (% раздражения)</label>
+                        <input type="number" id="emotion_timeout_penalty" name="emotion_timeout_penalty" min="0" max="100"
+                               value="{{ scenario.emotion_timeout_penalty if scenario and scenario.emotion_timeout_penalty is not none else 20 }}">
+                        <div class="form-hint">На сколько % растёт раздражение клиента при каждом молчании. По умолчанию: 20.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="emotion_passive_rate">Пассивный рост раздражения (% / 2 сек)</label>
+                        <input type="number" id="emotion_passive_rate" name="emotion_passive_rate" min="0" max="20"
+                               value="{{ scenario.emotion_passive_rate if scenario and scenario.emotion_passive_rate is not none else 0 }}">
+                        <div class="form-hint">Насколько % растёт раздражение каждые 2 секунды пока клиент ждёт ответа. 0 = отключено (рекомендуется).</div>
                     </div>
 
                     <div class="form-group">
@@ -862,7 +927,8 @@
 
             <!-- Client Card Section -->
             <div class="client-card-section">
-                <h2>Карточка клиента</h2>
+                <h2 class="accordion-header" id="acc-client-card">Карточка клиента <span class="accordion-chevron">▼</span></h2>
+                <div class="accordion-body" id="acc-body-client-card">
                 <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
                     Эти данные будут доступны оператору во время диалога через кнопку "Карточка клиента".
                 </p>
@@ -892,18 +958,21 @@
 
                 <div class="client-card-extra">
                     <div class="form-group">
-                        <label for="client_extra">Дополнительные поля (JSON)</label>
-                        <textarea id="client_extra" name="client_extra"
-                                  placeholder='{"Телефон": "+7 999 123-45-67", "Дата подключения": "01.01.2023"}'>{{ client_extra if client_extra else '' }}</textarea>
-                        <div class="form-hint">Формат JSON: {"Ключ": "Значение", ...}. Оставьте пустым если не нужны.</div>
+                        <label>Дополнительные поля карточки</label>
+                        <div id="clientExtraFields" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;"></div>
+                        <button type="button" onclick="addClientField()" class="add-btn" style="margin-top: 0; padding: 7px 16px; font-size: 13px;">+ Добавить поле</button>
+                        <input type="hidden" name="client_extra" id="clientExtraInput" value="{{ client_extra if client_extra else '' }}">
+                        <div class="form-hint" style="margin-top: 8px;">Произвольные поля: телефон, дата подключения, договор и т.д.</div>
                     </div>
                 </div>
+                </div><!-- /accordion-body client-card -->
             </div>
 
             <!-- Аватары клиента (5 эмоций) -->
             {% if scenario %}
             <div class="form-section">
-                <h2>Аватар клиента</h2>
+                <h2 class="accordion-header" id="acc-avatars">Аватар клиента <span class="accordion-chevron">▼</span></h2>
+                <div class="accordion-body" id="acc-body-avatars">
                 <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
                     Загрузите изображения для каждой эмоции. Если не загружены — используется стандартный аватар (Максим).
                 </p>
@@ -920,15 +989,25 @@
                         <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #e0e0e0;">{{ emo_label }}</div>
                         <div style="font-size: 11px; color: #888; margin-bottom: 10px;">{{ emo_hint }}</div>
                         {% if avatar_images and avatar_images.get(emo_key) %}
-                        <img src="{{ url_for('static', filename=avatar_images[emo_key]) }}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e;">
+                        <img id="avatar-preview-{{ emo_key }}" src="{{ url_for('static', filename=avatar_images[emo_key]) }}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e;">
+                        <div id="avatar-placeholder-{{ emo_key }}" style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: none; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
                         {% else %}
-                        <div style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
+                        <img id="avatar-preview-{{ emo_key }}" src="" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; border: 2px solid #2a2a3e; display: none;">
+                        <div id="avatar-placeholder-{{ emo_key }}" style="width: 80px; height: 80px; border-radius: 50%; background: #2a2a3e; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #555;">?</div>
                         {% endif %}
+                        <input type="hidden" name="avatar_{{ emo_key }}_delete" id="avatar-delete-{{ emo_key }}" value="0">
                         <input type="file" name="avatar_{{ emo_key }}" accept="image/*"
-                               style="font-size: 11px; color: #999; width: 100%;">
+                               style="font-size: 11px; color: #999; width: 100%; margin-bottom: 6px;"
+                               onchange="previewAvatar(this, '{{ emo_key }}')">
+                        <button type="button" id="avatar-del-btn-{{ emo_key }}"
+                                onclick="deleteAvatar('{{ emo_key }}')"
+                                style="display: {% if avatar_images and avatar_images.get(emo_key) %}inline-block{% else %}none{% endif %}; font-size: 11px; padding: 3px 10px; background: #c0392b; color: #fff; border: none; border-radius: 5px; cursor: pointer;">
+                            Удалить
+                        </button>
                     </div>
                     {% endfor %}
                 </div>
+                </div><!-- /accordion-body avatars -->
             </div>
             {% endif %}
 
@@ -940,16 +1019,17 @@
                 <div id="steps-container">
                     {% for step in steps %}
                     <div class="step-card" data-step-id="{{ step.id }}">
-                        <div class="step-header">
+                        <div class="step-header accordion-header" id="acc-step-{{ step.id }}">
                             <div class="step-number">
                                 <span>{{ loop.index }}</span>
-                                Шаг {{ loop.index }}
+                                Шаг {{ loop.index }} <span class="accordion-chevron">▼</span>
                             </div>
                             <div class="step-actions">
                                 <button type="button" class="btn btn-danger btn-sm" onclick="deleteStep({{ step.id }})">Удалить шаг</button>
                             </div>
                         </div>
 
+                        <div class="accordion-body" id="acc-body-step-{{ step.id }}">
                         <div class="step-message-block">
                             <div class="block-title">💬 Реплика клиента</div>
                             <div class="client-message-input" style="margin-bottom: 0;">
@@ -1014,6 +1094,14 @@
                                             <option value="-100" class="negative" {% if answer.mood_impact == -100 %}selected{% endif %}>-100% (Game Over)</option>
                                         </select>
                                     </div>
+                                    <div class="form-group" style="max-width: 160px;">
+                                        <label>😤 Раздражение клиента (%)</label>
+                                        <input type="number" name="answer_{{ answer.id }}_irritation_impact"
+                                               min="-100" max="100"
+                                               value="{{ answer.irritation_impact if answer.irritation_impact is not none else 0 }}"
+                                               placeholder="0">
+                                        <div class="form-hint">Минус = успокаивает, плюс = злит. Пример: −15 (верно), +25 (ошибка)</div>
+                                    </div>
                                     <div class="form-group">
                                         <label>Ссылка на Базу Знаний</label>
                                         <input type="text" name="answer_{{ answer.id }}_knowledge_link"
@@ -1039,6 +1127,7 @@
                             </button>
                             </div>
                         </div>
+                        </div><!-- /accordion-body step -->
                     </div>
                     {% endfor %}
                 </div>
@@ -1053,10 +1142,11 @@
                 <button type="submit" class="btn btn-success">
                     {% if scenario %}Сохранить изменения{% else %}Создать сценарий{% endif %}
                 </button>
+                <span id="autoSaveStatus" style="font-size: 13px; margin-left: 8px; transition: color 0.3s;"></span>
                 {% if scenario %}
-                <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
+                <button type="button" onclick="saveAndPreview()" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
                     👁️ Предпросмотр
-                </a>
+                </button>
                 <a href="{{ url_for('admin_trainer_visual', scenario_id=scenario.id) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">
                     🎨 Визуальный редактор
                 </a>
@@ -1068,12 +1158,14 @@
         {% if scenario and version_history %}
         <!-- Version History Section -->
         <div class="version-history-section" style="margin-top: 30px; background: linear-gradient(135deg, #1a1a2e, #16213e); border: 1px solid #2a2a3e; border-radius: 12px; padding: 20px;">
-            <h2 style="color: #00d4aa; margin-bottom: 15px; font-size: 18px;">
+            <h2 class="accordion-header collapsed" id="acc-versions" style="color: #00d4aa; margin-bottom: 15px; font-size: 18px;">
                 📋 История версий
                 <span style="font-size: 13px; color: #888; font-weight: normal; margin-left: 10px;">
                     Текущая: v{{ scenario.version or 1 }}
                 </span>
+                <span class="accordion-chevron">▼</span>
             </h2>
+            <div class="accordion-body collapsed" id="acc-body-versions">
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr style="border-bottom: 1px solid #2a2a3e; color: #888; font-size: 13px;">
@@ -1101,6 +1193,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div><!-- /accordion-body versions -->
         </div>
         {% endif %}
     </div>
@@ -1165,6 +1258,10 @@
                 return;
             }
 
+            // Сохраняем текущие изменения полей перед reload
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
+
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
             formData.append('client_message', 'Новое сообщение клиента');
@@ -1188,8 +1285,79 @@
             }
         }
 
+        // ==================== Карточка клиента — динамические поля ====================
+        const _clientExtraInput = document.getElementById('clientExtraInput');
+        const _clientExtraContainer = document.getElementById('clientExtraFields');
+
+        function serializeClientExtra() {
+            const rows = _clientExtraContainer.querySelectorAll('.client-extra-row');
+            const result = {};
+            rows.forEach(row => {
+                const key = row.querySelector('.extra-key').value.trim();
+                const val = row.querySelector('.extra-val').value.trim();
+                if (key) result[key] = val;
+            });
+            _clientExtraInput.value = Object.keys(result).length ? JSON.stringify(result, null, 0) : '';
+        }
+
+        function addClientField(key = '', val = '') {
+            const row = document.createElement('div');
+            row.className = 'client-extra-row';
+            row.innerHTML = `
+                <input class="extra-key" type="text" placeholder="Название поля (напр. Телефон)" value="${key.replace(/"/g, '&quot;')}">
+                <input class="extra-val" type="text" placeholder="Значение" value="${val.replace(/"/g, '&quot;')}">
+                <button type="button" class="client-extra-remove" onclick="this.closest('.client-extra-row').remove(); serializeClientExtra();">✕</button>
+            `;
+            row.querySelector('.extra-key').addEventListener('input', serializeClientExtra);
+            row.querySelector('.extra-val').addEventListener('input', serializeClientExtra);
+            _clientExtraContainer.appendChild(row);
+            serializeClientExtra();
+        }
+
+        // Заполняем из существующих данных
+        (function initClientExtra() {
+            const raw = _clientExtraInput.value.trim();
+            if (!raw) return;
+            try {
+                const data = JSON.parse(raw);
+                Object.entries(data).forEach(([k, v]) => addClientField(k, v));
+            } catch(e) {}
+        })();
+
+        // Инициализация аккордеонов
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', function(e) {
+                if (e.target.closest('button') || e.target.closest('a')) return;
+                const bodyId = this.id.replace('acc-', 'acc-body-');
+                const body = document.getElementById(bodyId);
+                if (!body) return;
+                this.classList.toggle('collapsed');
+                body.classList.toggle('collapsed');
+                // Сохраняем состояние
+                const key = 'acc_' + this.id;
+                localStorage.setItem(key, this.classList.contains('collapsed') ? '1' : '0');
+            });
+            // Восстанавливаем состояние из localStorage
+            const key = 'acc_' + header.id;
+            const saved = localStorage.getItem(key);
+            if (saved === '1' && !header.classList.contains('collapsed')) {
+                header.classList.add('collapsed');
+                const bodyId = header.id.replace('acc-', 'acc-body-');
+                const body = document.getElementById(bodyId);
+                if (body) body.classList.add('collapsed');
+            } else if (saved === '0' && header.classList.contains('collapsed')) {
+                header.classList.remove('collapsed');
+                const bodyId = header.id.replace('acc-', 'acc-body-');
+                const body = document.getElementById(bodyId);
+                if (body) body.classList.remove('collapsed');
+            }
+        });
+
         async function deleteStep(stepId) {
             if (!confirm('Удалить этот шаг и все его варианты ответов?')) return;
+
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
 
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
@@ -1211,11 +1379,15 @@
         }
 
         async function addAnswer(stepId) {
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
+
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
             formData.append('answer_text', 'Новый вариант ответа');
             formData.append('points', '0');
             formData.append('mood_impact', '0');
+            formData.append('irritation_impact', '0');
 
             try {
                 const response = await fetch(`/admin/trainer/step/${stepId}/answer/create`, {
@@ -1235,6 +1407,9 @@
 
         async function deleteAnswer(answerId) {
             if (!confirm('Удалить этот вариант ответа?')) return;
+
+            clearTimeout(_autoSaveTimer);
+            await autoSave();
 
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
@@ -1344,6 +1519,100 @@
                 resultsDiv.style.display = 'none';
             }
         });
+
+        // Мгновенное превью аватара при выборе файла
+        function previewAvatar(input, emoKey) {
+            if (!input.files || !input.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('avatar-preview-' + emoKey);
+                const placeholder = document.getElementById('avatar-placeholder-' + emoKey);
+                const delBtn = document.getElementById('avatar-del-btn-' + emoKey);
+                const delInput = document.getElementById('avatar-delete-' + emoKey);
+                if (img) { img.src = e.target.result; img.style.display = 'block'; }
+                if (placeholder) placeholder.style.display = 'none';
+                if (delBtn) delBtn.style.display = 'inline-block';
+                if (delInput) delInput.value = '0';
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+
+        function deleteAvatar(emoKey) {
+            const img = document.getElementById('avatar-preview-' + emoKey);
+            const placeholder = document.getElementById('avatar-placeholder-' + emoKey);
+            const delBtn = document.getElementById('avatar-del-btn-' + emoKey);
+            const delInput = document.getElementById('avatar-delete-' + emoKey);
+            const fileInput = document.querySelector('input[name="avatar_' + emoKey + '"][type="file"]');
+            if (img) { img.src = ''; img.style.display = 'none'; }
+            if (placeholder) placeholder.style.display = 'flex';
+            if (delBtn) delBtn.style.display = 'none';
+            if (delInput) delInput.value = '1';
+            if (fileInput) fileInput.value = '';
+        }
+
+        // ==================== Автосохранение ====================
+        let _autoSaveTimer = null;
+
+        function showSaveStatus(status) {
+            const el = document.getElementById('autoSaveStatus');
+            if (!el) return;
+            if (status === 'saving') {
+                el.textContent = '💾 Сохранение...';
+                el.style.color = '#888';
+            } else if (status === 'saved') {
+                el.textContent = '✓ Сохранено';
+                el.style.color = '#4caf50';
+                setTimeout(() => { if (el.textContent === '✓ Сохранено') el.textContent = ''; }, 3000);
+            } else if (status === 'error') {
+                el.textContent = '✗ Ошибка';
+                el.style.color = '#f44336';
+            }
+        }
+
+        async function saveAndPreview() {
+            await autoSave();
+            window.location.href = "{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1&back=edit";
+        }
+
+        async function autoSave() {
+            if (!scenarioId) return;
+            showSaveStatus('saving');
+            try {
+                const form = document.getElementById('scenarioForm');
+                const formData = new FormData(form);
+                formData.set('next_action', '');
+                // Не переотправляем файлы при автосохранении
+                form.querySelectorAll('input[type="file"]').forEach(inp => {
+                    if (inp.name) formData.delete(inp.name);
+                });
+                const response = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    body: formData
+                });
+                showSaveStatus(response.ok ? 'saved' : 'error');
+            } catch (e) {
+                showSaveStatus('error');
+            }
+        }
+
+        let _hasUnsavedChanges = false;
+
+        function scheduleAutoSave() {
+            _hasUnsavedChanges = true;
+        }
+
+        if (scenarioId) {
+            const form = document.getElementById('scenarioForm');
+            form.addEventListener('input', scheduleAutoSave);
+            form.addEventListener('change', scheduleAutoSave);
+            // Автосохранение каждые 30 секунд если есть изменения
+            setInterval(() => {
+                if (_hasUnsavedChanges) {
+                    _hasUnsavedChanges = false;
+                    autoSave();
+                }
+            }, 30000);
+        }
 
         // Tags functions
         async function addNewTag() {

@@ -24,6 +24,9 @@ from urllib.parse import urlparse
 # Загружаем переменные окружения ПЕРЕД импортом admin_manager
 load_dotenv()
 
+# Абсолютный путь к директории приложения — нужен для корректной работы на сервере
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # ============================================
 # АУДИТ-ЛОГ В ФАЙЛ (RotatingFileHandler)
 # ============================================
@@ -400,9 +403,9 @@ APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
 
 TRUSTED_PROXY_IP = os.getenv("TRUSTED_PROXY_IP")
-TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', 'topics.db')
+TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', os.path.join(BASE_DIR, 'topics.db'))
 TICKET_NUMBER_START = int(os.getenv('TICKET_NUMBER_START', '125'))
-AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', 'topics.db')
+AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', os.path.join(BASE_DIR, 'topics.db'))
 ANALYTICS_BACKEND = os.getenv('ANALYTICS_BACKEND', 'postgres').lower()
 ANALYTICS_USE_POSTGRES = ANALYTICS_BACKEND == 'postgres' and psycopg2 is not None
 POSTGRES_CONFIG = {
@@ -985,10 +988,10 @@ def extract_ticket_number_from_text(text: str) -> int | None:
         return None
 
 # Инициализация TopicsManager
-tm = TopicsManager("topics.db")
+tm = TopicsManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация TrainerManager
-trainer_mgr = TrainerManager("topics.db")
+trainer_mgr = TrainerManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация счётчика заявок
 _init_ticket_counter_table()
@@ -2498,6 +2501,8 @@ def trainer_play(scenario_id):
     """Страница прохождения сценария"""
     # Check for preview mode
     preview_mode = request.args.get('preview') == '1'
+    # Откуда пришли: 'visual' или 'edit' (для кнопки возврата из предпросмотра)
+    back_editor = request.args.get('back', 'edit')
 
     # In preview mode, admin must be logged in
     if preview_mode:
@@ -2568,10 +2573,20 @@ def trainer_play(scenario_id):
         except:
             pass
 
+    # URL для кнопки «Вернуться» в режиме предпросмотра
+    if preview_mode:
+        if back_editor == 'visual':
+            back_url = url_for('admin_trainer_visual', scenario_id=scenario_id)
+        else:
+            back_url = url_for('admin_trainer_edit', scenario_id=scenario_id)
+    else:
+        back_url = None
+
     return render_template('trainer_play.html',
                          scenario=scenario,
                          total_steps=total_steps,
                          preview_mode=preview_mode,
+                         back_url=back_url,
                          correct_topics=correct_topics,
                          avatar_images=avatar_images,
                          client_name=client_name)
@@ -2581,7 +2596,7 @@ def trainer_play(scenario_id):
 @rate_limit(max_requests=120, window=60)
 def trainer_get_step(scenario_id, step_num):
     """API: получить шаг сценария"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
 
     step = trainer_mgr.get_step_by_num(scenario_id, step_num)
@@ -2632,7 +2647,7 @@ def trainer_get_step(scenario_id, step_num):
 @rate_limit(max_requests=120, window=60)
 def trainer_get_step_by_id(step_id):
     """API: получить шаг по ID (для ветвления диалога)"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
 
     step = trainer_mgr.get_step_by_id(step_id)
@@ -2671,7 +2686,7 @@ def trainer_get_step_by_id(step_id):
 @rate_limit(max_requests=60, window=60)
 def trainer_submit_answer():
     """API: отправить ответ"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
 
     try:
@@ -2726,6 +2741,7 @@ def trainer_submit_answer():
             'points_earned': selected_answer['points'],
             'feedback': selected_answer['feedback'] or '',
             'mood_impact': mood_impact,
+            'irritation_impact': selected_answer.get('irritation_impact', 0),
             'new_mood': new_mood,
             'new_loyalty': new_loyalty,
             'knowledge_link': selected_answer.get('knowledge_link'),
@@ -2743,8 +2759,13 @@ def trainer_submit_answer():
 @rate_limit(max_requests=30, window=60)
 def trainer_complete():
     """API: завершить сценарий"""
-    if 'user_info' not in session or not session.get('authenticated'):
+    is_admin_preview = session.get('admin_logged_in') and 'user_info' not in session
+    if ('user_info' not in session or not session.get('authenticated')) and not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    # В режиме предпросмотра результаты не сохраняем
+    if is_admin_preview:
+        return jsonify({'success': True, 'result_id': None, 'percent': 0, 'grade': 'preview', 'is_game_over': False})
 
     try:
         data = request.get_json()
@@ -2854,8 +2875,8 @@ def trainer_results(result_id):
                             'is_partial': answer.get('is_partial', False),
                             'is_timeout': ans.get('is_timeout', False),
                             'mood_impact': ans.get('mood_impact', 0),
-                            'knowledge_link': ans.get('knowledge_link') or answer.get('knowledge_link'),
-                            'feedback': answer.get('feedback', '')
+                            'knowledge_link': ans.get('knowledge_link') or answer.get('knowledge_link') or '',
+                            'feedback': answer.get('feedback') or ans.get('feedback') or ''
                         })
                         break
 
@@ -3065,9 +3086,10 @@ def admin_trainer_edit(scenario_id):
             'client_info_json': client_info_json,
             'correct_topics': correct_topics_val,
             'silence_messages': request.form.get('silence_messages', '').strip(),
-            'is_draft': is_draft
+            'is_draft': is_draft,
+            'emotion_timeout_penalty': request.form.get('emotion_timeout_penalty', 20, type=int),
+            'emotion_passive_rate': request.form.get('emotion_passive_rate', 0, type=int),
         }
-
         # Сохраняем снимок текущей версии перед обновлением
         user_info = session.get('user_info', {})
         editor = user_info.get('username') or user_info.get('name', 'admin')
@@ -3082,22 +3104,31 @@ def admin_trainer_edit(scenario_id):
                 pass
 
         emotion_keys = ['angry', 'irritated', 'neutral', 'satisfied', 'delighted']
+        avatars_dir = os.path.join(app.static_folder, 'uploads', 'avatars')
+        os.makedirs(avatars_dir, exist_ok=True)
         for emo in emotion_keys:
+            # Удаление аватара
+            if request.form.get(f'avatar_{emo}_delete') == '1':
+                old_path = avatar_images.pop(emo, None)
+                if old_path:
+                    full_path = os.path.join(app.static_folder, old_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                continue
+            # Загрузка нового аватара
             file = request.files.get(f'avatar_{emo}')
             if file and file.filename:
-                import os
                 from werkzeug.utils import secure_filename
                 ext = os.path.splitext(file.filename)[1].lower()
                 if ext in ['.png', '.jpg', '.jpeg', '.webp']:
                     fname = f"scenario_{scenario_id}_{emo}{ext}"
-                    fpath = os.path.join('static', 'uploads', 'avatars', fname)
+                    fpath = os.path.join(avatars_dir, fname)
                     file.save(fpath)
                     avatar_images[emo] = f"uploads/avatars/{fname}"
 
         data['avatar_images'] = json.dumps(avatar_images, ensure_ascii=False) if avatar_images else ''
 
         result = trainer_mgr.update_scenario(scenario_id, data)
-
         if result['success']:
             # Сохраняем теги
             tag_ids = request.form.getlist('tags')
@@ -3137,11 +3168,15 @@ def admin_trainer_edit(scenario_id):
                         'points': request.form.get(f'answer_{answer_id}_points', 0, type=int),
                         'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip(),
                         'mood_impact': request.form.get(f'answer_{answer_id}_mood_impact', 0, type=int),
+                        'irritation_impact': request.form.get(f'answer_{answer_id}_irritation_impact', 0, type=int),
                         'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None,
                         'next_step_id': request.form.get(f'answer_{answer_id}_next_step_id', type=int) or None
                     })
 
             flash('Сценарий успешно обновлен!')
+            # Если нажали «Предпросмотр» — сохранить и перейти в предпросмотр
+            if request.form.get('next_action') == 'preview':
+                return redirect(url_for('trainer_play', scenario_id=scenario_id, preview=1, back='edit'))
         else:
             flash(f'Ошибка: {result.get("error")}')
 
@@ -3412,7 +3447,9 @@ def admin_trainer_create_answer(step_id):
         'is_correct': 0,
         'is_partial': 0,
         'points': request.form.get('points', 0, type=int),
-        'feedback': ''
+        'feedback': '',
+        'mood_impact': request.form.get('mood_impact', 0, type=int),
+        'irritation_impact': request.form.get('irritation_impact', 0, type=int),
     }
 
     result = trainer_mgr.create_answer(step_id, data)

@@ -2598,7 +2598,6 @@ def admin_trainer_edit(scenario_id):
             'emotion_timeout_penalty': request.form.get('emotion_timeout_penalty', 20, type=int),
             'emotion_passive_rate': request.form.get('emotion_passive_rate', 0, type=int),
         }
-
         # Сохраняем снимок текущей версии перед обновлением
         user_info = session.get('user_info', {})
         editor = user_info.get('username') or user_info.get('name', 'admin')
@@ -2629,7 +2628,6 @@ def admin_trainer_edit(scenario_id):
         data['avatar_images'] = json.dumps(avatar_images, ensure_ascii=False) if avatar_images else ''
 
         result = trainer_mgr.update_scenario(scenario_id, data)
-
         if result['success']:
             # Сохраняем теги
             tag_ids = request.form.getlist('tags')

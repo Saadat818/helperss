@@ -1563,8 +1563,10 @@
         }
 
         async function saveAndPreview() {
+            {% if scenario %}
             await autoSave();
             window.location.href = "{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1&back=edit";
+            {% endif %}
         }
 
         async function autoSave() {

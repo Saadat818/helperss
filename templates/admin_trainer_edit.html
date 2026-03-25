@@ -1491,7 +1491,19 @@
 
                     if (data.success && data.results && data.results.length > 0) {
                         resultsDiv.innerHTML = '';
-                        data.results.slice(0, 15).forEach(r => {
+                        // Берём до 4 результатов из каждого канала — чтобы показывались все каналы
+                        const perChannel = {};
+                        const diverse = [];
+                        for (const r of data.results) {
+                            const ch = r.channel || '';
+                            if (!perChannel[ch]) perChannel[ch] = 0;
+                            if (perChannel[ch] < 4) {
+                                perChannel[ch]++;
+                                diverse.push(r);
+                            }
+                            if (diverse.length >= 40) break;
+                        }
+                        diverse.forEach(r => {
                             const item = document.createElement('div');
                             item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #2a2a3e; font-size:13px; transition:background 0.2s; color:#e0e0e0;';
                             item.onmouseenter = () => item.style.background = '#2a2a3e';
@@ -1570,8 +1582,10 @@
         }
 
         async function saveAndPreview() {
+            {% if scenario %}
             await autoSave();
             window.location.href = "{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1&back=edit";
+            {% endif %}
         }
 
         async function autoSave() {

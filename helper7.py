@@ -339,7 +339,7 @@ def mark_request_start():
     _track_user_activity()
 
 
-TRAINER_MAINTENANCE = True
+TRAINER_MAINTENANCE = os.getenv('TRAINER_MAINTENANCE', 'false').lower() == 'true'
 
 @app.before_request
 def trainer_maintenance_check():

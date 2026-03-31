@@ -346,7 +346,7 @@ class TrainerManager:
             # Добавляем новый уровень Hard
             cursor.execute("""
                 INSERT INTO trainer_levels (name, code, description, icon, color, required_level, required_percent, order_num)
-                VALUES ('Hard', 'hard', 'Экстремальные ситуации. Максимальная сложность.', '💀', '#9C27B0', 'advanced', 80, 4)
+                VALUES ('Хардкор', 'hard', 'Экстремальные ситуации. Максимальная сложность.', '💀', '#9C27B0', 'advanced', 80, 4)
             """)
 
             # Обновляем ссылки на required_level
@@ -365,7 +365,7 @@ class TrainerManager:
             ("Базовый", "basic", "Основы работы с клиентами. Простые ситуации.", "🌱", "#4CAF50", None, 0, 1),
             ("Средний", "medium", "Сложные ситуации и конфликтные клиенты.", "⚡", "#FF9800", "basic", 80, 2),
             ("Высокий", "advanced", "Нестандартные случаи и VIP-клиенты.", "🔥", "#F44336", "medium", 80, 3),
-            ("Hard", "hard", "Экстремальные ситуации. Максимальная сложность.", "💀", "#9C27B0", "advanced", 80, 4),
+            ("Хардкор", "hard", "Экстремальные ситуации. Максимальная сложность.", "💀", "#9C27B0", "advanced", 80, 4),
         ]
 
         cursor.execute("SELECT code, order_num FROM trainer_levels")
@@ -486,7 +486,7 @@ class TrainerManager:
                 ("Базовый", "basic", "Основы работы с клиентами. Простые ситуации.", "🌱", "#4CAF50", None, 0, 1),
                 ("Средний", "medium", "Сложные ситуации и конфликтные клиенты.", "⚡", "#FF9800", "basic", 80, 2),
                 ("Высокий", "advanced", "Нестандартные случаи и VIP-клиенты.", "🔥", "#F44336", "medium", 80, 3),
-                ("Hard", "hard", "Экстремальные ситуации. Максимальная сложность.", "💀", "#9C27B0", "advanced", 80, 4)
+                ("Хардкор", "hard", "Экстремальные ситуации. Максимальная сложность.", "💀", "#9C27B0", "advanced", 80, 4)
             ]
             cursor.executemany("""
                 INSERT INTO trainer_levels (name, code, description, icon, color, required_level, required_percent, order_num)

@@ -568,6 +568,16 @@
         </div>
         {% endif %}
 
+        {% if result.repeat_bonus %}
+        <div style="background: linear-gradient(135deg, #00d4aa22, #00d4aa11); border: 1.5px solid #00d4aa; border-radius: 14px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 28px;">🎁</span>
+            <div>
+                <div style="color: #00d4aa; font-size: 16px; font-weight: 700;">+{{ result.repeat_bonus }} бонусных баллов!</div>
+                <div style="color: #aaa; font-size: 13px; margin-top: 2px;">Начислено за повторное прохождение сценария</div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Score Card -->
         <div class="score-card {{ result.grade }}">
             <div class="grade-icon">{{ grade_info.icon }}</div>

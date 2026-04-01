@@ -210,6 +210,9 @@ class TrainerManager:
         # Миграция: таблица посещений сценариев
         self._migrate_visits_table()
 
+        # Миграция: бонус за повторное прохождение
+        self._migrate_repeat_bonus()
+
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
         cursor = self.conn.cursor()
@@ -473,6 +476,23 @@ class TrainerManager:
         if 'next_step_id' not in columns:
             cursor.execute("ALTER TABLE trainer_answers ADD COLUMN next_step_id INTEGER")
             self.conn.commit()
+
+    def _migrate_repeat_bonus(self):
+        """Миграция: добавление колонки repeat_bonus для бонусных баллов за повторное прохождение"""
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_results)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'repeat_bonus' not in columns:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN repeat_bonus INTEGER DEFAULT 0")
+            self.conn.commit()
+
+    # Делители бонуса по коду уровня: бонус = round(score / делитель)
+    REPEAT_BONUS_DIVISORS = {
+        'basic': 10,
+        'medium': 9,
+        'advanced': 8,
+        'hard': 7,
+    }
 
     def _init_default_data(self):
         """Инициализация начальных данных (уровни, категории)"""
@@ -1244,14 +1264,27 @@ class TrainerManager:
         scenario_version = scenario.get('version', 1) if scenario else None
 
         cursor = self.conn.cursor()
+
+        # Определяем бонус за повторное прохождение
+        repeat_bonus = 0
+        cursor.execute(
+            "SELECT COUNT(*) FROM trainer_results WHERE user_id = ? AND scenario_id = ?",
+            (user_id, scenario_id)
+        )
+        is_repeat = cursor.fetchone()[0] > 0
+        if is_repeat and scenario:
+            level_code = scenario.get('level_code', 'basic')
+            divisor = self.REPEAT_BONUS_DIVISORS.get(level_code, 10)
+            repeat_bonus = round(score / divisor)
+
         cursor.execute("""
             INSERT INTO trainer_results (user_id, scenario_id, score, max_score, percent, grade, answers_json,
                                         final_loyalty, is_game_over, timeout_count, selected_topic_id, selected_topic_name,
-                                        scenario_version, started_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        scenario_version, started_at, repeat_bonus)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (user_id, scenario_id, score, max_score, percent, grade, json.dumps(answers, ensure_ascii=False),
               final_loyalty, 1 if is_game_over else 0, timeout_count, selected_topic_id, selected_topic_name,
-              scenario_version, started_at))
+              scenario_version, started_at, repeat_bonus))
 
         self.conn.commit()
         result_id = cursor.lastrowid
@@ -1268,7 +1301,8 @@ class TrainerManager:
             'percent': percent,
             'grade': grade,
             'final_loyalty': final_loyalty,
-            'is_game_over': is_game_over
+            'is_game_over': is_game_over,
+            'repeat_bonus': repeat_bonus
         }
 
     def get_user_results(self, user_id: str, scenario_id: int = None) -> List[Dict]:
@@ -1695,21 +1729,23 @@ class TrainerManager:
                 'avg_percent': round(row[1] or 0, 1)
             })
 
-        # Топ пользователей — суммируем только последнее прохождение каждого сценария
+        # Топ пользователей: баллы за последнее прохождение каждого сценария + все бонусы за повторы
         cursor.execute("""
             SELECT user_id,
                    COUNT(*) as completions,
                    AVG(percent) as avg_percent,
-                   SUM(score) as total_score
+                   SUM(last_score) + SUM(all_bonus) as total_score
             FROM (
-                SELECT user_id, scenario_id,
-                       score, percent
-                FROM trainer_results r1
-                WHERE id = (
-                    SELECT id FROM trainer_results r2
-                    WHERE r2.user_id = r1.user_id AND r2.scenario_id = r1.scenario_id
-                    ORDER BY completed_at DESC LIMIT 1
-                )
+                SELECT r.user_id,
+                       r.scenario_id,
+                       CASE WHEN r.id = (
+                           SELECT id FROM trainer_results r2
+                           WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
+                           ORDER BY completed_at DESC LIMIT 1
+                       ) THEN r.score ELSE 0 END as last_score,
+                       COALESCE(r.repeat_bonus, 0) as all_bonus,
+                       r.percent
+                FROM trainer_results r
             )
             GROUP BY user_id
             ORDER BY total_score DESC, completions DESC

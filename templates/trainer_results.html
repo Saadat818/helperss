@@ -584,6 +584,13 @@
                     <div class="score-value">{{ result.percent }}%</div>
                     <div class="score-label">Результат</div>
                 </div>
+                {% if result.repeat_bonus %}
+                <div class="score-divider"></div>
+                <div class="score-item">
+                    <div class="score-value" style="color:#00d4aa;">+{{ result.repeat_bonus }}</div>
+                    <div class="score-label">Бонус за повтор</div>
+                </div>
+                {% endif %}
             </div>
 
             {% if result.final_loyalty is not none %}

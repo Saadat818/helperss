@@ -1741,7 +1741,7 @@ class TrainerManager:
                        CASE WHEN r.id = (
                            SELECT id FROM trainer_results r2
                            WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
-                           ORDER BY completed_at DESC LIMIT 1
+                           ORDER BY completed_at DESC, id DESC LIMIT 1
                        ) THEN r.score ELSE 0 END as last_score,
                        COALESCE(r.repeat_bonus, 0) as all_bonus,
                        r.percent

@@ -111,9 +111,15 @@
             margin-bottom: 40px;
         }
 
+        .logo-img {
+            height: 48px;
+            width: 48px;
+        }
+
         .logo-text {
             display: inline-flex;
             align-items: center;
+            gap: 12px;
             font-weight: 800;
             font-size: 38px;
             letter-spacing: -0.3px;
@@ -272,7 +278,7 @@
         <a href="{{ url_for('user_logout') }}" class="logout-btn">🚪 Выход</a>
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
         <div class="header">
-            <div class="logo-text">МБанк</div>
+            <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
             <h1>Добро пожаловать в Helper!</h1>
             <p class="subtitle">Выберите, чем мы можем вам помочь сегодня</p>
         </div>

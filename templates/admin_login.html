@@ -57,6 +57,12 @@
             height: 54px;
             display: flex;
             align-items: center;
+            gap: 10px;
+        }
+
+        .logo-img {
+            height: 44px;
+            width: 44px;
         }
 
         .logo-text {
@@ -469,7 +475,8 @@
     <div class="login-container">
         <div class="logo">
             <div class="logo-wrap">
-                <span class="logo-text">МБанк</span>
+                <img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">
+                <span class="logo-text">Helper</span>
             </div>
         </div>
 

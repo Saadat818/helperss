@@ -87,9 +87,15 @@
             }
         }
 
+        .logo-img {
+            height: 40px;
+            width: 40px;
+        }
+
         .logo-text {
             display: inline-flex;
             align-items: center;
+            gap: 10px;
             font-weight: 800;
             font-size: 32px;
             letter-spacing: -0.3px;
@@ -288,7 +294,7 @@
     <!-- Основное содержимое -->
     <div class="container">
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-        <div class="logo-text">МБанк</div>
+        <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
         <h2>Пожалуйста, уточните проблему:</h2>
 
         {% if version_hints %}

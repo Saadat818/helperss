@@ -189,7 +189,7 @@ def add_security_headers(response):
         try:
             data = response.get_data(as_text=True)
             if '<head>' in data and 'favicon' not in data:
-                favicon_tag = '<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'80\' font-size=\'80\'>🤖</text></svg>">'
+                favicon_tag = '<link rel="icon" type="image/svg+xml" href="/static/images/helper_logo.svg">'
                 data = data.replace('<head>', '<head>' + favicon_tag, 1)
                 response.set_data(data)
         except Exception:

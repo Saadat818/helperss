@@ -105,6 +105,7 @@
         .logo-text {
             display: inline-flex;
             align-items: center;
+            gap: 10px;
             font-weight: 800;
             font-size: 28px;
             letter-spacing: -0.3px;
@@ -113,6 +114,11 @@
             background-clip: text;
             color: transparent;
             margin-bottom: 12px;
+        }
+
+        .logo-img {
+            height: 36px;
+            width: 36px;
         }
 
         h2 {
@@ -553,7 +559,7 @@
 
         <div class="container">
             <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-            <div class="logo-text">МБанк</div>
+            <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
             <h2>📋 Просмотр тематик обращений</h2>
             <p class="subtitle">
                 Поиск и просмотр тематик. Введите описание для поиска или выберите канал для просмотра всех тематик

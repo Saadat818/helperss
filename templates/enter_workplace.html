@@ -41,9 +41,15 @@
             padding: 24px 26px 26px;
         }
 
+        .logo-img {
+            height: 44px;
+            width: 44px;
+        }
+
         .logo-text {
             display: inline-flex;
             align-items: center;
+            gap: 10px;
             font-weight: 800;
             font-size: 34px;
             letter-spacing: -0.2px;
@@ -194,7 +200,7 @@
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
     <div class="container">
-        <div class="logo-text">МБанк</div>
+        <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
 
         <h2>Укажите рабочее место</h2>
 

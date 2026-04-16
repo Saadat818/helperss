@@ -798,7 +798,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    window.location.href = '{{ url_for("admin_trainer") }}';
+                    window.location.href = '{{ url_for("admin_trainer_segment", segment=segment) }}';
                 } else {
                     document.getElementById('adminError').style.display = 'block';
                     document.getElementById('adminPassword').value = '';

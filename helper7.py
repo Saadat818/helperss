@@ -2480,8 +2480,8 @@ def _admin_trainer_redirect(scenario_id=None, segment=None):
 @app.route('/admin/trainer')
 @AdminAuth.login_required
 def admin_trainer():
-    """Выбор сегмента для админки тренажера"""
-    return render_template('admin_trainer_segments.html')
+    """Редирект в КЦ по умолчанию"""
+    return redirect(url_for('admin_trainer_segment', segment='kc'))
 
 
 @app.route('/admin/trainer/<segment>')

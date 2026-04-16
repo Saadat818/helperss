@@ -671,7 +671,30 @@
     }
 
     window.toggleFlow = function() {
-        document.getElementById('flowWidget').classList.toggle('open');
+        const widget = document.getElementById('flowWidget');
+        const isOpen = widget.classList.contains('open');
+        widget.classList.toggle('open');
+        if (isOpen) {
+            // Закрываем — замораживаем таймер
+            clearInterval(timerInterval);
+            timerInterval = null;
+        } else {
+            // Открываем — возобновляем таймер если время ещё есть
+            if (timeLeft > 0 && !timerInterval) {
+                timerInterval = setInterval(function() {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    if (timeLeft <= 0) {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                        const st = document.getElementById('flowStatus');
+                        st.textContent = '⏰ Время вышло! Попробуй ещё раз';
+                        st.className = 'flow-status';
+                        st.style.color = '#e74c3c';
+                    }
+                }, 1000);
+            }
+        }
     };
     window.flowNextLevel = function() {
         if(curLevel < LEVELS.length-1) initLevel(curLevel+1);

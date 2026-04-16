@@ -2526,6 +2526,9 @@ def admin_trainer_segment(segment):
         s['tags'] = trainer_mgr.get_scenario_tags(s['id'])
     scenarios = scenarios + archived_scenarios
 
+    unread_feedback = trainer_mgr.get_unread_feedback_count()
+    draft_count = trainer_mgr.get_draft_count()
+
     return render_template('admin_trainer.html',
                          stats=stats,
                          levels=levels,
@@ -2536,7 +2539,9 @@ def admin_trainer_segment(segment):
                          current_category=category_id,
                          current_tag=tag_id,
                          segment=segment,
-                         seg_info=seg_info)
+                         seg_info=seg_info,
+                         unread_feedback=unread_feedback,
+                         draft_count=draft_count)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])

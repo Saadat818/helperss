@@ -2526,8 +2526,8 @@ def admin_trainer_segment(segment):
         s['tags'] = trainer_mgr.get_scenario_tags(s['id'])
     scenarios = scenarios + archived_scenarios
 
-    unread_feedback = trainer_mgr.get_unread_feedback_count()
-    draft_count = trainer_mgr.get_draft_count()
+    unread_feedback = trainer_mgr.get_unread_feedback_count(segment=segment)
+    draft_count = trainer_mgr.get_draft_count(segment=segment)
 
     return render_template('admin_trainer.html',
                          stats=stats,

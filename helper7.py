@@ -2467,11 +2467,32 @@ def trainer_results(result_id):
 # АДМИН-ПАНЕЛЬ ТРЕНАЖЕРА
 # ============================================
 
+def _admin_trainer_redirect(scenario_id=None, segment=None):
+    """Редирект в нужный сегмент админки после операции над сценарием"""
+    if not segment and scenario_id:
+        sc = trainer_mgr.get_scenario(scenario_id)
+        segment = sc.get('segment', 'kc') if sc else 'kc'
+    if segment in TRAINER_SEGMENTS:
+        return redirect(url_for('admin_trainer_segment', segment=segment))
+    return redirect(url_for('admin_trainer'))
+
+
 @app.route('/admin/trainer')
 @AdminAuth.login_required
 def admin_trainer():
-    """Админка: список сценариев тренажера"""
-    stats = trainer_mgr.get_statistics()
+    """Выбор сегмента для админки тренажера"""
+    return render_template('admin_trainer_segments.html')
+
+
+@app.route('/admin/trainer/<segment>')
+@AdminAuth.login_required
+def admin_trainer_segment(segment):
+    """Админка: список сценариев тренажера по сегменту"""
+    if segment not in TRAINER_SEGMENTS:
+        return redirect(url_for('admin_trainer'))
+
+    seg_info = TRAINER_SEGMENTS[segment]
+    stats = trainer_mgr.get_statistics(segment=segment)
     levels = trainer_mgr.get_all_levels()
     categories = trainer_mgr.get_all_categories()
     tags = trainer_mgr.get_all_tags()
@@ -2481,7 +2502,7 @@ def admin_trainer():
     category_id = request.args.get('category', type=int)
     tag_id = request.args.get('tag', type=int)
 
-    scenarios = trainer_mgr.get_all_scenarios(include_inactive=True)
+    scenarios = trainer_mgr.get_all_scenarios(include_inactive=True, segment=segment)
 
     # Применяем фильтры
     if level_code:
@@ -2494,19 +2515,16 @@ def admin_trainer():
         scenario['steps_count'] = trainer_mgr.get_steps_count(scenario['id'])
         scenario['tags'] = trainer_mgr.get_scenario_tags(scenario['id'])
 
-    # Фильтр по тегу (после получения тегов)
+    # Фильтр по тегу
     if tag_id:
         scenarios = [s for s in scenarios if any(t['id'] == tag_id for t in s['tags'])]
 
-    # Добавляем архивные в конец общего списка
-    archived_scenarios = trainer_mgr.get_archived_scenarios()
+    # Архивные в конец
+    archived_scenarios = trainer_mgr.get_archived_scenarios(segment=segment)
     for s in archived_scenarios:
         s['steps_count'] = trainer_mgr.get_steps_count(s['id'])
         s['tags'] = trainer_mgr.get_scenario_tags(s['id'])
     scenarios = scenarios + archived_scenarios
-
-    unread_feedback = trainer_mgr.get_unread_feedback_count()
-    draft_count = trainer_mgr.get_draft_count()
 
     return render_template('admin_trainer.html',
                          stats=stats,
@@ -2517,8 +2535,8 @@ def admin_trainer():
                          current_level=level_code,
                          current_category=category_id,
                          current_tag=tag_id,
-                         unread_feedback=unread_feedback,
-                         draft_count=draft_count)
+                         segment=segment,
+                         seg_info=seg_info)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
@@ -2584,6 +2602,7 @@ def admin_trainer_edit(scenario_id):
         flash('Сценарий не найден')
         return redirect(url_for('admin_trainer'))
 
+    sc_segment = scenario.get('segment', 'kc')
     levels = trainer_mgr.get_all_levels()
     categories = trainer_mgr.get_all_categories()
 
@@ -2817,14 +2836,13 @@ def admin_trainer_version_detail(scenario_id, version):
 @AdminAuth.login_required
 def admin_trainer_delete(scenario_id):
     """Удаление сценария"""
-    # Получаем информацию о сценарии перед удалением
     scenario = trainer_mgr.get_scenario(scenario_id)
     scenario_title = scenario['title'] if scenario else f"ID {scenario_id}"
+    sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
 
     result = trainer_mgr.delete_scenario(scenario_id)
 
     if result['success']:
-        # Логируем удаление (берём AD учётку пользователя)
         user_info = session.get('user_info', {})
         trainer_mgr.log_action(
             user_id=user_info.get('username') or user_info.get('name', 'admin'),
@@ -2838,7 +2856,7 @@ def admin_trainer_delete(scenario_id):
     else:
         flash(f'Ошибка: {result.get("error")}')
 
-    return redirect(url_for('admin_trainer'))
+    return _admin_trainer_redirect(segment=sc_segment)
 
 
 @app.route('/admin/trainer/drafts')
@@ -2884,6 +2902,7 @@ def admin_trainer_publish(scenario_id):
 def admin_trainer_archive(scenario_id):
     """Отправить сценарий в архив"""
     scenario = trainer_mgr.get_scenario(scenario_id)
+    sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
     result = trainer_mgr.archive_scenario(scenario_id)
     if result['success']:
         user_info = session.get('user_info', {})
@@ -2898,7 +2917,7 @@ def admin_trainer_archive(scenario_id):
         flash('Сценарий перемещён в архив.')
     else:
         flash(f'Ошибка: {result.get("error")}')
-    return redirect(url_for('admin_trainer'))
+    return _admin_trainer_redirect(segment=sc_segment)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/restore', methods=['POST'])
@@ -2906,6 +2925,7 @@ def admin_trainer_archive(scenario_id):
 def admin_trainer_restore(scenario_id):
     """Восстановить сценарий из архива"""
     scenario = trainer_mgr.get_scenario(scenario_id)
+    sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
     result = trainer_mgr.restore_from_archive(scenario_id)
     if result['success']:
         user_info = session.get('user_info', {})
@@ -2920,7 +2940,7 @@ def admin_trainer_restore(scenario_id):
         flash('Сценарий восстановлен из архива и снова активен.')
     else:
         flash(f'Ошибка: {result.get("error")}')
-    return redirect(url_for('admin_trainer'))
+    return _admin_trainer_redirect(segment=sc_segment)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/duplicate', methods=['POST'])
@@ -2942,8 +2962,9 @@ def admin_trainer_duplicate(scenario_id):
         flash('Сценарий продублирован и сохранён в черновиках!')
         return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
     else:
+        sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
         flash(f'Ошибка дублирования: {result.get("error")}')
-        return redirect(url_for('admin_trainer'))
+        return _admin_trainer_redirect(segment=sc_segment)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])
@@ -3025,7 +3046,7 @@ def admin_trainer_visual(scenario_id):
     scenario = trainer_mgr.get_scenario(scenario_id)
     if not scenario:
         flash('Сценарий не найден')
-        return redirect(url_for('admin_trainer'))
+        return _admin_trainer_redirect()
 
     # Получаем шаги с ответами для инициализации визуального редактора
     steps = trainer_mgr.get_scenario_steps(scenario_id)

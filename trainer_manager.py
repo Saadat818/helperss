@@ -1001,21 +1001,24 @@ class TrainerManager:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def get_all_scenarios(self, include_inactive: bool = False) -> List[Dict]:
-        """Получить все сценарии (без черновиков и архивных)"""
+    def get_all_scenarios(self, include_inactive: bool = False, segment: str = None) -> List[Dict]:
+        """Получить все сценарии (без черновиков и архивных), опционально по сегменту"""
         cursor = self.conn.cursor()
+        seg_clause = "AND s.segment = ?" if segment else ""
+        seg_p = [segment] if segment else []
         if include_inactive:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
                 WHERE (s.is_draft = 0 OR s.is_draft IS NULL)
                   AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                  {seg_clause}
                 ORDER BY l.order_num, s.order_num
-            """)
+            """, seg_p)
         else:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
@@ -1023,21 +1026,24 @@ class TrainerManager:
                 WHERE s.is_active = 1
                   AND (s.is_draft = 0 OR s.is_draft IS NULL)
                   AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                  {seg_clause}
                 ORDER BY l.order_num, s.order_num
-            """)
+            """, seg_p)
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_archived_scenarios(self) -> List[Dict]:
-        """Получить все архивные сценарии"""
+    def get_archived_scenarios(self, segment: str = None) -> List[Dict]:
+        """Получить архивные сценарии, опционально по сегменту"""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        seg_clause = "AND s.segment = ?" if segment else ""
+        seg_p = [segment] if segment else []
+        cursor.execute(f"""
             SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
             FROM trainer_scenarios s
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
-            WHERE s.is_archived = 1
+            WHERE s.is_archived = 1 {seg_clause}
             ORDER BY s.created_at DESC
-        """)
+        """, seg_p)
         return [dict(row) for row in cursor.fetchall()]
 
     def get_archived_count(self) -> int:

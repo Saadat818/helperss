@@ -417,13 +417,13 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('choose_help_type') }}" class="back-link">
-        &larr; Назад
+    <a href="{{ url_for('admin_trainer') }}" class="back-link">
+        &larr; К сегментам
     </a>
 
     <div class="container">
         <div class="header">
-            <h1>🎯 Управление тренажером</h1>
+            <h1>{{ seg_info.icon if seg_info else '🎯' }} Тренажер — {{ seg_info.name if seg_info else 'Управление' }}</h1>
             <div class="header-buttons">
                 <a href="{{ url_for('admin_trainer_feedback') }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
                 <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
@@ -629,7 +629,7 @@
             const category = document.getElementById('filter-category').value;
             const tag = document.getElementById('filter-tag').value;
 
-            let url = '{{ url_for("admin_trainer") }}?';
+            let url = '{{ url_for("admin_trainer_segment", segment=segment) }}?';
             if (level) url += 'level=' + level + '&';
             if (category) url += 'category=' + category + '&';
             if (tag) url += 'tag=' + tag;

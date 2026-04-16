@@ -2480,8 +2480,10 @@ def _admin_trainer_redirect(scenario_id=None, segment=None):
 @app.route('/admin/trainer')
 @AdminAuth.login_required
 def admin_trainer():
-    """Редирект в КЦ по умолчанию"""
-    return redirect(url_for('admin_trainer_segment', segment='kc'))
+    """Редирект в первый доступный сегмент"""
+    allowed_segments = session.get('trainer_segments', ['kc', 'branch'])
+    first_segment = allowed_segments[0] if allowed_segments else 'kc'
+    return redirect(url_for('admin_trainer_segment', segment=first_segment))
 
 
 @app.route('/admin/trainer/<segment>')
@@ -2490,6 +2492,15 @@ def admin_trainer_segment(segment):
     """Админка: список сценариев тренажера по сегменту"""
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('admin_trainer'))
+
+    # Проверяем доступ к сегменту
+    allowed_segments = session.get('trainer_segments', ['kc', 'branch'])
+    if segment not in allowed_segments:
+        # Перенаправляем в первый доступный сегмент
+        if allowed_segments:
+            return redirect(url_for('admin_trainer_segment', segment=allowed_segments[0]))
+        flash('У вас нет доступа ни к одному сегменту тренажёра')
+        return redirect(url_for('admin_dashboard'))
 
     seg_info = TRAINER_SEGMENTS[segment]
     stats = trainer_mgr.get_statistics(segment=segment)
@@ -4305,7 +4316,12 @@ def admin_login():
             session['admin_username'] = username
             session['admin_role'] = admin_data.get('role', ROLE_EDITOR)
             session['admin_token'] = AdminAuth.generate_session_token()
-            session.permanent = True  # Use permanent session with timeout
+            # Сегменты тренажёра: супер-админ всегда видит все
+            if admin_data.get('role') == ROLE_SUPER_ADMIN:
+                session['trainer_segments'] = ['kc', 'branch']
+            else:
+                session['trainer_segments'] = admin_data.get('trainer_segments', ['kc', 'branch'])
+            session.permanent = True
             flash(f'Успешная авторизация. Роль: {ROLE_NAMES.get(admin_data.get("role"), "Редактор")}')
             return redirect(url_for('admin_dashboard'))
         else:
@@ -6098,6 +6114,21 @@ def admin_change_user_role(username):
 
     if result['success']:
         flash(f'Роль для {username} успешно изменена на {ROLE_NAMES.get(new_role, new_role)}')
+    else:
+        flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
+
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/users/<string:username>/change_segments', methods=['POST'])
+@AdminAuth.super_admin_required
+def admin_change_user_segments(username):
+    """Изменение доступных сегментов тренажёра для администратора"""
+    segments = request.form.getlist('trainer_segments')
+    result = admins_manager.update_trainer_segments(username, segments)
+
+    if result['success']:
+        flash(f'Доступ к сегментам для {username} обновлён')
     else:
         flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
 

@@ -2256,15 +2256,23 @@ class TrainerManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_user_feedback(self, user_id: str) -> List[Dict]:
-        """Получить обратную связь конкретного пользователя"""
+    def get_user_feedback(self, user_id: str, segment: str = None) -> List[Dict]:
+        """Получить обратную связь конкретного пользователя (опционально — по сегменту)"""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT id, user_id, message, level_code, created_at, is_read
-            FROM trainer_feedback
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-        """, (user_id,))
+        if segment:
+            cursor.execute("""
+                SELECT id, user_id, message, level_code, created_at, is_read
+                FROM trainer_feedback
+                WHERE user_id = ? AND segment = ?
+                ORDER BY created_at DESC
+            """, (user_id, segment))
+        else:
+            cursor.execute("""
+                SELECT id, user_id, message, level_code, created_at, is_read
+                FROM trainer_feedback
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+            """, (user_id,))
         return [dict(row) for row in cursor.fetchall()]
 
     def get_unread_feedback_count(self, segment: str = None) -> int:

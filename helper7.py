@@ -3834,7 +3834,8 @@ def trainer_my_feedback():
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
     try:
         user_id = session['user_info'].get('username', 'anonymous')
-        feedback_list = trainer_mgr.get_user_feedback(user_id)
+        segment = request.args.get('segment')
+        feedback_list = trainer_mgr.get_user_feedback(user_id, segment=segment)
         return jsonify({'success': True, 'feedback': feedback_list})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

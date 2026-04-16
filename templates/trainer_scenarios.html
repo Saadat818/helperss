@@ -730,7 +730,7 @@
 
         async function loadMyMessages() {
             try {
-                const resp = await fetch('/api/trainer/my-feedback');
+                const resp = await fetch('/api/trainer/my-feedback?segment={{ segment }}');
                 const data = await resp.json();
                 if (!data.success) { document.getElementById('messagesList').innerHTML = '<div style="color:#E57373;">Ошибка загрузки</div>'; return; }
                 const list = data.feedback;
@@ -763,7 +763,7 @@
 
         async function checkReadMessages() {
             try {
-                const resp = await fetch('/api/trainer/my-feedback');
+                const resp = await fetch('/api/trainer/my-feedback?segment={{ segment }}');
                 const data = await resp.json();
                 if (!data.success) return;
                 const readCount = data.feedback.filter(fb => fb.is_read).length;

@@ -524,7 +524,14 @@
                         <div class="scenario-desc">{{ scenario.description[:80] }}{% if scenario.description|length > 80 %}...{% endif %}</div>
                         {% endif %}
                     </td>
-                    <td><span class="badge badge-level">{{ scenario.level_name }}</span></td>
+                    <td>
+                        <span class="badge badge-level">{{ scenario.level_name }}</span>
+                        {% if scenario.get('segment') == 'branch' %}
+                        <span class="badge" style="background:#2196F320;color:#2196F3;margin-left:4px;">🏦 Филиалы</span>
+                        {% else %}
+                        <span class="badge" style="background:#00a65120;color:#00a651;margin-left:4px;">🎧 КЦ</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if scenario.category_name %}
                         <span class="badge badge-category">{{ scenario.category_icon }} {{ scenario.category_name }}</span>

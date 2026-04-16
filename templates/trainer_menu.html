@@ -640,7 +640,7 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('choose_help_type') }}" class="back-link">
+    <a href="{{ url_for('trainer_menu') }}" class="back-link">
         &larr; Назад
     </a>
 
@@ -659,8 +659,8 @@
 
     <div class="container">
         <div class="header">
-            <div class="header-icon">🎯</div>
-            <h1>Тренажер оператора</h1>
+            <div class="header-icon">{{ seg_info.icon if seg_info else '🎯' }}</div>
+            <h1>{{ seg_info.name if seg_info else 'Тренажер оператора' }}</h1>
             <p class="subtitle">Отработайте навыки работы с клиентами в интерактивных сценариях</p>
         </div>
 
@@ -695,7 +695,7 @@
                 {% set is_unlocked = level_progress.get('is_unlocked', False) or not level.required_level %}
 
                 {% if is_unlocked %}
-                <a href="{{ url_for('trainer_level', level_code=level.code) }}" class="level-card" style="border-left: 4px solid {{ level.color }}">
+                <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code) }}" class="level-card" style="border-left: 4px solid {{ level.color }}">
                 {% else %}
                 <div class="level-card locked" style="border-left: 4px solid {{ level.color }}">
                 {% endif %}

@@ -213,6 +213,19 @@ class TrainerManager:
         # Миграция: бонус за повторное прохождение
         self._migrate_repeat_bonus()
 
+        # Миграция: сегменты (КЦ / Филиалы)
+        self._migrate_segment_field()
+
+    def _migrate_segment_field(self):
+        """Миграция: добавление поля segment в trainer_scenarios (kc / branch)"""
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_scenarios)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'segment' not in columns:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN segment TEXT DEFAULT 'kc'")
+            cursor.execute("UPDATE trainer_scenarios SET segment = 'kc' WHERE segment IS NULL")
+            self.conn.commit()
+
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
         cursor = self.conn.cursor()
@@ -853,8 +866,8 @@ class TrainerManager:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def check_level_unlocked(self, user_id: str, level_code: str) -> bool:
-        """Проверить разблокирован ли уровень для пользователя"""
+    def check_level_unlocked(self, user_id: str, level_code: str, segment: str = None) -> bool:
+        """Проверить разблокирован ли уровень для пользователя (опционально — по сегменту)"""
         level = self.get_level_by_code(level_code)
         if not level:
             return False
@@ -863,7 +876,11 @@ class TrainerManager:
         if not level['required_level']:
             return True
 
-        # Проверяем прогресс по предыдущему уровню
+        # При фильтрации по сегменту — всегда вычисляем условие "на лету"
+        if segment:
+            return self._check_unlock_condition(user_id, level, segment=segment)
+
+        # Без сегмента — сначала смотрим кэш в таблице прогресса
         cursor = self.conn.cursor()
         cursor.execute("""
             SELECT is_unlocked FROM trainer_user_progress
@@ -877,29 +894,34 @@ class TrainerManager:
         # Проверяем выполнение условий разблокировки
         return self._check_unlock_condition(user_id, level)
 
-    def _check_unlock_condition(self, user_id: str, level: Dict) -> bool:
-        """Проверить условия разблокировки уровня"""
+    def _check_unlock_condition(self, user_id: str, level: Dict, segment: str = None) -> bool:
+        """Проверить условия разблокировки уровня (опционально — по сегменту)"""
         required_level = level.get('required_level')
         required_percent = level.get('required_percent', 80)
 
         if not required_level:
             return True
 
-        # Получаем средний процент прохождения предыдущего уровня
         cursor = self.conn.cursor()
-        cursor.execute("""
+        seg_clause = "AND s.segment = ?" if segment else ""
+        params = [user_id, required_level]
+        if segment:
+            params.append(segment)
+
+        cursor.execute(f"""
             SELECT AVG(r.percent) as avg_percent, COUNT(DISTINCT r.scenario_id) as completed
             FROM trainer_results r
             JOIN trainer_scenarios s ON r.scenario_id = s.id
             JOIN trainer_levels l ON s.level_id = l.id
-            WHERE r.user_id = ? AND l.code = ?
+            WHERE r.user_id = ? AND l.code = ? {seg_clause}
             GROUP BY r.user_id
-        """, (user_id, required_level))
+        """, params)
         row = cursor.fetchone()
 
         if row and row['avg_percent'] and row['avg_percent'] >= required_percent:
-            # Разблокируем уровень
-            self._unlock_level(user_id, level['code'])
+            if not segment:
+                # Сохраняем кэш только при глобальной проверке
+                self._unlock_level(user_id, level['code'])
             return True
 
         return False
@@ -930,35 +952,40 @@ class TrainerManager:
 
     # ==================== СЦЕНАРИИ ====================
 
-    def get_scenarios_by_level(self, level_code: str, category_id: int = None) -> List[Dict]:
-        """Получить сценарии по уровню"""
+    def get_scenarios_by_level(self, level_code: str, category_id: int = None, segment: str = None) -> List[Dict]:
+        """Получить сценарии по уровню (опционально — по сегменту kc/branch)"""
         cursor = self.conn.cursor()
         level = self.get_level_by_code(level_code)
         if not level:
             return []
 
+        seg_clause = "AND s.segment = ?" if segment else ""
+        base_params = [level['id']]
+        if segment:
+            base_params.append(segment)
+
         if category_id:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? AND s.category_id = ? AND s.is_active = 1
+                WHERE s.level_id = ? {seg_clause} AND s.category_id = ? AND s.is_active = 1
                   AND (s.is_draft = 0 OR s.is_draft IS NULL)
                   AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY s.order_num
-            """, (level['id'], category_id))
+            """, base_params + [category_id])
         else:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? AND s.is_active = 1
+                WHERE s.level_id = ? {seg_clause} AND s.is_active = 1
                   AND (s.is_draft = 0 OR s.is_draft IS NULL)
                   AND (s.is_archived = 0 OR s.is_archived IS NULL)
                 ORDER BY s.order_num
-            """, (level['id'],))
+            """, base_params)
         return [dict(row) for row in cursor.fetchall()]
 
     def get_scenario(self, scenario_id: int) -> Optional[Dict]:
@@ -1130,8 +1157,8 @@ class TrainerManager:
 
     # ==================== ПРОГРЕСС ====================
 
-    def get_user_progress(self, user_id: str) -> Dict:
-        """Получить общий прогресс пользователя"""
+    def get_user_progress(self, user_id: str, segment: str = None) -> Dict:
+        """Получить прогресс пользователя (опционально — по сегменту kc/branch)"""
         cursor = self.conn.cursor()
 
         result = {
@@ -1141,38 +1168,48 @@ class TrainerManager:
             'levels': {}
         }
 
-        # Получаем все уровни
+        seg_clause = "AND s.segment = ?" if segment else ""
+        seg_clause_direct = "AND segment = ?" if segment else ""
+
         levels = self.get_all_levels()
 
         for level in levels:
             level_code = level['code']
 
-            # Считаем сценарии на уровне (без черновиков)
-            cursor.execute("""
-                SELECT COUNT(*) FROM trainer_scenarios
-                WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
-            """, (level['id'],))
+            # Считаем сценарии на уровне
+            params_total = [level['id']]
+            if segment:
+                params_total.append(segment)
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM trainer_scenarios s
+                WHERE s.level_id = ? {seg_clause_direct.replace('s.', '')} AND s.is_active = 1
+                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
+                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
+            """, params_total)
             total = cursor.fetchone()[0]
 
             # Считаем пройденные сценарии
-            cursor.execute("""
-                SELECT COUNT(DISTINCT scenario_id) FROM trainer_results r
+            params_res = [user_id, level['id']]
+            if segment:
+                params_res.append(segment)
+            cursor.execute(f"""
+                SELECT COUNT(DISTINCT r.scenario_id) FROM trainer_results r
                 JOIN trainer_scenarios s ON r.scenario_id = s.id
-                WHERE r.user_id = ? AND s.level_id = ?
-            """, (user_id, level['id']))
+                WHERE r.user_id = ? AND s.level_id = ? {seg_clause}
+            """, params_res)
             completed = cursor.fetchone()[0]
 
             # Средний процент
-            cursor.execute("""
-                SELECT AVG(percent) FROM trainer_results r
+            cursor.execute(f"""
+                SELECT AVG(r.percent) FROM trainer_results r
                 JOIN trainer_scenarios s ON r.scenario_id = s.id
-                WHERE r.user_id = ? AND s.level_id = ?
-            """, (user_id, level['id']))
+                WHERE r.user_id = ? AND s.level_id = ? {seg_clause}
+            """, params_res)
             avg_row = cursor.fetchone()
             avg_percent = round(avg_row[0] or 0, 1)
 
             # Проверка разблокировки
-            is_unlocked = self.check_level_unlocked(user_id, level_code)
+            is_unlocked = self.check_level_unlocked(user_id, level_code, segment=segment)
 
             result['levels'][level_code] = {
                 'name': level['name'],
@@ -1189,10 +1226,17 @@ class TrainerManager:
             result['total_completed'] += completed
             result['total_scenarios'] += total
 
-        # Общий средний балл (percent ограничен 100)
-        cursor.execute("""
-            SELECT AVG(MIN(percent, 100)) FROM trainer_results WHERE user_id = ?
-        """, (user_id,))
+        # Общий средний балл
+        if segment:
+            cursor.execute("""
+                SELECT AVG(MIN(r.percent, 100)) FROM trainer_results r
+                JOIN trainer_scenarios s ON r.scenario_id = s.id
+                WHERE r.user_id = ? AND s.segment = ?
+            """, (user_id, segment))
+        else:
+            cursor.execute("""
+                SELECT AVG(MIN(percent, 100)) FROM trainer_results WHERE user_id = ?
+            """, (user_id,))
         avg_row = cursor.fetchone()
         result['average_score'] = min(100, round(avg_row[0] or 0, 1))
 
@@ -1373,8 +1417,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num, timer_seconds, initial_loyalty, client_info_json, is_draft)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num, timer_seconds, initial_loyalty, client_info_json, is_draft, segment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 data.get('level_id'),
                 data.get('category_id'),
@@ -1387,7 +1431,8 @@ class TrainerManager:
                 data.get('timer_seconds', 15),
                 data.get('initial_loyalty', 100),
                 data.get('client_info_json'),
-                data.get('is_draft', 0)
+                data.get('is_draft', 0),
+                data.get('segment', 'kc'),
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
@@ -1401,7 +1446,7 @@ class TrainerManager:
                             'estimated_time', 'total_points', 'is_active', 'order_num',
                             'timer_seconds', 'initial_loyalty', 'client_info_json',
                             'correct_topics', 'avatar_images', 'silence_messages', 'is_draft',
-                            'emotion_timeout_penalty', 'emotion_passive_rate']
+                            'emotion_timeout_penalty', 'emotion_passive_rate', 'segment']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -1442,8 +1487,8 @@ class TrainerManager:
                 INSERT INTO trainer_scenarios
                     (level_id, category_id, title, description, estimated_time, total_points,
                      is_active, order_num, timer_seconds, initial_loyalty, client_info_json,
-                     correct_topics, avatar_images, silence_messages, visual_data, is_draft)
-                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                     correct_topics, avatar_images, silence_messages, visual_data, is_draft, segment)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
             """, (
                 orig['level_id'], orig['category_id'],
                 'Копия: ' + orig['title'],
@@ -1451,6 +1496,7 @@ class TrainerManager:
                 orig['order_num'], orig['timer_seconds'], orig['initial_loyalty'],
                 orig['client_info_json'], orig['correct_topics'],
                 orig['avatar_images'], orig['silence_messages'], orig['visual_data'],
+                orig.get('segment', 'kc'),
             ))
             new_scenario_id = cursor.lastrowid
 
@@ -1685,40 +1731,54 @@ class TrainerManager:
 
         return result[:limit]
 
-    def get_statistics(self) -> Dict:
-        """Получить общую статистику тренажера"""
+    def get_statistics(self, segment: str = None) -> Dict:
+        """Получить статистику тренажера (опционально — по сегменту kc/branch)"""
         cursor = self.conn.cursor()
 
-        # Общее количество сценариев (без черновиков)
-        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)")
+        seg_clause = "AND s.segment = ?" if segment else ""
+        seg_direct = "AND segment = ?" if segment else ""
+        seg_p = [segment] if segment else []
+
+        cursor.execute(
+            f"SELECT COUNT(*) FROM trainer_scenarios s WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL) {seg_direct}",
+            seg_p
+        )
         total_scenarios = cursor.fetchone()[0]
 
-        # Количество прохождений
-        cursor.execute("SELECT COUNT(*) FROM trainer_results")
+        if segment:
+            cursor.execute("SELECT COUNT(*) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ?", [segment])
+        else:
+            cursor.execute("SELECT COUNT(*) FROM trainer_results")
         total_completions = cursor.fetchone()[0]
 
-        # Уникальных пользователей
-        cursor.execute("SELECT COUNT(DISTINCT user_id) FROM trainer_results")
+        if segment:
+            cursor.execute("SELECT COUNT(DISTINCT r.user_id) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ?", [segment])
+        else:
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM trainer_results")
         unique_users = cursor.fetchone()[0]
 
-        # Средний балл
-        cursor.execute("SELECT AVG(percent) FROM trainer_results")
+        if segment:
+            cursor.execute("SELECT AVG(r.percent) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ?", [segment])
+        else:
+            cursor.execute("SELECT AVG(percent) FROM trainer_results")
         avg_row = cursor.fetchone()
         avg_score = round(avg_row[0] or 0, 1)
 
         # Статистика по уровням
         levels_stats = []
         for level in self.get_all_levels():
-            cursor.execute("""
-                SELECT COUNT(*) FROM trainer_scenarios WHERE level_id = ? AND is_active = 1 AND (is_draft = 0 OR is_draft IS NULL) AND (is_archived = 0 OR is_archived IS NULL)
-            """, (level['id'],))
+            p_l = [level['id']] + seg_p
+            cursor.execute(
+                f"SELECT COUNT(*) FROM trainer_scenarios s WHERE s.level_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL) {seg_direct}",
+                p_l
+            )
             scenarios = cursor.fetchone()[0]
 
-            cursor.execute("""
-                SELECT COUNT(*), AVG(percent) FROM trainer_results r
+            cursor.execute(f"""
+                SELECT COUNT(*), AVG(r.percent) FROM trainer_results r
                 JOIN trainer_scenarios s ON r.scenario_id = s.id
-                WHERE s.level_id = ?
-            """, (level['id'],))
+                WHERE s.level_id = ? {seg_clause}
+            """, p_l)
             row = cursor.fetchone()
 
             levels_stats.append({
@@ -1729,30 +1789,53 @@ class TrainerManager:
                 'avg_percent': round(row[1] or 0, 1)
             })
 
-        # Топ пользователей: баллы за последнее прохождение каждого сценария + все бонусы за повторы
-        cursor.execute("""
-            SELECT user_id,
-                   COUNT(*) as completions,
-                   AVG(percent) as avg_percent,
-                   SUM(last_score) + SUM(all_bonus) as total_score
-            FROM (
-                SELECT r.user_id,
-                       r.scenario_id,
-                       CASE WHEN r.id = (
-                           SELECT id FROM trainer_results r2
-                           WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
-                           ORDER BY completed_at DESC, id DESC LIMIT 1
-                       ) THEN r.score ELSE 0 END as last_score,
-                       COALESCE(r.repeat_bonus, 0) as all_bonus,
-                       r.percent
-                FROM trainer_results r
-            )
-            GROUP BY user_id
-            ORDER BY total_score DESC, completions DESC
-        """)
+        # Топ пользователей по сегменту
+        if segment:
+            cursor.execute("""
+                SELECT user_id,
+                       COUNT(*) as completions,
+                       AVG(percent) as avg_percent,
+                       SUM(last_score) + SUM(all_bonus) as total_score
+                FROM (
+                    SELECT r.user_id,
+                           r.scenario_id,
+                           CASE WHEN r.id = (
+                               SELECT id FROM trainer_results r2
+                               WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
+                               ORDER BY completed_at DESC, id DESC LIMIT 1
+                           ) THEN r.score ELSE 0 END as last_score,
+                           COALESCE(r.repeat_bonus, 0) as all_bonus,
+                           r.percent
+                    FROM trainer_results r
+                    JOIN trainer_scenarios s ON r.scenario_id = s.id
+                    WHERE s.segment = ?
+                )
+                GROUP BY user_id
+                ORDER BY total_score DESC, completions DESC
+            """, [segment])
+        else:
+            cursor.execute("""
+                SELECT user_id,
+                       COUNT(*) as completions,
+                       AVG(percent) as avg_percent,
+                       SUM(last_score) + SUM(all_bonus) as total_score
+                FROM (
+                    SELECT r.user_id,
+                           r.scenario_id,
+                           CASE WHEN r.id = (
+                               SELECT id FROM trainer_results r2
+                               WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
+                               ORDER BY completed_at DESC, id DESC LIMIT 1
+                           ) THEN r.score ELSE 0 END as last_score,
+                           COALESCE(r.repeat_bonus, 0) as all_bonus,
+                           r.percent
+                    FROM trainer_results r
+                )
+                GROUP BY user_id
+                ORDER BY total_score DESC, completions DESC
+            """)
         top_users = [dict(row) for row in cursor.fetchall()]
 
-        # Добавляем бейджи для каждого пользователя в топе
         for user in top_users:
             user['badges'] = self.get_user_badges(user['user_id'])
 

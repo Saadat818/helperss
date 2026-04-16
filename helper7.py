@@ -1942,41 +1942,63 @@ def handle_channel_messages(message):
 
 @app.route('/trainer')
 def trainer_menu():
-    """Главная страница тренажера с уровнями"""
+    """Страница выбора сегмента тренажера (КЦ / Филиалы)"""
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
+    return render_template('trainer_segments.html')
+
+
+TRAINER_SEGMENTS = {
+    'kc': {'name': 'Контакт Центр', 'icon': '🎧', 'color': '#00a651'},
+    'branch': {'name': 'Филиалы', 'icon': '🏦', 'color': '#2196F3'},
+}
+
+
+@app.route('/trainer/<segment>')
+def trainer_segment_menu(segment):
+    """Главная страница тренажера для выбранного сегмента"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    if segment not in TRAINER_SEGMENTS:
+        return redirect(url_for('trainer_menu'))
 
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
-    progress = trainer_mgr.get_user_progress(user_id)
-    stats = trainer_mgr.get_statistics()
+    progress = trainer_mgr.get_user_progress(user_id, segment=segment)
+    stats = trainer_mgr.get_statistics(segment=segment)
+    seg_info = TRAINER_SEGMENTS[segment]
 
     return render_template('trainer_menu.html', levels=levels, progress=progress,
-                         top_users=stats['top_users'], current_user_id=user_id)
+                         top_users=stats['top_users'], current_user_id=user_id,
+                         segment=segment, seg_info=seg_info)
 
 
-@app.route('/trainer/level/<level_code>')
-def trainer_level(level_code):
-    """Список сценариев уровня"""
+@app.route('/trainer/<segment>/level/<level_code>')
+def trainer_level(segment, level_code):
+    """Список сценариев уровня в сегменте"""
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
+
+    if segment not in TRAINER_SEGMENTS:
+        return redirect(url_for('trainer_menu'))
 
     user_id = session['user_info'].get('username', 'anonymous')
     level = trainer_mgr.get_level_by_code(level_code)
 
     if not level:
         flash('Уровень не найден')
-        return redirect(url_for('trainer_menu'))
+        return redirect(url_for('trainer_segment_menu', segment=segment))
 
     # Проверяем доступ к уровню
-    if not trainer_mgr.check_level_unlocked(user_id, level_code):
+    if not trainer_mgr.check_level_unlocked(user_id, level_code, segment=segment):
         flash('Этот уровень ещё заблокирован')
-        return redirect(url_for('trainer_menu'))
+        return redirect(url_for('trainer_segment_menu', segment=segment))
 
     # Получаем фильтр по категории
     category_id = request.args.get('category', type=int)
 
-    scenarios = trainer_mgr.get_scenarios_by_level(level_code, category_id)
+    scenarios = trainer_mgr.get_scenarios_by_level(level_code, category_id, segment=segment)
     categories = trainer_mgr.get_all_categories()
 
     # Получаем результаты пользователя для каждого сценария
@@ -1993,6 +2015,7 @@ def trainer_level(level_code):
     if user_results:
         avg_percent = round(sum(r['percent'] for r in user_results.values()) / len(user_results), 1)
 
+    seg_info = TRAINER_SEGMENTS[segment]
     return render_template('trainer_scenarios.html',
                          level=level,
                          scenarios=scenarios,
@@ -2001,7 +2024,9 @@ def trainer_level(level_code):
                          user_results=user_results,
                          completed_count=completed_count,
                          total_count=total_count,
-                         avg_percent=avg_percent)
+                         avg_percent=avg_percent,
+                         segment=segment,
+                         seg_info=seg_info)
 
 
 @app.route('/trainer/play/<int:scenario_id>')
@@ -2011,6 +2036,8 @@ def trainer_play(scenario_id):
     preview_mode = request.args.get('preview') == '1'
     # Откуда пришли: 'visual' или 'edit' (для кнопки возврата из предпросмотра)
     back_editor = request.args.get('back', 'edit')
+    # Сегмент (kc / branch) — для правильного редиректа после прохождения
+    play_segment = request.args.get('segment', 'kc')
 
     # In preview mode, admin must be logged in
     if preview_mode:
@@ -2039,21 +2066,21 @@ def trainer_play(scenario_id):
     if not preview_mode:
         if scenario.get('is_draft'):
             flash('Сценарий недоступен')
-            return redirect(url_for('trainer_menu'))
+            return redirect(url_for('trainer_segment_menu', segment=play_segment))
         if not scenario.get('is_active'):
             flash('Сценарий недоступен')
-            return redirect(url_for('trainer_menu'))
+            return redirect(url_for('trainer_segment_menu', segment=play_segment))
 
     # Check level access (skip in preview mode)
-    if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):
+    if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code'], segment=play_segment):
         flash('Этот уровень ещё заблокирован')
-        return redirect(url_for('trainer_menu'))
+        return redirect(url_for('trainer_segment_menu', segment=play_segment))
 
     total_steps = trainer_mgr.get_steps_count(scenario_id)
 
     if total_steps == 0:
         flash('В этом сценарии пока нет шагов')
-        return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id) if preview_mode else url_for('trainer_level', level_code=scenario['level_code']))
+        return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id) if preview_mode else url_for('trainer_level', segment=play_segment, level_code=scenario['level_code']))
 
     # Парсим эталонные тематики для пост-обработки
     correct_topics = []
@@ -2097,7 +2124,8 @@ def trainer_play(scenario_id):
                          back_url=back_url,
                          correct_topics=correct_topics,
                          avatar_images=avatar_images,
-                         client_name=client_name)
+                         client_name=client_name,
+                         segment=play_segment)
 
 
 @app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
@@ -2388,8 +2416,11 @@ def trainer_results(result_id):
                         })
                         break
 
-    # Находим следующий сценарий
-    scenarios = trainer_mgr.get_scenarios_by_level(result['level_code'])
+    # Сегмент берём из данных сценария
+    result_segment = scenario_data.get('segment', 'kc') if scenario_data else 'kc'
+
+    # Находим следующий сценарий (в том же сегменте)
+    scenarios = trainer_mgr.get_scenarios_by_level(result['level_code'], segment=result_segment)
     next_scenario = None
     found_current = False
     for s in scenarios:
@@ -2428,7 +2459,8 @@ def trainer_results(result_id):
                          version_outdated=version_outdated,
                          result_version=result_version,
                          current_version=current_version,
-                         user_badges=user_badges)
+                         user_badges=user_badges,
+                         segment=result_segment)
 
 
 # ============================================
@@ -2507,7 +2539,8 @@ def admin_trainer_create():
             'total_points': request.form.get('total_points', 100, type=int),
             'is_active': 0 if is_draft else (1 if request.form.get('is_active') else 0),
             'order_num': request.form.get('order_num', 0, type=int),
-            'is_draft': is_draft
+            'is_draft': is_draft,
+            'segment': request.form.get('segment', 'kc'),
         }
 
         if not data['title']:
@@ -2597,6 +2630,7 @@ def admin_trainer_edit(scenario_id):
             'is_draft': is_draft,
             'emotion_timeout_penalty': request.form.get('emotion_timeout_penalty', 20, type=int),
             'emotion_passive_rate': request.form.get('emotion_passive_rate', 0, type=int),
+            'segment': request.form.get('segment', 'kc'),
         }
         # Сохраняем снимок текущей версии перед обновлением
         user_info = session.get('user_info', {})

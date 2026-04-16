@@ -2868,7 +2868,9 @@ def admin_trainer_delete(scenario_id):
 @AdminAuth.login_required
 def admin_trainer_drafts():
     """Черновики сценариев"""
-    drafts = trainer_mgr.get_draft_scenarios()
+    segment = request.args.get('segment', 'kc')
+    seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
+    drafts = trainer_mgr.get_draft_scenarios(segment=segment)
     for d in drafts:
         d['steps_count'] = trainer_mgr.get_steps_count(d['id'])
         d['tags'] = trainer_mgr.get_scenario_tags(d['id'])
@@ -2877,7 +2879,9 @@ def admin_trainer_drafts():
     return render_template('admin_trainer_drafts.html',
                            drafts=drafts,
                            levels=levels,
-                           categories=categories)
+                           categories=categories,
+                           segment=segment,
+                           seg_info=seg_info)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/publish', methods=['POST'])
@@ -2885,6 +2889,7 @@ def admin_trainer_drafts():
 def admin_trainer_publish(scenario_id):
     """Опубликовать черновик"""
     scenario = trainer_mgr.get_scenario(scenario_id)
+    sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
     result = trainer_mgr.publish_draft(scenario_id)
     if result['success']:
         user_info = session.get('user_info', {})
@@ -2899,7 +2904,7 @@ def admin_trainer_publish(scenario_id):
         flash('Сценарий опубликован!')
     else:
         flash(f'Ошибка: {result.get("error")}')
-    return redirect(url_for('admin_trainer_drafts'))
+    return redirect(url_for('admin_trainer_drafts', segment=sc_segment))
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/archive', methods=['POST'])
@@ -3346,9 +3351,15 @@ def admin_trainer_visual_load(scenario_id):
 @AdminAuth.login_required
 def admin_trainer_stats():
     """Статистика тренажера"""
-    stats = trainer_mgr.get_statistics()
-    heatmap = trainer_mgr.get_step_error_heatmap(limit=20)
-    return render_template('admin_trainer_stats.html', stats=stats, heatmap=heatmap)
+    segment = request.args.get('segment', 'kc')
+    seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
+    stats = trainer_mgr.get_statistics(segment=segment)
+    heatmap = trainer_mgr.get_step_error_heatmap(limit=20, segment=segment)
+    return render_template('admin_trainer_stats.html',
+                           stats=stats,
+                           heatmap=heatmap,
+                           segment=segment,
+                           seg_info=seg_info)
 
 
 @app.route('/api/admin/trainer/user/<user_id>/results')
@@ -3777,6 +3788,7 @@ def trainer_submit_feedback():
         data = request.get_json()
         message = (data.get('message') or '').strip()
         level_code = data.get('level_code')
+        segment = data.get('segment', 'kc')
 
         if not message:
             return jsonify({'success': False, 'error': 'Сообщение не может быть пустым'})
@@ -3785,7 +3797,7 @@ def trainer_submit_feedback():
             return jsonify({'success': False, 'error': 'Сообщение слишком длинное (макс. 2000 символов)'})
 
         user_id = session['user_info'].get('username', 'anonymous')
-        result = trainer_mgr.add_feedback(user_id, message, level_code)
+        result = trainer_mgr.add_feedback(user_id, message, level_code, segment=segment)
         return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3795,10 +3807,15 @@ def trainer_submit_feedback():
 @AdminAuth.login_required
 def admin_trainer_feedback():
     """Страница обратной связи от специалистов"""
-    feedback_list = trainer_mgr.get_all_feedback()
-    unread_count = trainer_mgr.get_unread_feedback_count()
+    segment = request.args.get('segment', 'kc')
+    seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
+    feedback_list = trainer_mgr.get_all_feedback(segment=segment)
+    unread_count = trainer_mgr.get_unread_feedback_count(segment=segment)
     return render_template('admin_trainer_feedback.html',
-                         feedback_list=feedback_list, unread_count=unread_count)
+                           feedback_list=feedback_list,
+                           unread_count=unread_count,
+                           segment=segment,
+                           seg_info=seg_info)
 
 
 @app.route('/api/admin/trainer/feedback/<int:feedback_id>/read', methods=['POST'])

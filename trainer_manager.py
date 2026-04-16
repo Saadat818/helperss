@@ -471,6 +471,11 @@ class TrainerManager:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_feedback_created ON trainer_feedback(created_at)")
+        # Миграция: добавляем поле segment
+        cursor.execute("PRAGMA table_info(trainer_feedback)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if 'segment' not in cols:
+            cursor.execute("ALTER TABLE trainer_feedback ADD COLUMN segment TEXT DEFAULT 'kc'")
         self.conn.commit()
 
     def _migrate_avatar_images(self):
@@ -1078,23 +1083,28 @@ class TrainerManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_draft_scenarios(self) -> List[Dict]:
-        """Получить все черновики сценариев"""
+    def get_draft_scenarios(self, segment: str = None) -> List[Dict]:
+        """Получить черновики сценариев (опционально по сегменту)"""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        seg_clause = "AND s.segment = ?" if segment else ""
+        seg_p = [segment] if segment else []
+        cursor.execute(f"""
             SELECT s.*, l.name as level_name, l.code as level_code, c.name as category_name, c.icon as category_icon
             FROM trainer_scenarios s
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
-            WHERE s.is_draft = 1
+            WHERE s.is_draft = 1 {seg_clause}
             ORDER BY s.created_at DESC
-        """)
+        """, seg_p)
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_draft_count(self) -> int:
-        """Количество черновиков"""
+    def get_draft_count(self, segment: str = None) -> int:
+        """Количество черновиков (опционально по сегменту)"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = 1")
+        if segment:
+            cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = 1 AND segment = ?", [segment])
+        else:
+            cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = 1")
         return cursor.fetchone()[0]
 
     def publish_draft(self, scenario_id: int) -> Dict:
@@ -1672,17 +1682,20 @@ class TrainerManager:
 
     # ==================== СТАТИСТИКА ====================
 
-    def get_step_error_heatmap(self, limit: int = 20) -> List[Dict]:
-        """Получить тепловую карту ошибок по шагам сценариев"""
+    def get_step_error_heatmap(self, limit: int = 20, segment: str = None) -> List[Dict]:
+        """Получить тепловую карту ошибок по шагам сценариев (опционально — по сегменту)"""
         cursor = self.conn.cursor()
 
         # Загружаем все результаты с answers_json
-        cursor.execute("""
+        seg_clause = "AND s.segment = ?" if segment else ""
+        params = (segment,) if segment else ()
+        cursor.execute(f"""
             SELECT r.scenario_id, r.answers_json, s.title as scenario_title
             FROM trainer_results r
             JOIN trainer_scenarios s ON r.scenario_id = s.id
             WHERE r.answers_json IS NOT NULL AND r.answers_json != ''
-        """)
+            {seg_clause}
+        """, params)
 
         # Агрегируем по (scenario_id, step_num)
         step_stats = {}  # (scenario_id, step_num) -> {total, correct, wrong, scenario_title}
@@ -2211,23 +2224,26 @@ class TrainerManager:
 
     # ==================== ОБРАТНАЯ СВЯЗЬ ====================
 
-    def add_feedback(self, user_id: str, message: str, level_code: str = None) -> Dict:
+    def add_feedback(self, user_id: str, message: str, level_code: str = None, segment: str = 'kc') -> Dict:
         """Добавить сообщение обратной связи"""
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_feedback (user_id, message, level_code)
-                VALUES (?, ?, ?)
-            """, (user_id, message, level_code))
+                INSERT INTO trainer_feedback (user_id, message, level_code, segment)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, message, level_code, segment or 'kc'))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_all_feedback(self) -> List[Dict]:
-        """Получить все сообщения обратной связи"""
+    def get_all_feedback(self, segment: str = None) -> List[Dict]:
+        """Получить все сообщения обратной связи (опционально — по сегменту)"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM trainer_feedback ORDER BY created_at DESC")
+        if segment:
+            cursor.execute("SELECT * FROM trainer_feedback WHERE segment = ? ORDER BY created_at DESC", (segment,))
+        else:
+            cursor.execute("SELECT * FROM trainer_feedback ORDER BY created_at DESC")
         return [dict(row) for row in cursor.fetchall()]
 
     def mark_feedback_read(self, feedback_id: int) -> Dict:
@@ -2251,10 +2267,13 @@ class TrainerManager:
         """, (user_id,))
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_unread_feedback_count(self) -> int:
-        """Получить количество непрочитанных сообщений"""
+    def get_unread_feedback_count(self, segment: str = None) -> int:
+        """Получить количество непрочитанных сообщений (опционально — по сегменту)"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = 0")
+        if segment:
+            cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = 0 AND segment = ?", (segment,))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = 0")
         return cursor.fetchone()[0]
 
     def close(self):

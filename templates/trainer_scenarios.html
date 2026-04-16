@@ -694,7 +694,7 @@
                 const resp = await fetch('/api/trainer/feedback', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                    body: JSON.stringify({message: msg, level_code: '{{ level.code }}'})
+                    body: JSON.stringify({message: msg, level_code: '{{ level.code }}', segment: '{{ segment }}'})
                 });
                 const data = await resp.json();
                 if (data.success) {

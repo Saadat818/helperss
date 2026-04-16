@@ -199,11 +199,11 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('admin_trainer') }}" class="back-link">&larr; К сценариям</a>
+    <a href="{{ url_for('admin_trainer_segment', segment=segment or 'kc') }}" class="back-link">&larr; К сценариям</a>
 
     <div class="container">
         <div class="header">
-            <h1>✏️ Черновики сценариев</h1>
+            <h1>✏️ Черновики — {{ seg_info.name if seg_info else 'Тренажер' }}</h1>
             <a href="{{ url_for('admin_trainer_create') }}?draft=1" class="btn btn-success">+ Создать черновик</a>
         </div>
 

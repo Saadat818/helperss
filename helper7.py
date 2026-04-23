@@ -58,6 +58,7 @@ from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_A
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
 from trainer_manager import TrainerManager
+from scenario_manager import ScenarioManager
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -1000,6 +1001,9 @@ tm = TopicsManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация TrainerManager
 trainer_mgr = TrainerManager(os.path.join(BASE_DIR, "topics.db"))
+
+# Инициализация ScenarioManager (сценарии консультаций КЦ)
+scenario_mgr = ScenarioManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация счётчика заявок
 _init_ticket_counter_table()
@@ -7763,6 +7767,345 @@ def admin_delete_user(username):
         flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
 
     return redirect(url_for('admin_users'))
+
+
+# ═══════════════════════════════════════════════════════════════
+# МОДУЛЬ СЦЕНАРИИ КОНСУЛЬТАЦИЙ КЦ
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Пользовательская часть ────────────────────────────────────
+
+@app.route('/scenarios')
+def scenarios_list():
+    """Список активных сценариев для операторов"""
+    if not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+    user = session.get('user_info', {})
+    category_id = request.args.get('category_id', type=int)
+    search = request.args.get('q', '').strip()
+
+    scenarios = scenario_mgr.get_scenarios(status='active', category_id=category_id, search=search)
+    categories = scenario_mgr.get_categories()
+    top_scenarios = scenario_mgr.get_top_scenarios(limit=10)
+
+    return render_template('scenarios_list.html',
+                           scenarios=scenarios,
+                           categories=categories,
+                           top_scenarios=top_scenarios,
+                           selected_category=category_id,
+                           search=search,
+                           user=user)
+
+
+@app.route('/scenarios/<int:scenario_id>')
+def scenario_play(scenario_id):
+    """Прохождение сценария оператором"""
+    if not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+    user = session.get('user_info', {})
+
+    scenario = scenario_mgr.get_scenario(scenario_id)
+    if not scenario or scenario['status'] != 'active':
+        flash('Сценарий не найден или недоступен', 'error')
+        return redirect(url_for('scenarios_list'))
+
+    root_node = scenario_mgr.get_root_node(scenario_id)
+
+    # Логируем просмотр
+    scenario_mgr.log_view(scenario_id, user.get('username', ''))
+
+    return render_template('scenario_play.html',
+                           scenario=scenario,
+                           root_node=root_node,
+                           user=user)
+
+
+@app.route('/api/scenarios/<int:scenario_id>/node/<int:node_id>')
+def scenario_get_node(scenario_id, node_id):
+    """API: получить узел с вариантами выбора"""
+    if not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    node = scenario_mgr.get_node(node_id)
+    if not node or node['scenario_id'] != scenario_id:
+        return jsonify({'success': False, 'error': 'Узел не найден'}), 404
+
+    choices = scenario_mgr.get_node_choices(node_id)
+
+    return jsonify({
+        'success': True,
+        'node': dict(node),
+        'choices': [dict(c) for c in choices]
+    })
+
+
+# ─── Админская часть ───────────────────────────────────────────
+
+def _require_scenario_admin():
+    """Проверка прав на управление сценариями"""
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    perms = session.get('admin_permissions', [])
+    if 'super_admin' not in perms and 'admin_manuals' not in perms:
+        flash('Недостаточно прав', 'error')
+        return redirect(url_for('admin_dashboard'))
+    return None
+
+
+@app.route('/admin/scenarios')
+def admin_scenarios():
+    """Список всех сценариев в админке"""
+    err = _require_scenario_admin()
+    if err:
+        return err
+    scenarios = scenario_mgr.get_all_scenarios_admin()
+    categories = scenario_mgr.get_categories()
+    return render_template('admin_scenarios.html',
+                           scenarios=scenarios,
+                           categories=categories)
+
+
+@app.route('/admin/scenarios/create', methods=['GET', 'POST'])
+def admin_scenario_create():
+    """Создание нового сценария"""
+    err = _require_scenario_admin()
+    if err:
+        return err
+
+    categories = scenario_mgr.get_categories()
+
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        category_id = request.form.get('category_id', type=int)
+        tags = request.form.get('tags', '').strip()
+        username = session.get('admin_username', '')
+
+        if not title:
+            flash('Название обязательно', 'error')
+            return render_template('admin_scenario_edit.html',
+                                   scenario=None, nodes=[], edges=[],
+                                   categories=categories, is_new=True)
+
+        scenario_id = scenario_mgr.create_scenario(
+            title=title, description=description,
+            category_id=category_id, tags=tags, created_by=username
+        )
+        flash('Сценарий создан', 'success')
+        return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+
+    return render_template('admin_scenario_edit.html',
+                           scenario=None, nodes=[], edges=[],
+                           categories=categories, is_new=True)
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/edit', methods=['GET', 'POST'])
+def admin_scenario_edit(scenario_id):
+    """Редактирование сценария"""
+    err = _require_scenario_admin()
+    if err:
+        return err
+
+    scenario = scenario_mgr.get_scenario(scenario_id)
+    if not scenario:
+        flash('Сценарий не найден', 'error')
+        return redirect(url_for('admin_scenarios'))
+
+    categories = scenario_mgr.get_categories()
+    nodes = scenario_mgr.get_nodes(scenario_id)
+    edges_raw = []
+    with scenario_mgr._connect() as conn:
+        edges_raw = [dict(r) for r in conn.execute(
+            "SELECT * FROM cs_edges WHERE scenario_id=?", (scenario_id,)
+        ).fetchall()]
+
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        category_id = request.form.get('category_id', type=int)
+        tags = request.form.get('tags', '').strip()
+        username = session.get('admin_username', '')
+        scenario_mgr.update_scenario(scenario_id, title, description,
+                                     category_id, tags, username)
+        flash('Сохранено', 'success')
+        return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+
+    return render_template('admin_scenario_edit.html',
+                           scenario=scenario, nodes=nodes,
+                           edges=edges_raw, categories=categories, is_new=False)
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/publish', methods=['POST'])
+def admin_scenario_publish(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    username = session.get('admin_username', '')
+    scenario_mgr.publish_scenario(scenario_id, username)
+    flash('Сценарий опубликован', 'success')
+    return redirect(url_for('admin_scenarios'))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/archive', methods=['POST'])
+def admin_scenario_archive(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    username = session.get('admin_username', '')
+    scenario_mgr.archive_scenario(scenario_id, username)
+    flash('Сценарий архивирован', 'success')
+    return redirect(url_for('admin_scenarios'))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/unarchive', methods=['POST'])
+def admin_scenario_unarchive(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    username = session.get('admin_username', '')
+    scenario_mgr.unarchive_scenario(scenario_id, username)
+    flash('Сценарий восстановлен', 'success')
+    return redirect(url_for('admin_scenarios'))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/duplicate', methods=['POST'])
+def admin_scenario_duplicate(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    username = session.get('admin_username', '')
+    new_id = scenario_mgr.duplicate_scenario(scenario_id, username)
+    if new_id:
+        flash('Сценарий скопирован', 'success')
+        return redirect(url_for('admin_scenario_edit', scenario_id=new_id))
+    flash('Ошибка копирования', 'error')
+    return redirect(url_for('admin_scenarios'))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/delete', methods=['POST'])
+def admin_scenario_delete(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    scenario_mgr.delete_scenario(scenario_id)
+    flash('Сценарий удалён', 'success')
+    return redirect(url_for('admin_scenarios'))
+
+
+# ─── API для редактора узлов ────────────────────────────────────
+
+@app.route('/api/admin/scenarios/<int:scenario_id>/nodes', methods=['GET'])
+def api_scenario_nodes(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    nodes = scenario_mgr.get_nodes(scenario_id)
+    with scenario_mgr._connect() as conn:
+        edges = [dict(r) for r in conn.execute(
+            "SELECT * FROM cs_edges WHERE scenario_id=?", (scenario_id,)
+        ).fetchall()]
+    return jsonify({'success': True, 'nodes': nodes, 'edges': edges})
+
+
+@app.route('/api/admin/scenarios/<int:scenario_id>/nodes', methods=['POST'])
+def api_scenario_node_create(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    data = request.get_json() or {}
+    node_id = scenario_mgr.create_node(
+        scenario_id=scenario_id,
+        node_type=data.get('node_type', 'question'),
+        title=data.get('title', 'Новый узел'),
+        content=data.get('content', ''),
+        is_root=data.get('is_root', False)
+    )
+    return jsonify({'success': True, 'node_id': node_id})
+
+
+@app.route('/api/admin/scenarios/nodes/<int:node_id>', methods=['PUT'])
+def api_scenario_node_update(node_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    data = request.get_json() or {}
+    scenario_mgr.update_node(node_id, data)
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/scenarios/nodes/<int:node_id>', methods=['DELETE'])
+def api_scenario_node_delete(node_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    scenario_mgr.delete_node(node_id)
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/scenarios/<int:scenario_id>/edges', methods=['POST'])
+def api_scenario_edge_create(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    data = request.get_json() or {}
+    edge_id = scenario_mgr.create_edge(
+        scenario_id=scenario_id,
+        from_node_id=data['from_node_id'],
+        to_node_id=data['to_node_id'],
+        label=data.get('label', ''),
+        sort_order=data.get('sort_order', 0)
+    )
+    return jsonify({'success': True, 'edge_id': edge_id})
+
+
+@app.route('/api/admin/scenarios/edges/<int:edge_id>', methods=['PUT'])
+def api_scenario_edge_update(edge_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    data = request.get_json() or {}
+    scenario_mgr.update_edge(edge_id, data.get('label', ''), data.get('sort_order', 0))
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/scenarios/edges/<int:edge_id>', methods=['DELETE'])
+def api_scenario_edge_delete(edge_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    scenario_mgr.delete_edge(edge_id)
+    return jsonify({'success': True})
+
+
+# ─── Категории ─────────────────────────────────────────────────
+
+@app.route('/api/admin/scenarios/categories', methods=['POST'])
+def api_scenario_category_create():
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    data = request.get_json() or {}
+    cat_id = scenario_mgr.create_category(data.get('name', ''), data.get('icon', '📁'))
+    return jsonify({'success': True, 'id': cat_id})
+
+
+@app.route('/api/admin/scenarios/categories/<int:cat_id>', methods=['PUT'])
+def api_scenario_category_update(cat_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    data = request.get_json() or {}
+    scenario_mgr.update_category(cat_id, data.get('name', ''), data.get('icon', '📁'))
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/scenarios/categories/<int:cat_id>', methods=['DELETE'])
+def api_scenario_category_delete(cat_id):
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    scenario_mgr.delete_category(cat_id)
+    return jsonify({'success': True})
 
 
 # --- Запуск ---

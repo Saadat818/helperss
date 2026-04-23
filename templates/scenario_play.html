@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ scenario.title }} — Сценарий</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --blue: #2196F3;
+            --blueLight: #42a5f5;
+        }
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* Хедер */
+        .header {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 5px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .back-btn:hover { color: var(--text); border-color: var(--blue); }
+        .header-title {
+            font-size: 15px;
+            font-weight: 700;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .theme-toggle {
+            background: var(--card2);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 34px; height: 34px;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* Хлебные крошки */
+        .breadcrumb-wrap {
+            background: var(--card2);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 16px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .breadcrumb {
+            display: inline-flex;
+            align-items: center;
+            gap: 0;
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .bc-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .bc-step {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 3px 8px;
+            color: var(--muted);
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .bc-step:hover { border-color: var(--blue); color: var(--blue); }
+        .bc-step.current {
+            background: rgba(33,150,243,.15);
+            border-color: var(--blue);
+            color: var(--blue);
+            font-weight: 600;
+        }
+        .bc-sep { color: var(--muted); padding: 0 4px; }
+
+        /* Основной контент */
+        .container { max-width: 720px; margin: 0 auto; padding: 20px 16px; }
+
+        /* Карточка узла */
+        .node-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px 20px;
+            margin-bottom: 16px;
+            animation: fadeIn .2s ease;
+        }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+        .node-type-badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .node-type-badge.question { background: rgba(33,150,243,.15); color: var(--blue); }
+        .node-type-badge.final { background: rgba(0,166,81,.15); color: var(--green); }
+        .node-type-badge.info { background: rgba(255,152,0,.15); color: #FF9800; }
+
+        .node-content {
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--text);
+            white-space: pre-wrap;
+        }
+
+        /* Финальный узел */
+        .final-block {
+            margin-top: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .final-section {
+            background: var(--card2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .final-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+        .final-answer-text {
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--text);
+            white-space: pre-wrap;
+        }
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--green);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 7px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background .15s;
+        }
+        .copy-btn:hover { background: #009448; }
+        .copy-btn.copied { background: #555; }
+
+        /* Варианты выбора */
+        .choices-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 10px;
+        }
+        .choices-list { display: flex; flex-direction: column; gap: 8px; }
+        .choice-btn {
+            background: var(--card);
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            padding: 13px 16px;
+            font-size: 15px;
+            color: var(--text);
+            cursor: pointer;
+            text-align: left;
+            transition: all .15s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .choice-btn:hover {
+            border-color: var(--blue);
+            background: rgba(33,150,243,.06);
+            transform: translateX(2px);
+        }
+        .choice-btn .choice-arrow { color: var(--blue); font-size: 16px; margin-left: auto; }
+
+        /* Кнопки навигации */
+        .nav-btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .nav-btn {
+            background: var(--card2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 16px;
+            font-size: 14px;
+            color: var(--muted);
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .nav-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+        /* Финальные действия */
+        .finish-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .finish-btn {
+            background: var(--green);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .finish-btn.secondary {
+            background: var(--card2);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .finish-btn:hover { opacity: .85; }
+
+        /* Нет данных */
+        .empty-node {
+            text-align: center;
+            padding: 40px;
+            color: var(--muted);
+        }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="{{ url_for('scenarios_list') }}" class="back-btn">← К списку</a>
+        <div class="header-title">{{ scenario.title }}</div>
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
+    </div>
+
+    <!-- Хлебные крошки -->
+    <div class="breadcrumb-wrap">
+        <div class="breadcrumb" id="breadcrumb">
+            <div class="bc-item">
+                <span class="bc-step current" id="bc-0">Начало</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="nodeArea">
+            {% if root_node %}
+                <!-- Первый узел загружается через JS -->
+            {% else %}
+            <div class="empty-node">
+                <div style="font-size:48px;">🗂️</div>
+                <div style="margin-top:12px;">Сценарий пуст — нет ни одного узла</div>
+                <a href="{{ url_for('scenarios_list') }}" style="display:inline-block;margin-top:16px;color:var(--blue);">← К списку</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        const scenarioId = {{ scenario.id }};
+        const rootNodeId = {{ root_node.id if root_node else 'null' }};
+        const csrfToken = '{{ csrf_token() }}';
+
+        // История узлов для хлебных крошек и кнопки "Назад"
+        let history = [];  // [{nodeId, title}]
+
+        function escapeHtml(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // Обновить хлебные крошки
+        function updateBreadcrumb() {
+            const bc = document.getElementById('breadcrumb');
+            if (!bc) return;
+            bc.innerHTML = history.map((item, i) => {
+                const isCurrent = i === history.length - 1;
+                const label = item.title.length > 30 ? item.title.slice(0,28) + '…' : item.title;
+                return `<div class="bc-item">
+                    ${i > 0 ? '<span class="bc-sep">›</span>' : ''}
+                    <span class="bc-step ${isCurrent ? 'current' : ''}"
+                          title="${escapeHtml(item.title)}"
+                          onclick="${!isCurrent ? 'goToHistoryNode(' + i + ')' : ''}"
+                    >${escapeHtml(label)}</span>
+                </div>`;
+            }).join('');
+        }
+
+        // Переход к узлу из истории (кнопка "Назад" по клику на крошку)
+        function goToHistoryNode(index) {
+            history = history.slice(0, index + 1);
+            const nodeId = history[index].nodeId;
+            loadNode(nodeId, false);
+        }
+
+        // Загрузить узел
+        async function loadNode(nodeId, addToHistory = true) {
+            const area = document.getElementById('nodeArea');
+            area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Загрузка...</div>';
+
+            try {
+                const resp = await fetch(`/api/scenarios/${scenarioId}/node/${nodeId}`);
+                const data = await resp.json();
+                if (!data.success) {
+                    area.innerHTML = '<div class="empty-node">Ошибка загрузки узла</div>';
+                    return;
+                }
+
+                const node = data.node;
+                const choices = data.choices;
+
+                // Добавляем в историю
+                if (addToHistory) {
+                    history.push({
+                        nodeId: nodeId,
+                        title: node.title || node.content?.slice(0,40) || 'Шаг ' + history.length + 1
+                    });
+                }
+                updateBreadcrumb();
+
+                renderNode(node, choices);
+            } catch(e) {
+                area.innerHTML = '<div class="empty-node">Ошибка сети</div>';
+            }
+        }
+
+        // Рендер узла
+        function renderNode(node, choices) {
+            const area = document.getElementById('nodeArea');
+            const isFinal = node.node_type === 'final' || (!choices || choices.length === 0);
+
+            let html = `<div class="node-card">`;
+
+            // Тип узла
+            const typeLabel = isFinal ? 'Финальный ответ' : (node.node_type === 'info' ? 'Информация' : 'Вопрос');
+            const typeClass = isFinal ? 'final' : (node.node_type === 'info' ? 'info' : 'question');
+            html += `<div class="node-type-badge ${typeClass}">${typeLabel}</div>`;
+
+            // Заголовок
+            if (node.title) {
+                html += `<div style="font-size:18px;font-weight:700;margin-bottom:10px;">${escapeHtml(node.title)}</div>`;
+            }
+
+            // Контент
+            if (node.content) {
+                html += `<div class="node-content">${escapeHtml(node.content)}</div>`;
+            }
+
+            // Финальный узел — дополнительные блоки
+            if (isFinal) {
+                html += `<div class="final-block">`;
+
+                if (node.final_answer) {
+                    html += `<div class="final-section">
+                        <div class="final-section-title">💬 Текст ответа клиенту</div>
+                        <div class="final-answer-text" id="finalAnswerText">${escapeHtml(node.final_answer)}</div>
+                        <button class="copy-btn" onclick="copyAnswer()">📋 Копировать</button>
+                    </div>`;
+                }
+
+                if (node.internal_note) {
+                    html += `<div class="final-section">
+                        <div class="final-section-title">📝 Внутренняя инструкция</div>
+                        <div class="final-answer-text">${escapeHtml(node.internal_note)}</div>
+                    </div>`;
+                }
+
+                if (node.documents) {
+                    html += `<div class="final-section">
+                        <div class="final-section-title">📎 Необходимые документы</div>
+                        <div class="final-answer-text">${escapeHtml(node.documents)}</div>
+                    </div>`;
+                }
+
+                if (node.links) {
+                    html += `<div class="final-section">
+                        <div class="final-section-title">🔗 Связанные ссылки</div>
+                        <div class="final-answer-text">${escapeHtml(node.links)}</div>
+                    </div>`;
+                }
+
+                html += `</div>`;
+            }
+
+            html += `</div>`; // node-card
+
+            // Варианты выбора
+            if (!isFinal && choices && choices.length > 0) {
+                html += `<div class="choices-title">Выберите вариант:</div>
+                         <div class="choices-list">`;
+                choices.forEach(choice => {
+                    html += `<button class="choice-btn" onclick="selectChoice(${choice.to_node_id})">
+                        <span>${escapeHtml(choice.label || 'Далее')}</span>
+                        <span class="choice-arrow">›</span>
+                    </button>`;
+                });
+                html += `</div>`;
+            }
+
+            // Кнопки навигации
+            html += `<div class="nav-btns">`;
+            if (history.length > 1) {
+                html += `<button class="nav-btn" onclick="goBack()">← Назад</button>`;
+            }
+            html += `<button class="nav-btn" onclick="restartScenario()">🔄 Начать заново</button>`;
+            html += `</div>`;
+
+            // Финальные действия
+            if (isFinal) {
+                html += `<div class="finish-actions">
+                    <a href="{{ url_for('scenarios_list') }}" class="finish-btn">← К списку сценариев</a>
+                    <button class="finish-btn secondary" onclick="restartScenario()">🔄 Пройти заново</button>
+                </div>`;
+            }
+
+            area.innerHTML = html;
+        }
+
+        function selectChoice(toNodeId) {
+            loadNode(toNodeId);
+        }
+
+        function goBack() {
+            if (history.length > 1) {
+                history.pop();
+                const prev = history[history.length - 1];
+                history.pop(); // loadNode добавит снова
+                loadNode(prev.nodeId);
+            }
+        }
+
+        function restartScenario() {
+            history = [];
+            loadNode(rootNodeId);
+        }
+
+        function copyAnswer() {
+            const el = document.getElementById('finalAnswerText');
+            if (!el) return;
+            navigator.clipboard.writeText(el.textContent).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                if (btn) {
+                    btn.textContent = '✅ Скопировано';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = '📋 Копировать';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                }
+            });
+        }
+
+        // Тема
+        (function() {
+            if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+            document.getElementById('themeToggle').textContent =
+                document.body.classList.contains('light') ? '🌙' : '☀️';
+        })();
+        function toggleTheme() {
+            const isLight = document.body.classList.toggle('light');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            document.getElementById('themeToggle').textContent = isLight ? '🌙' : '☀️';
+        }
+
+        // Старт
+        if (rootNodeId) {
+            loadNode(rootNodeId);
+        }
+    </script>
+</body>
+</html>

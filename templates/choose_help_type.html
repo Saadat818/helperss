@@ -227,6 +227,15 @@
         }
 
         /* Карточка тренажера - занимает всю ширину */
+        .scenarios-card {
+            border-color: rgba(33, 150, 243, 0.3);
+        }
+        .scenarios-card:hover {
+            border-color: rgba(33, 150, 243, 0.7);
+            box-shadow: 0 8px 30px rgba(33, 150, 243, 0.15);
+        }
+        .scenarios-card .help-icon { filter: none; }
+
         .trainer-card {
             grid-column: 1 / -1;
             background: linear-gradient(180deg, var(--card), var(--card2));
@@ -310,6 +319,15 @@
                 <div class="help-title">Тематики обращений</div>
                 <div class="help-description">
                     Найдите подходящую тематику для фиксации обращения клиента
+                </div>
+            </a>
+
+            <!-- Сценарии консультаций -->
+            <a href="{{ url_for('scenarios_list') }}" class="help-card scenarios-card">
+                <div class="help-icon">🗂️</div>
+                <div class="help-title">Сценарии</div>
+                <div class="help-description">
+                    Пошаговые сценарии консультаций — дерево решений для оператора
                 </div>
             </a>
 

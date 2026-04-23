@@ -701,65 +701,6 @@
         }
         .theme-toggle:hover { transform: scale(1.12); }
         body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
-
-        /* Хлебные крошки */
-        .breadcrumb-bar {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 4px;
-            padding: 8px 12px;
-            background: rgba(0,0,0,0.2);
-            border-radius: 8px;
-            margin-bottom: 8px;
-            font-size: 12px;
-            color: rgba(255,255,255,0.5);
-            min-height: 32px;
-        }
-        body.light .breadcrumb-bar {
-            background: rgba(0,0,0,0.06);
-            color: #888;
-        }
-        .breadcrumb-item {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .breadcrumb-step {
-            background: rgba(255,255,255,0.08);
-            border-radius: 4px;
-            padding: 2px 7px;
-            color: rgba(255,255,255,0.6);
-            font-size: 11px;
-            white-space: nowrap;
-            max-width: 140px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        body.light .breadcrumb-step {
-            background: rgba(0,0,0,0.06);
-            color: #666;
-        }
-        .breadcrumb-step.current {
-            background: rgba(76,175,80,0.25);
-            color: #81C784;
-            font-weight: 600;
-        }
-        body.light .breadcrumb-step.current {
-            background: rgba(76,175,80,0.15);
-            color: #388E3C;
-        }
-        .breadcrumb-sep {
-            color: rgba(255,255,255,0.25);
-            font-size: 10px;
-        }
-        body.light .breadcrumb-sep { color: #bbb; }
-        .breadcrumb-empty {
-            color: rgba(255,255,255,0.3);
-            font-style: italic;
-            font-size: 11px;
-        }
-        body.light .breadcrumb-empty { color: #aaa; }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
@@ -815,11 +756,6 @@
                     <div class="timer-badge" id="timerBadge">⏱️ <span id="timerValue">{{ scenario.timer_seconds or 15 }}</span>с</div>
                 </div>
                 {% if not preview_mode %}<a href="{{ url_for('trainer_menu') }}" class="exit-btn">✕ Выход</a>{% endif %}
-            </div>
-
-            <!-- Хлебные крошки -->
-            <div class="breadcrumb-bar" id="breadcrumbBar">
-                <span class="breadcrumb-empty">Начало сценария...</span>
             </div>
 
             <div class="dialog-area" id="dialogArea">
@@ -955,7 +891,6 @@
         let silenceCount = 0;  // сколько раз клиент реагировал на молчание
         let timeoutCount = 0;  // общее число таймаутов за сессию
         let scenarioEnded = false;  // флаг: сценарий завершён, таймеры не должны работать
-        let breadcrumbHistory = [];  // история шагов для хлебных крошек
 
         // Реплики клиента при молчании специалиста — из сценария или стандартные
         const silenceMessagesRaw = {{ (scenario.silence_messages or '') | tojson }};
@@ -1003,39 +938,6 @@
             'product': 'Продукт'
         };
 
-        // Хлебные крошки
-        function updateBreadcrumb(stepNum, stepTitle) {
-            const bar = document.getElementById('breadcrumbBar');
-            if (!bar) return;
-
-            // Добавляем шаг в историю (не дублируем)
-            if (!breadcrumbHistory.find(s => s.num === stepNum)) {
-                breadcrumbHistory.push({ num: stepNum, title: stepTitle || ('Шаг ' + stepNum) });
-            }
-
-            if (breadcrumbHistory.length === 0) {
-                bar.innerHTML = '<span class="breadcrumb-empty">Начало сценария...</span>';
-                return;
-            }
-
-            // Показываем максимум 5 последних шагов
-            const visible = breadcrumbHistory.slice(-5);
-            bar.innerHTML = visible.map((step, i) => {
-                const isCurrent = i === visible.length - 1;
-                const label = escapeHtml(step.title.length > 25 ? step.title.slice(0, 23) + '…' : step.title);
-                return `<div class="breadcrumb-item">
-                    ${i > 0 ? '<span class="breadcrumb-sep">›</span>' : ''}
-                    <span class="breadcrumb-step ${isCurrent ? 'current' : ''}" title="${escapeHtml(step.title)}">${label}</span>
-                </div>`;
-            }).join('');
-        }
-
-        function resetBreadcrumb() {
-            breadcrumbHistory = [];
-            const bar = document.getElementById('breadcrumbBar');
-            if (bar) bar.innerHTML = '<span class="breadcrumb-empty">Начало сценария...</span>';
-        }
-
         // Загрузка первого шага
         loadStep(1);
 
@@ -1054,10 +956,6 @@
                     console.error('Error loading data');
                     return;
                 }
-
-                // Обновляем хлебные крошки
-                const stepTitle = data.step.title || data.step.client_message?.slice(0, 40) || ('Шаг ' + stepNum);
-                updateBreadcrumb(stepNum, stepTitle);
 
                 // Добавляем сообщение клиента
                 addBubble(data.step.client_message, 'client');
@@ -1095,10 +993,6 @@
 
                 currentStepNum = data.step.step_num;
                 currentStepEl.textContent = currentStepNum;
-
-                // Обновляем хлебные крошки
-                const stepTitle = data.step.title || data.step.client_message?.slice(0, 40) || ('Шаг ' + currentStepNum);
-                updateBreadcrumb(currentStepNum, stepTitle);
 
                 addBubble(data.step.client_message, 'client');
                 showAnswers(data.step.answers);

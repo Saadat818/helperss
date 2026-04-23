@@ -87,7 +87,7 @@ class RateLimiter:
         self.requests[key].append(now)
         return True
 
-    def check_login_attempt(self, ip: str, max_attempts: int = 5, window: int = 300) -> bool:
+    def check_login_attempt(self, ip: str, max_attempts: int = 10, window: int = 300) -> bool:
         """Check login attempts (stricter limit)"""
         now = time()
         self.login_attempts[ip] = [req_time for req_time in self.login_attempts[ip]
@@ -96,6 +96,14 @@ class RateLimiter:
             return False
         self.login_attempts[ip].append(now)
         return True
+
+    def reset_login_attempts(self, ip: str) -> None:
+        """Сбросить блокировку для конкретного IP"""
+        self.login_attempts[ip] = []
+
+    def reset_all_login_attempts(self) -> None:
+        """Сбросить все блокировки"""
+        self.login_attempts.clear()
 
 rate_limiter = RateLimiter()
 ticket_counter_lock = threading.Lock()
@@ -4612,7 +4620,7 @@ def user_login():
     if request.method == 'POST':
         # Rate limiting для защиты от brute force
         ip = get_client_ip()
-        if not rate_limiter.check_login_attempt(ip, max_attempts=5, window=900):
+        if not rate_limiter.check_login_attempt(ip, max_attempts=10, window=300):
             return redirect(url_for('user_login', error='rate_limit')), 429
 
         username = request.form.get('username', '').strip()

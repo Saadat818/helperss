@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тренажер — Админ</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", system-ui, Arial;
+            background: var(--bg);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            color: var(--text);
+        }
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            color: var(--text);
+            background: rgba(0,166,81,0.15);
+            border: 1px solid rgba(0,166,81,0.3);
+            padding: 10px 18px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .back-link:hover { background: rgba(0,166,81,0.25); transform: translateY(-2px); }
+        .container { max-width: 680px; width: 100%; animation: fadeIn 0.35s ease; }
+        @keyframes fadeIn { from { opacity:0; transform: translateY(-10px); } to { opacity:1; transform: translateY(0); } }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header-icon { font-size: 60px; margin-bottom: 14px; }
+        h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color: var(--muted); font-size: 14px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .seg-card {
+            background: linear-gradient(160deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px 24px;
+            text-decoration: none;
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 12px;
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+        }
+        .seg-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            border-radius: 16px 16px 0 0;
+            background: var(--accent);
+        }
+        .seg-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 14px 36px rgba(0,0,0,0.3);
+            border-color: var(--accent);
+        }
+        .seg-icon { font-size: 52px; line-height: 1; transition: transform 0.2s; }
+        .seg-card:hover .seg-icon { transform: scale(1.1); }
+        .seg-name { font-size: 20px; font-weight: 700; }
+        .seg-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+        .seg-btn {
+            margin-top: 6px;
+            padding: 9px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            background: var(--accent);
+        }
+        @media (max-width: 520px) {
+            .grid { grid-template-columns: 1fr; }
+            h1 { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('admin_login') }}" class="back-link">&larr; Назад</a>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-icon">⚙️</div>
+            <h1>Админ-панель тренажера</h1>
+            <p class="subtitle">Выберите сегмент для управления сценариями</p>
+        </div>
+
+        <div class="grid">
+            <a href="{{ url_for('admin_trainer_segment', segment='kc') }}" class="seg-card" style="--accent:#00a651;">
+                <div class="seg-icon">🎧</div>
+                <div class="seg-name">Контакт Центр</div>
+                <div class="seg-desc">Сценарии, статистика и рейтинг специалистов КЦ</div>
+                <div class="seg-btn">Открыть →</div>
+            </a>
+            <a href="{{ url_for('admin_trainer_segment', segment='branch') }}" class="seg-card" style="--accent:#2196F3;">
+                <div class="seg-icon">🏦</div>
+                <div class="seg-name">Филиалы</div>
+                <div class="seg-desc">Сценарии, статистика и рейтинг сотрудников филиалов</div>
+                <div class="seg-btn">Открыть →</div>
+            </a>
+        </div>
+    </div>
+</body>
+</html>

@@ -400,13 +400,13 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('admin_trainer') }}" class="back-link">
+    <a href="{{ url_for('admin_trainer_segment', segment=segment or 'kc') }}" class="back-link">
         &larr; К тренажеру
     </a>
 
     <div class="container">
         <div class="header">
-            <h1>📊 Статистика тренажера</h1>
+            <h1>📊 Статистика — {{ seg_info.name if seg_info else 'Тренажер' }}</h1>
             <a href="{{ url_for('admin_trainer_export') }}" class="btn btn-success">📥 Экспорт в Excel</a>
         </div>
 

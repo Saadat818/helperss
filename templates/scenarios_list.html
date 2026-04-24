@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сценарии консультаций — Helper</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --greenLight: #00d4aa;
+            --blue: #2196F3;
+            --blueLight: #42a5f5;
+        }
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 0 0 60px;
+        }
+
+        /* Хедер */
+        .header {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            transition: all .15s;
+        }
+        .back-btn:hover { color: var(--text); border-color: var(--green); }
+        .header-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+        .theme-toggle {
+            background: var(--card2);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+
+        /* Поиск и фильтры */
+        .search-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .search-input {
+            flex: 1;
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-size: 15px;
+            outline: none;
+            transition: border .15s;
+        }
+        .search-input:focus { border-color: var(--blue); }
+        .search-input::placeholder { color: var(--muted); }
+        .search-btn {
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .search-btn:hover { background: var(--blueLight); }
+
+        /* Категории */
+        .categories {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+        .cat-btn {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all .15s;
+        }
+        .cat-btn:hover, .cat-btn.active {
+            border-color: var(--blue);
+            color: var(--blue);
+            background: rgba(33,150,243,.08);
+        }
+
+        /* Топ обращений */
+        .section-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 12px;
+        }
+        .top-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 28px;
+        }
+        .top-badge {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 13px;
+            text-decoration: none;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all .15s;
+        }
+        .top-badge:hover { border-color: var(--blue); color: var(--blue); }
+        .top-badge .views { color: var(--muted); font-size: 11px; }
+
+        /* Список сценариев */
+        .scenarios-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .scenario-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 18px;
+            text-decoration: none;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all .15s;
+        }
+        .scenario-card:hover {
+            border-color: var(--blue);
+            transform: translateX(2px);
+            box-shadow: 0 4px 16px rgba(33,150,243,.1);
+        }
+        .scenario-icon {
+            font-size: 28px;
+            flex-shrink: 0;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(33,150,243,.1);
+            border-radius: 10px;
+        }
+        .scenario-info { flex: 1; min-width: 0; }
+        .scenario-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .scenario-meta {
+            font-size: 12px;
+            color: var(--muted);
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .scenario-arrow {
+            color: var(--muted);
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .tag {
+            background: rgba(33,150,243,.1);
+            color: var(--blue);
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-size: 11px;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--muted);
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="{{ url_for('choose_help_type') }}" class="back-btn">← Назад</a>
+        <div class="header-title">🗂️ Сценарии консультаций</div>
+        <div class="header-right">
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Поиск -->
+        <form class="search-bar" method="get" action="{{ url_for('scenarios_list') }}">
+            {% if selected_category %}
+            <input type="hidden" name="category_id" value="{{ selected_category }}">
+            {% endif %}
+            <input type="text" name="q" class="search-input"
+                   placeholder="Поиск по названию или ключевым словам..."
+                   value="{{ search or '' }}">
+            <button type="submit" class="search-btn">🔍 Найти</button>
+        </form>
+
+        <!-- Категории -->
+        {% if categories %}
+        <div class="categories">
+            <a href="{{ url_for('scenarios_list', q=search) }}"
+               class="cat-btn {% if not selected_category %}active{% endif %}">Все</a>
+            {% for cat in categories %}
+            <a href="{{ url_for('scenarios_list', category_id=cat.id, q=search) }}"
+               class="cat-btn {% if selected_category == cat.id %}active{% endif %}">
+                {{ cat.icon }} {{ cat.name }}
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Топ обращений -->
+        {% if top_scenarios and not search and not selected_category %}
+        <div class="section-title">🔥 Топ обращений за 30 дней</div>
+        <div class="top-list">
+            {% for s in top_scenarios %}
+            <a href="{{ url_for('scenario_play', scenario_id=s.id) }}" class="top-badge">
+                {{ s.category_icon or '🗂️' }} {{ s.title }}
+                {% if s.views_30d > 0 %}<span class="views">{{ s.views_30d }}</span>{% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Список сценариев -->
+        <div class="section-title">
+            {% if search %}Результаты поиска: "{{ search }}"
+            {% elif selected_category %}Сценарии категории
+            {% else %}Все сценарии{% endif %}
+        </div>
+
+        {% if scenarios %}
+        <div class="scenarios-grid">
+            {% for s in scenarios %}
+            <a href="{{ url_for('scenario_play', scenario_id=s.id) }}" class="scenario-card">
+                <div class="scenario-icon">{{ s.category_icon or '🗂️' }}</div>
+                <div class="scenario-info">
+                    <div class="scenario-title">{{ s.title }}</div>
+                    <div class="scenario-meta">
+                        {% if s.category_name %}<span>{{ s.category_name }}</span>{% endif %}
+                        {% if s.description %}<span>{{ s.description[:60] }}{% if s.description|length > 60 %}...{% endif %}</span>{% endif %}
+                        {% if s.views_30d > 0 %}<span>👁 {{ s.views_30d }} за 30 дней</span>{% endif %}
+                    </div>
+                    {% if s.tags %}
+                    <div style="margin-top:6px; display:flex; gap:4px; flex-wrap:wrap;">
+                        {% for tag in s.tags.split(',')[:3] %}
+                        {% if tag.strip() %}<span class="tag">{{ tag.strip() }}</span>{% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="scenario-arrow">›</div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="icon">🗂️</div>
+            <div>Сценарии не найдены</div>
+            {% if search %}<div style="margin-top:8px; font-size:13px;">Попробуйте другой запрос</div>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        (function() {
+            if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+            document.getElementById('themeToggle').textContent =
+                document.body.classList.contains('light') ? '🌙' : '☀️';
+        })();
+        function toggleTheme() {
+            const isLight = document.body.classList.toggle('light');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            document.getElementById('themeToggle').textContent = isLight ? '🌙' : '☀️';
+        }
+    </script>
+</body>
+</html>

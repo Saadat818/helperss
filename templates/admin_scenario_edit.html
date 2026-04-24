@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактор сценария — {{ scenario.title }}</title>
+    <style>
+        :root {
+            --bg: #0f1117; --card: #1a1d27; --card2: #20242f;
+            --text: #e8e8f0; --muted: #8888aa; --border: #2a2d3e;
+            --green: #00c06b; --blue: #4d9fff; --red: #ff5555;
+            --yellow: #ffb800; --purple: #9d71ff; --orange: #ff8c42;
+            --node-q: #1e3a5f; --node-q-border: #4d9fff;
+            --node-f: #1a3d2b; --node-f-border: #00c06b;
+            --node-i: #3a2d1a; --node-i-border: #ffb800;
+            --node-s: #2d1a3d; --node-s-border: #9d71ff;
+        }
+        body.light {
+            --bg: #e8ecf2; --card: #fff; --card2: #f0f3f8;
+            --text: #1a1a2e; --muted: #606080; --border: #c0c8d8;
+            --node-q: #dbeafe; --node-q-border: #2563eb;
+            --node-f: #dcfce7; --node-f-border: #16a34a;
+            --node-i: #fef9c3; --node-i-border: #ca8a04;
+            --node-s: #f3e8ff; --node-s-border: #9333ea;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Segoe UI", system-ui, Arial; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Топбар */
+        .topbar {
+            background: var(--card); border-bottom: 1px solid var(--border);
+            padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+            flex-shrink: 0; z-index: 200; flex-wrap: wrap;
+        }
+        .back-btn { color: var(--muted); text-decoration: none; font-size: 13px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); }
+        .back-btn:hover { color: var(--text); border-color: var(--blue); }
+        .scenario-name { font-size: 15px; font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 80px; }
+        .status-pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+        .status-draft { background: rgba(255,184,0,.15); color: var(--yellow); }
+        .status-active { background: rgba(0,192,107,.15); color: var(--green); }
+        .status-archived { background: rgba(136,136,170,.15); color: var(--muted); }
+        .sep { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+        .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: opacity .15s; text-decoration: none; white-space: nowrap; }
+        .btn:hover { opacity: .82; }
+        .btn-green { background: var(--green); color: #fff; }
+        .btn-blue { background: var(--blue); color: #fff; }
+        .btn-red { background: var(--red); color: #fff; }
+        .btn-gray { background: var(--card2); color: var(--text); border: 1px solid var(--border); }
+        .btn-yellow { background: var(--yellow); color: #000; }
+        .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+        .btn-outline:hover { border-color: var(--blue); color: var(--blue); }
+        .btn-sm { padding: 4px 8px; font-size: 12px; }
+        .btn-icon { width: 28px; height: 28px; padding: 0; justify-content: center; font-size: 14px; border-radius: 6px; }
+
+        /* Тулбар узлов */
+        .nodebar {
+            background: var(--card); border-bottom: 1px solid var(--border);
+            padding: 7px 16px; display: flex; align-items: center; gap: 8px;
+            flex-shrink: 0; flex-wrap: wrap;
+        }
+        .nodebar-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+        .add-node-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid; transition: all .15s; background: none; }
+        .add-node-btn:hover { opacity: .8; transform: translateY(-1px); }
+        .add-start { color: var(--purple); border-color: rgba(157,113,255,.4); background: rgba(157,113,255,.1); }
+        .add-question { color: var(--blue); border-color: rgba(77,159,255,.4); background: rgba(77,159,255,.1); }
+        .add-final { color: var(--green); border-color: rgba(0,192,107,.4); background: rgba(0,192,107,.1); }
+        .add-info { color: var(--yellow); border-color: rgba(255,184,0,.4); background: rgba(255,184,0,.1); }
+        .nodebar-right { margin-left: auto; font-size: 11px; color: var(--muted); }
+
+        /* Рабочая область */
+        .workspace { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+        /* Canvas */
+        .canvas-wrap {
+            flex: 1; position: relative; overflow: hidden;
+            background-color: var(--bg);
+            background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+            background-size: 28px 28px;
+            cursor: grab;
+        }
+        .canvas-wrap.panning { cursor: grabbing; }
+        .canvas { position: absolute; top: 0; left: 0; width: 5000px; height: 4000px; transform-origin: 0 0; }
+
+        /* SVG рёбра */
+        .edges-svg { position: absolute; top: 0; left: 0; width: 5000px; height: 4000px; pointer-events: none; overflow: visible; }
+        .edge-path { fill: none; stroke: #3a4060; stroke-width: 2; pointer-events: stroke; cursor: pointer; }
+        .edge-path:hover, .edge-path.selected { stroke: var(--blue); stroke-width: 2.5; }
+        .edge-path.temp { stroke: var(--green); stroke-width: 2; stroke-dasharray: 6 3; pointer-events: none; }
+
+        /* Узлы */
+        .flow-node { position: absolute; min-width: 180px; max-width: 240px; border-radius: 10px; border: 2px solid; user-select: none; }
+        .flow-node:hover { box-shadow: 0 4px 20px rgba(0,0,0,.35); }
+        .flow-node.selected { box-shadow: 0 0 0 3px rgba(77,159,255,.45); }
+        .flow-node.dragging { opacity: .85; z-index: 100; cursor: grabbing; }
+        .flow-node.type-start   { background: var(--node-s); border-color: var(--node-s-border); }
+        .flow-node.type-question{ background: var(--node-q); border-color: var(--node-q-border); }
+        .flow-node.type-final   { background: var(--node-f); border-color: var(--node-f-border); }
+        .flow-node.type-info    { background: var(--node-i); border-color: var(--node-i-border); }
+
+        .node-header { padding: 7px 10px 5px; display: flex; align-items: center; gap: 5px; border-bottom: 1px solid rgba(255,255,255,.06); }
+        .node-type-badge { font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; }
+        .type-start .node-type-badge    { background: rgba(157,113,255,.3); color: var(--purple); }
+        .type-question .node-type-badge { background: rgba(77,159,255,.3); color: var(--blue); }
+        .type-final .node-type-badge    { background: rgba(0,192,107,.3); color: var(--green); }
+        .type-info .node-type-badge     { background: rgba(255,184,0,.3); color: var(--yellow); }
+        .node-root-badge { font-size: 9px; background: rgba(157,113,255,.2); color: var(--purple); padding: 1px 4px; border-radius: 3px; font-weight: 700; }
+        .node-hdr-actions { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+        .flow-node:hover .node-hdr-actions { opacity: 1; }
+        .node-del-btn { width: 20px; height: 20px; border-radius: 4px; background: rgba(255,85,85,.15); color: var(--red); border: none; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+        .node-del-btn:hover { background: var(--red); color: #fff; }
+        .node-body { padding: 8px 10px 10px; position: relative; }
+        .node-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; word-break: break-word; line-height: 1.3; }
+        .node-content { font-size: 11px; color: var(--muted); line-height: 1.4; word-break: break-word; max-height: 44px; overflow: hidden; }
+        .node-final-label { font-size: 10px; color: var(--green); margin-top: 4px; font-style: italic; }
+
+        /* Порты */
+        .port { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid; z-index: 10; transition: transform .1s; }
+        .port-out { bottom: -7px; left: 50%; transform: translateX(-50%); background: var(--card); border-color: var(--blue); cursor: crosshair; }
+        .port-out:hover { background: var(--blue); transform: translateX(-50%) scale(1.5); }
+        .port-in  { top: -7px; left: 50%; transform: translateX(-50%); background: var(--card); border-color: var(--green); pointer-events: none; }
+
+        /* Зум */
+        .zoom-controls { position: absolute; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 4px; z-index: 50; }
+        .zoom-btn { width: 32px; height: 32px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .zoom-btn:hover { border-color: var(--blue); color: var(--blue); }
+        .zoom-level { text-align: center; font-size: 10px; color: var(--muted); font-weight: 700; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 4px; }
+
+        /* Миникарта */
+        .minimap { position: absolute; bottom: 16px; right: 16px; width: 160px; height: 100px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; z-index: 50; }
+        .minimap canvas { display: block; }
+        .minimap-vp { position: absolute; border: 1px solid var(--blue); background: rgba(77,159,255,.08); pointer-events: none; }
+
+        /* Боковая панель */
+        .side-panel { width: 0; overflow: hidden; transition: width .2s ease; background: var(--card); border-left: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+        .side-panel.open { width: 310px; }
+        .sp-inner { width: 310px; padding: 14px; overflow-y: auto; flex: 1; }
+        .panel-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .panel-close { margin-left: auto; cursor: pointer; color: var(--muted); font-size: 18px; background: none; border: none; line-height: 1; }
+        .panel-close:hover { color: var(--red); }
+        .fg { margin-bottom: 12px; }
+        .fl { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+        .fi, .ft, .fs { width: 100%; background: var(--card2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 6px 9px; font-size: 13px; outline: none; font-family: inherit; }
+        .fi:focus, .ft:focus, .fs:focus { border-color: var(--blue); }
+        .ft { resize: vertical; min-height: 65px; line-height: 1.5; }
+        .fcheck { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 13px; }
+        .fcheck input { width: 15px; height: 15px; accent-color: var(--purple); cursor: pointer; }
+        .psec { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin: 14px 0 7px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+
+        /* Связи в панели */
+        .edge-item { background: var(--card2); border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; margin-bottom: 5px; display: flex; align-items: center; gap: 7px; }
+        .edge-lbl-input { flex: 1; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 4px 6px; font-size: 12px; outline: none; }
+        .edge-lbl-input:focus { border-color: var(--blue); }
+        .edge-target { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+        .add-edge-row { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+        .ae-label { flex: 1; min-width: 70px; background: var(--card2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 5px 7px; font-size: 12px; outline: none; }
+        .ae-select { flex: 2; min-width: 90px; background: var(--card2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 5px 7px; font-size: 12px; outline: none; }
+
+        /* Toast */
+        .flash-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 16px; font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .2s; pointer-events: none; }
+        .flash-toast.show { opacity: 1; }
+        .flash-toast.success { border-color: var(--green); color: var(--green); }
+        .flash-toast.error { border-color: var(--red); color: var(--red); }
+
+        /* Модальное */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; max-width: 360px; width: 92%; }
+        .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 9px; }
+        .modal p { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+        /* Edge label popup */
+        .edge-popup { position: fixed; z-index: 500; background: var(--card); border: 1px solid var(--blue); border-radius: 8px; padding: 10px; display: none; flex-direction: column; gap: 7px; box-shadow: 0 8px 24px rgba(0,0,0,.4); min-width: 220px; }
+        .edge-popup.show { display: flex; }
+        .edge-popup input { background: var(--card2); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 6px 8px; font-size: 12px; outline: none; }
+        .edge-popup input:focus { border-color: var(--blue); }
+
+        /* Контекстное меню */
+        .ctx-menu { position: fixed; z-index: 600; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; min-width: 160px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none; }
+        .ctx-menu.show { display: block; }
+        .ctx-item { padding: 7px 14px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .ctx-item:hover { background: var(--card2); }
+        .ctx-item.danger { color: var(--red); }
+        .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+        .hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.45); border-radius: 6px; padding: 4px 12px; font-size: 11px; color: var(--muted); pointer-events: none; z-index: 10; backdrop-filter: blur(4px); white-space: nowrap; }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+
+<!-- Топбар -->
+<div class="topbar">
+    <a href="{{ url_for('admin_scenarios') }}" class="back-btn">← Сценарии</a>
+    <div class="scenario-name" id="scenarioName">{{ scenario.title }}</div>
+    <span class="status-pill status-{{ scenario.status }}">
+        {% if scenario.status == 'active' %}✅ Активен
+        {% elif scenario.status == 'draft' %}✏️ Черновик
+        {% else %}📦 Архив{% endif %}
+    </span>
+    <div class="sep"></div>
+    <button class="btn btn-gray btn-sm" onclick="undoAction()" title="Ctrl+Z">↩</button>
+    <button class="btn btn-gray btn-sm" onclick="redoAction()" title="Ctrl+Y">↪</button>
+    <div class="sep"></div>
+    <button class="btn btn-blue btn-sm" onclick="autoLayout()">⚡ Авторасстановка</button>
+    <button class="btn btn-gray btn-sm" onclick="fitView()">⊡ По размеру</button>
+    <div class="sep"></div>
+    <button class="btn btn-green btn-sm" onclick="saveAll()" id="saveBtn">💾 Сохранить</button>
+    {% if scenario.status == 'draft' %}
+    <form method="post" action="{{ url_for('admin_scenario_publish', scenario_id=scenario.id) }}" style="display:inline;" id="publishForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="button" class="btn btn-yellow btn-sm" onclick="tryPublish()">▶ Опубликовать</button>
+    </form>
+    {% endif %}
+    {% if scenario.status == 'active' %}
+    <form method="post" action="{{ url_for('admin_scenario_archive', scenario_id=scenario.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-gray btn-sm">📦 Архив</button>
+    </form>
+    <a href="{{ url_for('scenario_play', scenario_id=scenario.id) }}" class="btn btn-outline btn-sm" target="_blank">👁 Просмотр</a>
+    {% endif %}
+    <button class="btn btn-gray btn-sm" onclick="openMeta()">⚙️</button>
+</div>
+
+<!-- Тулбар -->
+<div class="nodebar">
+    <span class="nodebar-label">+ Блок:</span>
+    <button class="add-node-btn add-start"    onclick="addNode('start')">🟣 Старт</button>
+    <button class="add-node-btn add-question" onclick="addNode('question')">🔵 Вопрос</button>
+    <button class="add-node-btn add-final"    onclick="addNode('final')">🟢 Финал</button>
+    <button class="add-node-btn add-info"     onclick="addNode('info')">🟡 Комментарий</button>
+    <div class="nodebar-right">
+        Блоков: <strong id="nodeCount">{{ nodes|length }}</strong> &nbsp; Связей: <strong id="edgeCount">{{ edges|length }}</strong>
+    </div>
+</div>
+
+<!-- Рабочая область -->
+<div class="workspace">
+    <div class="canvas-wrap" id="canvasWrap">
+        <div class="canvas" id="canvas">
+            <svg class="edges-svg" id="edgesSvg">
+                <defs>
+                    <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                        <polygon points="0 0,8 3,0 6" fill="#3a4060"/>
+                    </marker>
+                    <marker id="arr-blue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                        <polygon points="0 0,8 3,0 6" fill="#4d9fff"/>
+                    </marker>
+                    <marker id="arr-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                        <polygon points="0 0,8 3,0 6" fill="#00c06b"/>
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+        <div class="hint" id="hint">Тяните из нижней точки блока → для связи &nbsp;|&nbsp; ПКМ — меню &nbsp;|&nbsp; Ctrl+S — сохранить</div>
+        <div class="zoom-controls">
+            <button class="zoom-btn" onclick="setZoom(zoom+.05)">+</button>
+            <div class="zoom-level" id="zoomLbl">100%</div>
+            <button class="zoom-btn" onclick="setZoom(zoom-.05)">−</button>
+            <button class="zoom-btn" onclick="setZoom(1)" title="Сброс">⊙</button>
+        </div>
+        <div class="minimap" id="minimap">
+            <canvas id="mmCanvas" width="160" height="100"></canvas>
+            <div class="minimap-vp" id="mmVp"></div>
+        </div>
+    </div>
+    <div class="side-panel" id="sidePanel">
+        <div class="sp-inner" id="spInner"></div>
+    </div>
+</div>
+
+<!-- Popup подписи ребра -->
+<div class="edge-popup" id="edgePopup">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);">Подпись ответа (можно пустую)</div>
+    <input type="text" id="epInput" placeholder="Да / Нет / Резидент...">
+    <div style="display:flex;gap:6px;">
+        <button class="btn btn-green btn-sm" onclick="confirmEdge()">✓ Создать связь</button>
+        <button class="btn btn-gray btn-sm" onclick="cancelEdge()">✕</button>
+    </div>
+</div>
+
+<!-- Контекстное меню -->
+<div class="ctx-menu" id="ctxMenu">
+    <div class="ctx-item" onclick="ctxEdit()">✏️ Редактировать</div>
+    <div class="ctx-item" onclick="ctxDup()">📋 Дублировать</div>
+    <div class="ctx-item" onclick="ctxRoot()">🟣 Сделать стартовым</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="ctxDel()">🗑 Удалить</div>
+</div>
+
+<!-- Toast -->
+<div class="flash-toast" id="fToast"></div>
+
+<!-- Confirm -->
+<div class="modal-overlay" id="confirmModal">
+    <div class="modal">
+        <h3 id="cmTitle">Удалить?</h3>
+        <p id="cmText"></p>
+        <div class="modal-actions">
+            <button class="btn btn-gray" onclick="closeConfirm()">Отмена</button>
+            <button class="btn btn-red" id="cmOk">Удалить</button>
+        </div>
+    </div>
+</div>
+
+<!-- Meta modal -->
+<div class="modal-overlay" id="metaModal">
+    <div class="modal" style="max-width:440px;">
+        <h3>⚙️ Настройки сценария</h3>
+        <div style="margin-top:14px;" class="fg">
+            <div class="fl">Название</div>
+            <input class="fi" id="mTitle" value="{{ scenario.title }}">
+        </div>
+        <div class="fg">
+            <div class="fl">Категория</div>
+            <select class="fs" id="mCat">
+                <option value="">— Без категории —</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if scenario.category_id == cat.id %}selected{% endif %}>{{ cat.icon }} {{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="fg">
+            <div class="fl">Описание</div>
+            <textarea class="ft" id="mDesc" style="min-height:55px;">{{ scenario.description or '' }}</textarea>
+        </div>
+        <div class="fg">
+            <div class="fl">Теги</div>
+            <input class="fi" id="mTags" value="{{ scenario.tags or '' }}" placeholder="тег1, тег2">
+        </div>
+        <div class="modal-actions" style="margin-top:16px;">
+            <button class="btn btn-gray" onclick="document.getElementById('metaModal').classList.remove('show')">Отмена</button>
+            <button class="btn btn-blue" onclick="saveMeta()">💾 Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const SID = {{ scenario.id }};
+const CSRF = '{{ csrf_token() }}';
+
+// ── Данные ──────────────────────────────────────────────────────
+let nodes = {}, edges = {};
+
+(function load() {
+    {% for n in nodes %}
+    nodes[{{ n.id }}] = {
+        id:{{ n.id }}, node_type:{{ n.node_type|tojson }}, title:{{ n.title|tojson }},
+        content:{{ n.content|tojson }}, is_root:{{ 1 if n.is_root else 0 }},
+        pos_x:{{ n.pos_x or 0 }}, pos_y:{{ n.pos_y or 0 }},
+        final_answer:{{ n.final_answer|tojson }}, internal_note:{{ n.internal_note|tojson }},
+        documents:{{ n.documents|tojson }}, links:{{ n.links|tojson }},
+    };{% endfor %}
+    {% for e in edges %}
+    edges[{{ e.id }}] = {
+        id:{{ e.id }}, from_node_id:{{ e.from_node_id }},
+        to_node_id:{{ e.to_node_id }}, label:{{ e.label|tojson }}, sort_order:{{ e.sort_order or 0 }},
+    };{% endfor %}
+})();
+
+// ── Состояние canvas ─────────────────────────────────────────────
+let zoom=1, panX=80, panY=80;
+let isDragging=false, dragId=null, dragOX=0, dragOY=0, dragMoved=false;
+let isPanning=false, panSX=0, panSY=0, panSPX=0, panSPY=0;
+let isDrawEdge=false, drawFrom=null;
+let tempEdge=null;
+let selNode=null, selEdge=null;
+let dirty=false;
+
+// История
+let hist=[], histIdx=-1;
+
+// DOM
+const canvas=document.getElementById('canvas');
+const wrap=document.getElementById('canvasWrap');
+const svg=document.getElementById('edgesSvg');
+const sp=document.getElementById('sidePanel');
+const spi=document.getElementById('spInner');
+
+// ── API helper ───────────────────────────────────────────────────
+function api(method,url,body){
+    return fetch(url,{method,headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:body?JSON.stringify(body):undefined}).then(r=>r.json());
+}
+
+// ── Toast ────────────────────────────────────────────────────────
+function toast(msg,type='success'){
+    const el=document.getElementById('fToast');
+    el.textContent=(type==='success'?'✓ ':'✗ ')+msg;
+    el.className='flash-toast show '+type;
+    clearTimeout(el._t);
+    el._t=setTimeout(()=>el.classList.remove('show'),2600);
+}
+
+// ── Confirm modal ────────────────────────────────────────────────
+function confirm2(title,text,cb){
+    document.getElementById('cmTitle').textContent=title;
+    document.getElementById('cmText').textContent=text;
+    document.getElementById('cmOk').onclick=()=>{closeConfirm();cb();};
+    document.getElementById('confirmModal').classList.add('show');
+}
+function closeConfirm(){document.getElementById('confirmModal').classList.remove('show');}
+
+// ── Трансформация ────────────────────────────────────────────────
+function applyT(){
+    canvas.style.transform=`translate(${panX}px,${panY}px) scale(${zoom})`;
+    document.getElementById('zoomLbl').textContent=Math.round(zoom*100)+'%';
+    updateMM();
+}
+function setZoom(z){zoom=Math.max(.2,Math.min(3,z));applyT();}
+function fitView(){
+    const nl=Object.values(nodes);
+    if(!nl.length)return;
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    nl.forEach(n=>{x0=Math.min(x0,n.pos_x);y0=Math.min(y0,n.pos_y);x1=Math.max(x1,n.pos_x+220);y1=Math.max(y1,n.pos_y+100);});
+    const ww=wrap.clientWidth,wh=wrap.clientHeight;
+    const gw=x1-x0+100,gh=y1-y0+100;
+    zoom=Math.min(ww/gw,wh/gh,1.5);zoom=Math.max(.2,zoom);
+    panX=(ww-gw*zoom)/2-x0*zoom+50;panY=(wh-gh*zoom)/2-y0*zoom+50;
+    applyT();
+}
+
+// ── Миникарта ────────────────────────────────────────────────────
+function updateMM(){
+    const mc=document.getElementById('mmCanvas');
+    const ctx=mc.getContext('2d');
+    ctx.clearRect(0,0,160,100);
+    const sc=0.038;
+    const cols={start:'#9d71ff',question:'#4d9fff',final:'#00c06b',info:'#ffb800'};
+    Object.values(nodes).forEach(n=>{
+        ctx.fillStyle=cols[n.node_type]||'#4d9fff';
+        ctx.fillRect(n.pos_x*sc,n.pos_y*sc,180*sc,70*sc);
+    });
+    const vp=document.getElementById('mmVp');
+    const vx=(-panX/zoom)*sc,vy=(-panY/zoom)*sc;
+    const vw=(wrap.clientWidth/zoom)*sc,vh=(wrap.clientHeight/zoom)*sc;
+    vp.style.cssText=`left:${vx}px;top:${vy}px;width:${vw}px;height:${vh}px;`;
+}
+
+// ── Рендер узла ──────────────────────────────────────────────────
+const TL={start:'Старт',question:'Вопрос',final:'Финал',info:'Инфо'};
+const TI={start:'🟣',question:'🔵',final:'🟢',info:'🟡'};
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function tr(s,n){return s&&s.length>n?s.slice(0,n)+'…':(s||'');}
+
+function renderNode(n){
+    let el=document.getElementById('nd-'+n.id);
+    if(!el){
+        el=document.createElement('div');
+        el.id='nd-'+n.id;el.dataset.nid=n.id;
+        canvas.appendChild(el);
+        bindNode(el,n.id);
+    }
+    el.className='flow-node type-'+n.node_type+(selNode==n.id?' selected':'');
+    el.style.cssText=`left:${n.pos_x}px;top:${n.pos_y}px;`;
+    el.innerHTML=`
+    <div class="node-header">
+        <span class="node-type-badge">${TI[n.node_type]} ${TL[n.node_type]||n.node_type}</span>
+        ${n.is_root?'<span class="node-root-badge">★ START</span>':''}
+        <div class="node-hdr-actions">
+            <button class="node-del-btn" data-del="${n.id}">✕</button>
+        </div>
+    </div>
+    <div class="node-body">
+        <div class="node-title">${esc(tr(n.title||'(без названия)',55))}</div>
+        ${n.content?`<div class="node-content">${esc(tr(n.content,85))}</div>`:''}
+        ${n.final_answer?`<div class="node-final-label">💬 ${esc(tr(n.final_answer,55))}</div>`:''}
+        ${n.node_type!=='final'?`<div class="port port-out" data-port="${n.id}"></div>`:''}
+        <div class="port port-in"></div>
+    </div>`;
+}
+
+function renderAll(){
+    canvas.querySelectorAll('.flow-node').forEach(el=>{if(!nodes[el.dataset.nid])el.remove();});
+    Object.values(nodes).forEach(n=>renderNode(n));
+    document.getElementById('nodeCount').textContent=Object.keys(nodes).length;
+    renderEdges();
+    updateMM();
+}
+
+// ── Рендер рёбер ─────────────────────────────────────────────────
+function nodeCenter(n,port){
+    const el=document.getElementById('nd-'+n.id);
+    if(!el) return {x:n.pos_x+100, y:n.pos_y+(port==='out'?80:-7)};
+
+    // Берём реальные размеры узла
+    const w=el.offsetWidth, h=el.offsetHeight;
+
+    // Центр по X — середина узла
+    const cx = n.pos_x + w/2;
+
+    if(port==='out'){
+        // Нижняя точка — порт-выход
+        return {x: cx, y: n.pos_y + h};
+    } else {
+        // Верхняя точка — порт-вход
+        return {x: cx, y: n.pos_y};
+    }
+}
+function bezier(x1,y1,x2,y2){
+    // Вертикальный безье — контрольные точки строго вертикально
+    const dist = Math.abs(y2-y1);
+    const cp = Math.max(dist * 0.5, 60);
+    return `M${x1},${y1} C${x1},${y1+cp} ${x2},${y2-cp} ${x2},${y2}`;
+}
+function renderEdges(){
+    svg.querySelectorAll('.eg').forEach(g=>g.remove());
+    Object.values(edges).forEach(e=>{
+        const fn=nodes[e.from_node_id],tn=nodes[e.to_node_id];
+        if(!fn||!tn)return;
+        const fr=nodeCenter(fn,'out'),to=nodeCenter(tn,'in');
+        const d=bezier(fr.x,fr.y,to.x,to.y);
+        const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+        g.classList.add('eg');g.dataset.eid=e.id;
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.classList.add('edge-path');
+        if(selEdge==e.id)path.classList.add('selected');
+        path.setAttribute('d',d);
+        path.setAttribute('marker-end',selEdge==e.id?'url(#arr-blue)':'url(#arr)');
+        path.style.pointerEvents='stroke';
+        path.addEventListener('click',()=>selectEdge(e.id));
+        g.appendChild(path);
+        if(e.label){
+            const mx=(fr.x+to.x)/2,my=(fr.y+to.y)/2,tw=e.label.length*7+14;
+            const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
+            r.setAttribute('x',mx-tw/2);r.setAttribute('y',my-10);r.setAttribute('width',tw);r.setAttribute('height',18);
+            r.setAttribute('rx',4);r.setAttribute('fill','var(--card)');r.setAttribute('stroke','var(--border)');r.setAttribute('stroke-width','1');
+            g.appendChild(r);
+            const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+            t.setAttribute('x',mx);t.setAttribute('y',my+3);t.setAttribute('text-anchor','middle');
+            t.setAttribute('font-size','11');t.setAttribute('font-family','Segoe UI,sans-serif');t.setAttribute('font-weight','600');
+            t.setAttribute('fill','var(--text)');t.setAttribute('pointer-events','none');
+            t.textContent=e.label;g.appendChild(t);
+        }
+        svg.appendChild(g);
+    });
+    document.getElementById('edgeCount').textContent=Object.keys(edges).length;
+}
+
+// ── Биндинг событий узла ─────────────────────────────────────────
+function bindNode(el,nid){
+    el.addEventListener('mousedown',ev=>{
+        if(ev.button!==0)return;
+        if(ev.target.dataset.port||ev.target.dataset.del)return;
+        ev.stopPropagation();
+        selectNode(nid);
+        isDragging=true;dragMoved=false;dragId=nid;
+        const r=canvas.getBoundingClientRect();
+        dragOX=(ev.clientX-r.left)/zoom-nodes[nid].pos_x;
+        dragOY=(ev.clientY-r.top)/zoom-nodes[nid].pos_y;
+        el.classList.add('dragging');
+    },{capture:false});
+
+    el.addEventListener('click',ev=>{
+        if(ev.target.dataset.del)return;
+        if(ev.target.dataset.port)return;
+        if(!dragMoved)openPanel(nid);
+    });
+
+    el.addEventListener('contextmenu',ev=>{
+        ev.preventDefault();ev.stopPropagation();
+        showCtx(nid,ev.clientX,ev.clientY);
+    });
+}
+
+// Порт-выход через делегирование
+canvas.addEventListener('mousedown',ev=>{
+    if(!ev.target.dataset.port)return;
+    ev.preventDefault();ev.stopPropagation();
+    isDrawEdge=true;drawFrom=parseInt(ev.target.dataset.port);
+    tempEdge=document.createElementNS('http://www.w3.org/2000/svg','path');
+    tempEdge.classList.add('edge-path','temp');
+    svg.appendChild(tempEdge);
+    wrap.style.cursor='crosshair';
+},true);
+
+// Кнопка удаления узла
+canvas.addEventListener('click',ev=>{
+    if(!ev.target.dataset.del)return;
+    ev.stopPropagation();
+    deleteNode(parseInt(ev.target.dataset.del));
+});
+
+// ── Глобальные mouse events ──────────────────────────────────────
+document.addEventListener('mousemove',ev=>{
+    if(isDragging&&dragId!==null){
+        const r=canvas.getBoundingClientRect();
+        const nx=(ev.clientX-r.left)/zoom-dragOX;
+        const ny=(ev.clientY-r.top)/zoom-dragOY;
+        nodes[dragId].pos_x=Math.max(0,nx);
+        nodes[dragId].pos_y=Math.max(0,ny);
+        const el=document.getElementById('nd-'+dragId);
+        if(el){el.style.left=nodes[dragId].pos_x+'px';el.style.top=nodes[dragId].pos_y+'px';}
+        renderEdges();dragMoved=true;return;
+    }
+    if(isPanning){
+        panX=panSPX+(ev.clientX-panSX);panY=panSPY+(ev.clientY-panSY);applyT();return;
+    }
+    if(isDrawEdge&&tempEdge){
+        const n=nodes[drawFrom],fr=nodeCenter(n,'out');
+        // Переводим координаты мыши в canvas-пространство
+        const wr=wrap.getBoundingClientRect();
+        const tx=(ev.clientX-wr.left-panX)/zoom;
+        const ty=(ev.clientY-wr.top-panY)/zoom;
+        tempEdge.setAttribute('d',bezier(fr.x,fr.y,tx,ty));
+    }
+});
+
+document.addEventListener('mouseup',ev=>{
+    if(isDragging){
+        document.getElementById('nd-'+dragId)?.classList.remove('dragging');
+        if(dragMoved){markDirty();saveLayout();}
+        isDragging=false;dragId=null;dragMoved=false;
+    }
+    if(isPanning)isPanning=false;
+    if(isDrawEdge){
+        const tgt=ev.target.closest('.flow-node');
+        if(tgt&&parseInt(tgt.dataset.nid)!==drawFrom){
+            showEdgePopup(drawFrom,parseInt(tgt.dataset.nid),ev.clientX,ev.clientY);
+        } else cancelEdge();
+    }
+});
+
+// Pan
+wrap.addEventListener('mousedown',ev=>{
+    if(ev.button===1||(ev.button===0&&!ev.target.closest('.flow-node')&&!ev.target.closest('.zoom-controls')&&!ev.target.closest('.minimap'))){
+        isPanning=true;panSX=ev.clientX;panSY=ev.clientY;panSPX=panX;panSPY=panY;
+        wrap.classList.add('panning');ev.preventDefault();
+    }
+});
+wrap.addEventListener('mouseup',()=>wrap.classList.remove('panning'));
+
+// Зум колесиком
+wrap.addEventListener('wheel',ev=>{
+    ev.preventDefault();
+    const r=wrap.getBoundingClientRect();
+    const mx=ev.clientX-r.left,my=ev.clientY-r.top;
+    const d=ev.deltaY>0?-.05:.05,nz=Math.max(.2,Math.min(3,zoom+d));
+    panX=mx-(mx-panX)*(nz/zoom);panY=my-(my-panY)*(nz/zoom);zoom=nz;applyT();
+},{passive:false});
+
+// Клик по пустому
+wrap.addEventListener('click',ev=>{
+    if(!ev.target.closest('.flow-node')&&!ev.target.closest('.eg')){
+        selectNode(null);selectEdge(null);closeCtx();
+    }
+});
+
+// ── Выделение ────────────────────────────────────────────────────
+function selectNode(id){
+    selNode=id;selEdge=null;
+    canvas.querySelectorAll('.flow-node').forEach(el=>el.classList.toggle('selected',parseInt(el.dataset.nid)===id));
+    renderEdges();
+}
+function selectEdge(id){
+    selEdge=id;selNode=null;
+    canvas.querySelectorAll('.flow-node').forEach(el=>el.classList.remove('selected'));
+    renderEdges();
+    if(id){
+        const e=edges[id];if(e){sp.classList.add('open');spi.innerHTML=renderEdgePanel(e);}
+    }
+}
+
+// ── Edge popup ───────────────────────────────────────────────────
+let pendEdge=null;
+function showEdgePopup(fid,tid,cx,cy){
+    if(tempEdge){tempEdge.remove();tempEdge=null;}isDrawEdge=false;drawFrom=null;wrap.style.cursor='';
+    pendEdge={fid,tid};
+    const p=document.getElementById('edgePopup');
+    p.style.cssText=`left:${Math.min(cx,window.innerWidth-240)}px;top:${Math.min(cy,window.innerHeight-120)}px;`;
+    p.classList.add('show');
+    const inp=document.getElementById('epInput');inp.value='';inp.focus();
+}
+document.getElementById('epInput').addEventListener('keydown',ev=>{
+    if(ev.key==='Enter')confirmEdge();
+    if(ev.key==='Escape')cancelEdge();
+});
+function confirmEdge(){
+    if(!pendEdge)return;
+    const label=document.getElementById('epInput').value.trim();
+    document.getElementById('edgePopup').classList.remove('show');
+    createEdge(pendEdge.fid,pendEdge.tid,label);
+    pendEdge=null;
+}
+function cancelEdge(){
+    document.getElementById('edgePopup').classList.remove('show');
+    if(tempEdge){tempEdge.remove();tempEdge=null;}
+    isDrawEdge=false;drawFrom=null;pendEdge=null;wrap.style.cursor='';
+}
+
+// ── Контекстное меню ─────────────────────────────────────────────
+let ctxId=null;
+function showCtx(id,cx,cy){
+    ctxId=id;const m=document.getElementById('ctxMenu');
+    m.style.cssText=`left:${Math.min(cx,window.innerWidth-170)}px;top:${Math.min(cy,window.innerHeight-150)}px;`;
+    m.classList.add('show');
+}
+function closeCtx(){document.getElementById('ctxMenu').classList.remove('show');ctxId=null;}
+function ctxEdit(){if(ctxId){selectNode(ctxId);openPanel(ctxId);}closeCtx();}
+function ctxDup(){if(ctxId)dupNode(ctxId);closeCtx();}
+function ctxRoot(){if(ctxId)setRoot(ctxId);closeCtx();}
+function ctxDel(){if(ctxId)deleteNode(ctxId);closeCtx();}
+document.addEventListener('click',ev=>{if(!ev.target.closest('#ctxMenu'))closeCtx();});
+
+// ── Боковая панель ───────────────────────────────────────────────
+function openPanel(nid){
+    const n=nodes[nid];if(!n)return;
+    sp.classList.add('open');spi.innerHTML=renderNodePanel(n);
+}
+function closePanel(){sp.classList.remove('open');}
+
+function renderNodePanel(n){
+    const ne=Object.values(edges).filter(e=>e.from_node_id===n.id);
+    const others=Object.values(nodes).filter(o=>o.id!==n.id);
+    return `
+    <div class="panel-title">${TI[n.node_type]} Блок #${n.id}<button class="panel-close" onclick="closePanel()">✕</button></div>
+    <div class="fg"><div class="fl">Тип</div>
+    <select class="fs" onchange="updF(${n.id},'node_type',this.value)">
+        <option value="start"    ${n.node_type==='start'?'selected':''}>🟣 Старт</option>
+        <option value="question" ${n.node_type==='question'?'selected':''}>🔵 Вопрос</option>
+        <option value="final"    ${n.node_type==='final'?'selected':''}>🟢 Финальный ответ</option>
+        <option value="info"     ${n.node_type==='info'?'selected':''}>🟡 Комментарий</option>
+    </select></div>
+    <div class="fg"><div class="fl">Заголовок</div>
+    <input class="fi" id="pf-title-${n.id}" value="${esc(n.title||'')}" oninput="updF(${n.id},'title',this.value)"></div>
+    <div class="fg"><div class="fl">Текст вопроса / содержание</div>
+    <textarea class="ft" oninput="updF(${n.id},'content',this.value)">${esc(n.content||'')}</textarea></div>
+    <div class="fg"><div class="fl">💬 Готовый ответ оператору</div>
+    <textarea class="ft" oninput="updF(${n.id},'final_answer',this.value)">${esc(n.final_answer||'')}</textarea></div>
+    <div class="fg"><div class="fl">🔒 Внутренняя заметка</div>
+    <textarea class="ft" style="min-height:45px;" oninput="updF(${n.id},'internal_note',this.value)">${esc(n.internal_note||'')}</textarea></div>
+    <div class="fg"><div class="fl">📎 Документы (по строке)</div>
+    <textarea class="ft" style="min-height:45px;" oninput="updF(${n.id},'documents',this.value)">${esc(n.documents||'')}</textarea></div>
+    <div class="fg"><div class="fl">🔗 Ссылки (по строке)</div>
+    <textarea class="ft" style="min-height:45px;" oninput="updF(${n.id},'links',this.value)">${esc(n.links||'')}</textarea></div>
+    <div class="fg"><label class="fcheck"><input type="checkbox" ${n.is_root?'checked':''} onchange="setRoot(${n.id},this.checked)">★ Стартовый блок</label></div>
+    <button class="btn btn-green" style="width:100%;margin-bottom:4px;" onclick="saveNode(${n.id}).then(()=>toast('Блок сохранён'))">💾 Сохранить блок</button>
+    <div class="psec">Переходы из этого блока</div>
+    ${ne.map(e=>{
+        const tn=nodes[e.to_node_id];
+        return `<div class="edge-item">
+        <input class="edge-lbl-input" value="${esc(e.label||'')}" placeholder="Подпись" onchange="updEdge(${e.id},this.value)">
+        <span class="edge-target" title="${esc(tn?.title||'?')}">→ ${esc(tr(tn?.title||'?',16))}</span>
+        <button class="btn btn-red btn-sm btn-icon" onclick="deleteEdge(${e.id})">✕</button>
+        </div>`;
+    }).join('')}
+    <div class="add-edge-row">
+        <input class="ae-label" id="ael-${n.id}" placeholder="Подпись">
+        <select class="ae-select" id="aes-${n.id}">
+            <option value="">— Узел —</option>
+            ${others.map(o=>`<option value="${o.id}">${TI[o.node_type]} ${esc(tr(o.title||'?',28))}</option>`).join('')}
+        </select>
+        <button class="btn btn-blue btn-sm" onclick="addEdgePanel(${n.id})">+</button>
+    </div>`;
+}
+
+function renderEdgePanel(e){
+    const fn=nodes[e.from_node_id],tn=nodes[e.to_node_id];
+    return `<div class="panel-title">🔗 Связь #${e.id}<button class="panel-close" onclick="closePanel()">✕</button></div>
+    <div class="fg"><div class="fl">От</div><div style="font-size:13px;">${TI[fn?.node_type]} ${esc(fn?.title||'?')}</div></div>
+    <div class="fg"><div class="fl">К</div><div style="font-size:13px;">${TI[tn?.node_type]} ${esc(tn?.title||'?')}</div></div>
+    <div class="fg"><div class="fl">Подпись</div>
+    <input class="fi" value="${esc(e.label||'')}" onchange="updEdge(${e.id},this.value)" placeholder="Да / Нет / Резидент..."></div>
+    <div style="margin-top:14px;"><button class="btn btn-red" onclick="deleteEdge(${e.id})">🗑 Удалить связь</button></div>`;
+}
+
+// ── CRUD ─────────────────────────────────────────────────────────
+async function addNode(type){
+    const cx=(-panX+wrap.clientWidth/2)/zoom;
+    const cy=(-panY+wrap.clientHeight/2)/zoom;
+    const px=cx-100+(Math.random()*40-20),py=cy-40+(Math.random()*40-20);
+    const d=await api('POST',`/api/admin/scenarios/${SID}/nodes`,{node_type:type,title:TL[type],content:'',is_root:0,pos_x:px,pos_y:py});
+    if(d.success){
+        nodes[d.node_id]={id:d.node_id,node_type:type,title:TL[type],content:'',is_root:0,pos_x:px,pos_y:py,final_answer:'',internal_note:'',documents:'',links:''};
+        pushHist();renderAll();selectNode(d.node_id);openPanel(d.node_id);toast('Блок добавлен');
+    } else toast(d.error||'Ошибка','error');
+}
+
+async function saveNode(nid){
+    const n=nodes[nid];if(!n)return;
+    const d=await api('PUT',`/api/admin/scenarios/${SID}/nodes/${nid}`,n);
+    if(!d.success)toast(d.error||'Ошибка сохранения','error');
+}
+
+const _saveTimers={};
+function updF(nid,field,val){
+    if(!nodes[nid])return;
+    nodes[nid][field]=field==='is_root'?(val?1:0):val;
+    markDirty();renderNode(nodes[nid]);renderEdges();
+    // Debounce: сохраняем через 800мс после последнего изменения
+    clearTimeout(_saveTimers[nid]);
+    _saveTimers[nid]=setTimeout(()=>{pushHist();saveNode(nid);},800);
+}
+
+function setRoot(nid,checked=true){
+    if(checked){Object.values(nodes).forEach(n=>{if(n.id!==nid)n.is_root=0;});}
+    nodes[nid].is_root=checked?1:0;
+    pushHist();markDirty();renderAll();
+    Object.values(nodes).forEach(n=>saveNode(n.id));
+}
+
+async function deleteNode(nid){
+    const n=nodes[nid];
+    confirm2('Удалить блок?',`«${n?.title||'#'+nid}» и все его связи.`,async()=>{
+        const d=await api('DELETE',`/api/admin/scenarios/${SID}/nodes/${nid}`);
+        if(d.success){
+            delete nodes[nid];
+            Object.keys(edges).forEach(eid=>{const e=edges[eid];if(e.from_node_id===nid||e.to_node_id===nid)delete edges[eid];});
+            document.getElementById('nd-'+nid)?.remove();
+            pushHist();renderEdges();
+            if(selNode===nid)closePanel();
+            document.getElementById('nodeCount').textContent=Object.keys(nodes).length;
+            document.getElementById('edgeCount').textContent=Object.keys(edges).length;
+            toast('Блок удалён');
+        } else toast(d.error||'Ошибка','error');
+    });
+}
+
+async function dupNode(nid){
+    const n=nodes[nid];if(!n)return;
+    const d=await api('POST',`/api/admin/scenarios/${SID}/nodes`,{
+        node_type:n.node_type,title:n.title+' (копия)',content:n.content,is_root:0,
+        pos_x:n.pos_x+230,pos_y:n.pos_y+30,
+        final_answer:n.final_answer,internal_note:n.internal_note,documents:n.documents,links:n.links
+    });
+    if(d.success){
+        nodes[d.node_id]={id:d.node_id,node_type:n.node_type,title:n.title+' (копия)',content:n.content,is_root:0,
+            pos_x:n.pos_x+230,pos_y:n.pos_y+30,final_answer:n.final_answer||'',internal_note:n.internal_note||'',documents:n.documents||'',links:n.links||''};
+        pushHist();renderAll();toast('Продублировано');
+    }
+}
+
+async function createEdge(fid,tid,label){
+    const dup=Object.values(edges).find(e=>e.from_node_id===fid&&e.to_node_id===tid);
+    if(dup){toast('Связь уже существует','error');return;}
+    const d=await api('POST',`/api/admin/scenarios/${SID}/edges`,{from_node_id:fid,to_node_id:tid,label});
+    if(d.success){
+        edges[d.edge_id]={id:d.edge_id,from_node_id:fid,to_node_id:tid,label,sort_order:0};
+        pushHist();renderEdges();
+        document.getElementById('edgeCount').textContent=Object.keys(edges).length;
+        toast('Связь создана');
+        if(selNode===fid)openPanel(fid);
+    } else toast(d.error||'Ошибка','error');
+}
+
+async function addEdgePanel(fid){
+    const label=document.getElementById('ael-'+fid)?.value.trim()||'';
+    const tid=parseInt(document.getElementById('aes-'+fid)?.value);
+    if(!tid){toast('Выберите целевой блок','error');return;}
+    await createEdge(fid,tid,label);
+}
+
+async function updEdge(eid,label){
+    edges[eid].label=label;markDirty();
+    const d=await api('PUT',`/api/admin/scenarios/${SID}/edges/${eid}`,{label,sort_order:0});
+    if(d.success)renderEdges(); else toast(d.error||'Ошибка','error');
+}
+
+async function deleteEdge(eid){
+    const d=await api('DELETE',`/api/admin/scenarios/${SID}/edges/${eid}`);
+    if(d.success){
+        delete edges[eid];renderEdges();
+        if(selEdge===eid)closePanel();
+        toast('Связь удалена');
+    } else toast(d.error||'Ошибка','error');
+}
+
+// ── Layout ───────────────────────────────────────────────────────
+async function saveLayout(){
+    const pos=Object.values(nodes).map(n=>({id:n.id,x:n.pos_x,y:n.pos_y}));
+    await api('PUT',`/api/admin/scenarios/${SID}/layout`,{positions:pos});
+}
+
+// ── Сохранить всё ─────────────────────────────────────────────────
+function markDirty(){dirty=true;document.getElementById('saveBtn').textContent='💾 Сохранить *';}
+async function saveAll(){
+    await Promise.all([...Object.values(nodes).map(n=>saveNode(n.id)),saveLayout()]);
+    dirty=false;document.getElementById('saveBtn').textContent='💾 Сохранить';
+    toast('Сохранено');
+}
+setInterval(()=>{if(dirty)saveAll();},60000);
+window.onbeforeunload=()=>{if(dirty)return 'Есть несохранённые изменения';};
+
+// ── Авторасстановка ──────────────────────────────────────────────
+function autoLayout(){
+    const nl=Object.values(nodes);if(!nl.length)return;
+    const inDeg={};nl.forEach(n=>inDeg[n.id]=0);
+    Object.values(edges).forEach(e=>{if(inDeg[e.to_node_id]!==undefined)inDeg[e.to_node_id]++;});
+    let queue=nl.filter(n=>n.is_root||inDeg[n.id]===0).map(n=>n.id);
+    if(!queue.length&&nl.length)queue=[nl[0].id];
+    const levels={};const visited=new Set();let lvl=0;let cur=[...queue];
+    while(cur.length){
+        const next=[];
+        cur.forEach(id=>{
+            if(visited.has(id))return;visited.add(id);
+            if(!levels[lvl])levels[lvl]=[];levels[lvl].push(id);
+            Object.values(edges).filter(e=>e.from_node_id===id).forEach(e=>{if(!visited.has(e.to_node_id))next.push(e.to_node_id);});
+        });
+        cur=next;lvl++;
+    }
+    nl.forEach(n=>{if(!visited.has(n.id)){levels[lvl]=levels[lvl]||[];levels[lvl].push(n.id);}});
+    const HGAP=260,VGAP=160;
+    Object.entries(levels).forEach(([l,ids])=>{
+        const tw=ids.length*HGAP;
+        ids.forEach((id,i)=>{nodes[id].pos_x=i*HGAP-tw/2+800;nodes[id].pos_y=parseInt(l)*VGAP+100;});
+    });
+    renderAll();saveLayout();fitView();toast('Авторасстановка применена');
+}
+
+// ── История ──────────────────────────────────────────────────────
+function pushHist(){
+    const s=JSON.stringify({nodes,edges});
+    if(histIdx<hist.length-1)hist=hist.slice(0,histIdx+1);
+    hist.push(s);if(hist.length>50)hist.shift();histIdx=hist.length-1;
+}
+function restoreSnap(s){
+    const d=JSON.parse(s);
+    nodes={};Object.values(d.nodes).forEach(n=>nodes[n.id]=n);
+    edges={};Object.values(d.edges).forEach(e=>edges[e.id]=e);
+    renderAll();
+}
+function undoAction(){if(histIdx<=0)return;histIdx--;restoreSnap(hist[histIdx]);toast('Отменено');}
+function redoAction(){if(histIdx>=hist.length-1)return;histIdx++;restoreSnap(hist[histIdx]);toast('Повторено');}
+
+// ── Клавиатура ───────────────────────────────────────────────────
+document.addEventListener('keydown',ev=>{
+    const inp=ev.target.tagName==='INPUT'||ev.target.tagName==='TEXTAREA'||ev.target.tagName==='SELECT';
+    if((ev.ctrlKey||ev.metaKey)&&ev.key==='s'){ev.preventDefault();saveAll();}
+    if(!inp){
+        if((ev.ctrlKey||ev.metaKey)&&ev.key==='z'){ev.preventDefault();undoAction();}
+        if((ev.ctrlKey||ev.metaKey)&&(ev.key==='y'||(ev.shiftKey&&ev.key==='z'))){ev.preventDefault();redoAction();}
+        if(ev.key==='Delete'||ev.key==='Backspace'){if(selNode)deleteNode(selNode);else if(selEdge)deleteEdge(selEdge);}
+        if(ev.key==='Escape'){closePanel();closeCtx();cancelEdge();}
+        if(ev.key==='f'||ev.key==='ф')fitView();
+    }
+});
+
+// ── Мета-настройки ───────────────────────────────────────────────
+function openMeta(){document.getElementById('metaModal').classList.add('show');}
+async function saveMeta(){
+    const title=document.getElementById('mTitle').value.trim();
+    if(!title){toast('Введите название','error');return;}
+    const cat=document.getElementById('mCat').value||null;
+    const desc=document.getElementById('mDesc').value.trim();
+    const tags=document.getElementById('mTags').value.trim();
+    const d=await api('PUT',`/api/admin/scenarios/${SID}`,{title,category_id:cat,description:desc,tags});
+    if(d.success){
+        document.getElementById('scenarioName').textContent=title;
+        document.getElementById('metaModal').classList.remove('show');
+        toast('Настройки сохранены');
+    } else toast(d.error||'Ошибка','error');
+}
+
+// ── Публикация ───────────────────────────────────────────────────
+function tryPublish(){
+    const nl=Object.values(nodes);
+    if(!nl.length){toast('Добавьте хотя бы один блок','error');return;}
+    if(!nl.find(n=>n.is_root)){toast('Укажите стартовый блок (★)','error');return;}
+    document.getElementById('publishForm').submit();
+}
+
+// ── Инициализация ────────────────────────────────────────────────
+(function init(){
+    const hasPos=Object.values(nodes).some(n=>n.pos_x||n.pos_y);
+    renderAll();applyT();
+    if(!hasPos&&Object.keys(nodes).length){autoLayout();}
+    else{fitView();}
+    pushHist();
+    if(localStorage.getItem('theme')==='light')document.body.classList.add('light');
+})();
+</script>
+</body>
+</html>

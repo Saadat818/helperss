@@ -514,7 +514,8 @@ class AdminsManager:
             'role': role,
             'created_by': created_by,
             'created_at': self._get_current_timestamp(),
-            'active': True
+            'active': True,
+            'trainer_segments': ['kc', 'branch']  # по умолчанию доступ ко всем сегментам
         }
 
         admins.append(new_admin)
@@ -605,6 +606,24 @@ class AdminsManager:
         else:
             return {'success': False, 'error': 'Ошибка при сохранении'}
 
+    def update_trainer_segments(self, username: str, segments: List[str]) -> Dict[str, Any]:
+        """Обновить доступные сегменты тренажёра для администратора"""
+        if not self.validate_username(username):
+            return {'success': False, 'error': 'Некорректное имя пользователя'}
+
+        valid_segments = {'kc', 'branch'}
+        segments = [s for s in segments if s in valid_segments]
+
+        admins = self.load_admins()
+        for admin in admins:
+            if admin.get('username') == username:
+                admin['trainer_segments'] = segments
+                if self.save_admins(admins):
+                    return {'success': True}
+                return {'success': False, 'error': 'Ошибка при сохранении'}
+
+        return {'success': False, 'error': 'Администратор не найден'}
+
     @staticmethod
     def _get_current_timestamp() -> str:
         """Получить текущую временную метку"""
@@ -640,27 +659,33 @@ class AdminAuth:
         if len(username) > 100 or len(password) > 128:
             return None
 
+        admins_mgr = AdminsManager()
+
         # ПРИОРИТЕТ 1: Проверяем через Active Directory (если настроен)
         try:
             from ad_auth import ad_auth
             if ad_auth.is_configured():
                 ad_result = ad_auth.verify_credentials(username, password)
                 if ad_result:
-                    # Успешная авторизация через AD
+                    ad_username = ad_result.get('username', username)
+                    # Берём trainer_segments из локального admins.json если есть запись
+                    local_admin = admins_mgr.get_admin_by_username(ad_username)
+                    trainer_segments = (local_admin.get('trainer_segments', ['kc', 'branch'])
+                                        if local_admin else ['kc', 'branch'])
                     return {
-                        'username': ad_result.get('username', username),
+                        'username': ad_username,
                         'role': ad_result.get('role', ROLE_EDITOR),
                         'permissions': ad_result.get('permissions', []),
                         'display_name': ad_result.get('display_name', username),
                         'email': ad_result.get('email', ''),
-                        'auth_method': 'ad'
+                        'auth_method': 'ad',
+                        'trainer_segments': trainer_segments
                     }
         except Exception as e:
             print(f"AD authentication error: {e}")
             # Продолжаем проверку локальных учетных записей
 
         # ПРИОРИТЕТ 2: Проверяем в файле admins.json (локальные учетные записи)
-        admins_mgr = AdminsManager()
         admin = admins_mgr.get_admin_by_username(username)
 
         if admin and admin.get('active', True):
@@ -669,7 +694,8 @@ class AdminAuth:
                 return {
                     'username': username,
                     'role': admin.get('role', ROLE_EDITOR),
-                    'auth_method': 'local'
+                    'auth_method': 'local',
+                    'trainer_segments': admin.get('trainer_segments', ['kc', 'branch'])
                 }
 
         # ПРИОРИТЕТ 3: Проверяем в переменных окружения (обратная совместимость)

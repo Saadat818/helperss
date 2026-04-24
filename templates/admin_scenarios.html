@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сценарии — Админ</title>
+    <style>
+        :root {
+            --bg: #0c0c0c; --card: #1a1a1a; --card2: #202020;
+            --text: #e8e8e8; --muted: #a8a8a8; --border: #2a2a2a;
+            --green: #00a651; --blue: #2196F3; --red: #e53935;
+            --yellow: #f2b705;
+        }
+        body.light { --bg: #dde2ea; --card: #fff; --card2: #f8f9fa; --text: #1a1a2e; --muted: #606070; --border: #b8c4d0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Segoe UI", system-ui, Arial; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        .header {
+            background: var(--card); border-bottom: 1px solid var(--border);
+            padding: 14px 20px; display: flex; align-items: center; gap: 12px;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .back-btn {
+            color: var(--muted); text-decoration: none; font-size: 14px;
+            padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
+        }
+        .back-btn:hover { color: var(--text); border-color: var(--green); }
+        .header-title { font-size: 17px; font-weight: 700; }
+        .header-actions { margin-left: auto; display: flex; gap: 8px; }
+
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; border-radius: 8px; font-size: 14px;
+            font-weight: 600; cursor: pointer; border: none; text-decoration: none;
+            transition: opacity .15s;
+        }
+        .btn:hover { opacity: .85; }
+        .btn-green { background: var(--green); color: #fff; }
+        .btn-blue { background: var(--blue); color: #fff; }
+        .btn-red { background: var(--red); color: #fff; }
+        .btn-gray { background: var(--card2); color: var(--text); border: 1px solid var(--border); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+
+        /* Фильтры */
+        .filters {
+            display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
+        }
+        .filter-select {
+            background: var(--card); border: 1px solid var(--border);
+            color: var(--text); border-radius: 8px; padding: 7px 12px;
+            font-size: 14px; outline: none;
+        }
+        .search-input {
+            background: var(--card); border: 1px solid var(--border);
+            color: var(--text); border-radius: 8px; padding: 7px 12px;
+            font-size: 14px; outline: none; flex: 1; min-width: 180px;
+        }
+        .search-input::placeholder { color: var(--muted); }
+
+        /* Таблица */
+        .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            background: var(--card2); padding: 11px 14px;
+            text-align: left; font-size: 12px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .5px;
+            color: var(--muted); border-bottom: 1px solid var(--border);
+        }
+        td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,.03); }
+        body.light tr:hover td { background: rgba(0,0,0,.02); }
+
+        .status-badge {
+            display: inline-block; padding: 3px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 700;
+        }
+        .status-active { background: rgba(0,166,81,.15); color: var(--green); }
+        .status-draft { background: rgba(242,183,5,.15); color: var(--yellow); }
+        .status-archived { background: rgba(255,255,255,.08); color: var(--muted); }
+
+        .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .action-btn {
+            padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+            cursor: pointer; border: 1px solid var(--border); background: var(--card2);
+            color: var(--text); text-decoration: none; white-space: nowrap;
+        }
+        .action-btn:hover { opacity: .8; }
+        .action-btn.green { background: rgba(0,166,81,.15); color: var(--green); border-color: rgba(0,166,81,.3); }
+        .action-btn.blue { background: rgba(33,150,243,.15); color: var(--blue); border-color: rgba(33,150,243,.3); }
+        .action-btn.red { background: rgba(229,57,53,.15); color: var(--red); border-color: rgba(229,57,53,.3); }
+        .action-btn.yellow { background: rgba(242,183,5,.15); color: var(--yellow); border-color: rgba(242,183,5,.3); }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+
+        /* Flash */
+        .flash { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+        .flash.success { background: rgba(0,166,81,.15); color: var(--green); border: 1px solid rgba(0,166,81,.3); }
+        .flash.error { background: rgba(229,57,53,.15); color: var(--red); border: 1px solid rgba(229,57,53,.3); }
+
+        /* Категории */
+        .section-title { font-size: 15px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 24px 0 12px; }
+        .cat-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+        .cat-chip {
+            background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+            padding: 5px 12px; font-size: 13px; display: flex; align-items: center; gap: 6px;
+        }
+        .cat-del { cursor: pointer; color: var(--muted); font-size: 14px; }
+        .cat-del:hover { color: var(--red); }
+        .cat-add { display: flex; gap: 8px; align-items: center; }
+        .cat-input {
+            background: var(--card); border: 1px solid var(--border); color: var(--text);
+            border-radius: 8px; padding: 7px 12px; font-size: 14px; outline: none; width: 220px;
+        }
+        .cat-icon-input { width: 60px; }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="{{ url_for('admin_dashboard') }}" class="back-btn">← Админка</a>
+        <div class="header-title">🗂️ Сценарии консультаций</div>
+        <div class="header-actions">
+            <a href="{{ url_for('admin_scenario_create') }}" class="btn btn-green">+ Создать сценарий</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% for cat, msgs in get_flashed_messages(with_categories=true) %}
+        <div class="flash {{ cat }}">{{ msgs }}</div>
+        {% endfor %}
+
+        <!-- Фильтры -->
+        <div class="filters">
+            <input type="text" class="search-input" id="searchInput" placeholder="🔍 Поиск по названию..." oninput="filterTable()">
+            <select class="filter-select" id="statusFilter" onchange="filterTable()">
+                <option value="">Все статусы</option>
+                <option value="active">Активные</option>
+                <option value="draft">Черновики</option>
+                <option value="archived">Архив</option>
+            </select>
+            <select class="filter-select" id="catFilter" onchange="filterTable()">
+                <option value="">Все категории</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Таблица сценариев -->
+        <div class="table-wrap">
+            {% if scenarios %}
+            <table id="scenariosTable">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Категория</th>
+                        <th>Статус</th>
+                        <th>Версия</th>
+                        <th>Обновлён</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in scenarios %}
+                <tr data-title="{{ s.title|lower }}" data-status="{{ s.status }}" data-cat="{{ s.category_id or '' }}">
+                    <td>
+                        <strong>{{ s.title }}</strong>
+                        {% if s.tags %}
+                        <div style="margin-top:4px;">
+                            {% for tag in s.tags.split(',')[:3] %}{% if tag.strip() %}
+                            <span style="background:rgba(33,150,243,.1);color:var(--blue);border-radius:3px;padding:1px 6px;font-size:11px;">{{ tag.strip() }}</span>
+                            {% endif %}{% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ s.category_icon or '' }} {{ s.category_name or '—' }}</td>
+                    <td>
+                        <span class="status-badge status-{{ s.status }}">
+                            {% if s.status == 'active' %}✅ Активен
+                            {% elif s.status == 'draft' %}✏️ Черновик
+                            {% else %}📦 Архив{% endif %}
+                        </span>
+                    </td>
+                    <td>v{{ s.version }}</td>
+                    <td style="color:var(--muted);font-size:12px;">
+                        {{ s.updated_at[:10] if s.updated_at else '—' }}
+                    </td>
+                    <td>
+                        <div class="actions">
+                            <a href="{{ url_for('admin_scenario_edit', scenario_id=s.id) }}" class="action-btn blue">✏️ Редактор</a>
+                            {% if s.status == 'draft' %}
+                            <form method="post" action="{{ url_for('admin_scenario_publish', scenario_id=s.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="action-btn green">▶ Опубликовать</button>
+                            </form>
+                            {% endif %}
+                            {% if s.status == 'active' %}
+                            <form method="post" action="{{ url_for('admin_scenario_archive', scenario_id=s.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="action-btn yellow">📦 Архив</button>
+                            </form>
+                            <a href="{{ url_for('scenario_play', scenario_id=s.id) }}" class="action-btn" target="_blank">👁 Просмотр</a>
+                            {% endif %}
+                            {% if s.status == 'archived' %}
+                            <form method="post" action="{{ url_for('admin_scenario_unarchive', scenario_id=s.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="action-btn green">↩ Восстановить</button>
+                            </form>
+                            {% endif %}
+                            <form method="post" action="{{ url_for('admin_scenario_duplicate', scenario_id=s.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="action-btn">📋 Копия</button>
+                            </form>
+                            <form method="post" action="{{ url_for('admin_scenario_delete', scenario_id=s.id) }}" style="display:inline;"
+                                  onsubmit="return confirm('Удалить сценарий «{{ s.title }}»?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="action-btn red">🗑</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div style="font-size:48px;">🗂️</div>
+                <div style="margin-top:12px;">Нет сценариев</div>
+                <a href="{{ url_for('admin_scenario_create') }}" style="display:inline-block;margin-top:16px;" class="btn btn-green">+ Создать первый</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Категории -->
+        <div class="section-title">Категории</div>
+        <div class="cat-list" id="catList">
+            {% for cat in categories %}
+            <div class="cat-chip" id="cat-{{ cat.id }}">
+                <span>{{ cat.icon }} {{ cat.name }}</span>
+                <span class="cat-del" onclick="deleteCategory({{ cat.id }})">✕</span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="cat-add">
+            <input type="text" class="cat-icon-input cat-input" id="newCatIcon" placeholder="📁" maxlength="4" value="📁">
+            <input type="text" class="cat-input" id="newCatName" placeholder="Название категории" maxlength="60">
+            <button class="btn btn-blue" onclick="addCategory()">+ Добавить</button>
+        </div>
+    </div>
+
+    <script>
+        const csrfToken = '{{ csrf_token() }}';
+
+        function filterTable() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const status = document.getElementById('statusFilter').value;
+            const cat = document.getElementById('catFilter').value;
+            document.querySelectorAll('#scenariosTable tbody tr').forEach(row => {
+                const titleMatch = !q || row.dataset.title.includes(q);
+                const statusMatch = !status || row.dataset.status === status;
+                const catMatch = !cat || row.dataset.cat === cat;
+                row.style.display = (titleMatch && statusMatch && catMatch) ? '' : 'none';
+            });
+        }
+
+        async function addCategory() {
+            const icon = document.getElementById('newCatIcon').value.trim() || '📁';
+            const name = document.getElementById('newCatName').value.trim();
+            if (!name) { alert('Введите название'); return; }
+            const resp = await fetch('/api/admin/scenarios/categories', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','X-CSRFToken':csrfToken},
+                body: JSON.stringify({name, icon})
+            });
+            const data = await resp.json();
+            if (data.success) {
+                const chip = document.createElement('div');
+                chip.className = 'cat-chip';
+                chip.id = `cat-${data.id}`;
+                chip.innerHTML = `<span>${icon} ${name}</span><span class="cat-del" onclick="deleteCategory(${data.id})">✕</span>`;
+                document.getElementById('catList').appendChild(chip);
+                document.getElementById('newCatName').value = '';
+                document.getElementById('newCatIcon').value = '📁';
+            }
+        }
+
+        async function deleteCategory(id) {
+            if (!confirm('Удалить категорию?')) return;
+            const resp = await fetch(`/api/admin/scenarios/categories/${id}`, {
+                method: 'DELETE',
+                headers: {'X-CSRFToken':csrfToken}
+            });
+            const data = await resp.json();
+            if (data.success) {
+                const el = document.getElementById(`cat-${id}`);
+                if (el) el.remove();
+            }
+        }
+
+        // Тема
+        (function() { if (localStorage.getItem('theme') === 'light') document.body.classList.add('light'); })();
+    </script>
+</body>
+</html>

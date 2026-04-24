@@ -421,6 +421,7 @@
                     <tr>
                         <th>Логин</th>
                         <th>Роль</th>
+                        <th>Тренажёр (сегменты)</th>
                         <th>Создан</th>
                         <th>Создатель</th>
                         <th>Действия</th>
@@ -428,6 +429,7 @@
                 </thead>
                 <tbody>
                     {% for admin in admins %}
+                        {% set segs = admin.trainer_segments if admin.trainer_segments is defined else ['kc', 'branch'] %}
                         <tr>
                             <td><strong>{{ admin.username | e }}</strong></td>
                             <td>
@@ -442,6 +444,27 @@
                                         </option>
                                     </select>
                                 </form>
+                            </td>
+                            <td>
+                                {% if admin.role == 'super_admin' %}
+                                    <span style="color:#00a651;font-weight:600;">Все сегменты</span>
+                                {% else %}
+                                    <form method="POST" action="{{ url_for('admin_change_user_segments', username=admin.username) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                                            <input type="checkbox" name="trainer_segments" value="kc"
+                                                   {% if 'kc' in segs %}checked{% endif %}
+                                                   onchange="this.form.submit()">
+                                            🎧 КЦ
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                                            <input type="checkbox" name="trainer_segments" value="branch"
+                                                   {% if 'branch' in segs %}checked{% endif %}
+                                                   onchange="this.form.submit()">
+                                            🏦 Филиалы
+                                        </label>
+                                    </form>
+                                {% endif %}
                             </td>
                             <td>{{ admin.created_at | e }}</td>
                             <td>{{ admin.created_by | e }}</td>

@@ -417,18 +417,18 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('choose_help_type') }}" class="back-link">
+    <a href="{{ url_for('trainer_segment_menu', segment=segment) }}" class="back-link">
         &larr; Назад
     </a>
 
     <div class="container">
         <div class="header">
-            <h1>🎯 Управление тренажером</h1>
+            <h1>{{ seg_info.icon if seg_info else '🎯' }} Тренажер — {{ seg_info.name if seg_info else 'Управление' }}</h1>
             <div class="header-buttons">
-                <a href="{{ url_for('admin_trainer_feedback') }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
+                <a href="{{ url_for('admin_trainer_feedback', segment=segment) }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
                 <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
-                <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📊 Статистика</a>
-                <a href="{{ url_for('admin_trainer_drafts') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); position:relative;">✏️ Черновики{% if draft_count %}<span style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ draft_count }}</span>{% endif %}</a>
+                <a href="{{ url_for('admin_trainer_stats', segment=segment) }}" class="btn btn-primary">📊 Статистика</a>
+                <a href="{{ url_for('admin_trainer_drafts', segment=segment) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); position:relative;">✏️ Черновики{% if draft_count %}<span style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ draft_count }}</span>{% endif %}</a>
                 {# <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a> #}
                 <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">+ Создать сценарий</a>
             </div>
@@ -524,7 +524,14 @@
                         <div class="scenario-desc">{{ scenario.description[:80] }}{% if scenario.description|length > 80 %}...{% endif %}</div>
                         {% endif %}
                     </td>
-                    <td><span class="badge badge-level">{{ scenario.level_name }}</span></td>
+                    <td>
+                        <span class="badge badge-level">{{ scenario.level_name }}</span>
+                        {% if scenario.get('segment') == 'branch' %}
+                        <span class="badge" style="background:#2196F320;color:#2196F3;margin-left:4px;">🏦 Филиалы</span>
+                        {% else %}
+                        <span class="badge" style="background:#00a65120;color:#00a651;margin-left:4px;">🎧 КЦ</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if scenario.category_name %}
                         <span class="badge badge-category">{{ scenario.category_icon }} {{ scenario.category_name }}</span>
@@ -622,13 +629,11 @@
             const category = document.getElementById('filter-category').value;
             const tag = document.getElementById('filter-tag').value;
 
-            const baseUrl = '{{ url_for("admin_trainer") }}';
-            const params = new URLSearchParams();
-            if (level) params.set('level', level);
-            if (category) params.set('category', category);
-            if (tag) params.set('tag', tag);
+            let url = '{{ url_for("admin_trainer_segment", segment=segment) }}?';
+            if (level) url += 'level=' + level + '&';
+            if (category) url += 'category=' + category + '&';
+            if (tag) url += 'tag=' + tag;
 
-            const url = baseUrl + '?' + params.toString();
             if (url.startsWith('/')) {
                 window.location.href = url;
             }

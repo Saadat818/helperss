@@ -371,7 +371,7 @@
     <style>body.light .container { background: transparent !important; border: none !important; box-shadow: none !important; }</style>
 </head>
 <body>
-    <a href="{{ url_for('trainer_menu') }}" class="back-link">
+    <a href="{{ url_for('trainer_segment_menu', segment=segment) }}" class="back-link">
         &larr; К уровням
     </a>
 
@@ -396,12 +396,12 @@
         <!-- Фильтр по категориям -->
         {% if categories %}
         <div class="categories-filter">
-            <a href="{{ url_for('trainer_level', level_code=level.code) }}"
+            <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code) }}"
                class="category-btn {% if not current_category %}active{% endif %}">
                 Все
             </a>
             {% for category in categories %}
-            <a href="{{ url_for('trainer_level', level_code=level.code, category=category.id) }}"
+            <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code, category=category.id) }}"
                class="category-btn {% if current_category == category.id %}active{% endif %}">
                 {{ category.icon }} {{ category.name }}
             </a>
@@ -421,7 +421,7 @@
         <div class="scenarios-list">
             {% for scenario in scenarios %}
                 {% set user_result = user_results.get(scenario.id) %}
-                <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}" class="scenario-card" data-status="{% if user_result %}passed{% else %}not-passed{% endif %}">
+                <a href="{{ url_for('trainer_play', scenario_id=scenario.id, segment=segment) }}" class="scenario-card" data-status="{% if user_result %}passed{% else %}not-passed{% endif %}">
                     <div class="scenario-number">{{ loop.index }}</div>
                     <div class="scenario-info">
                         <div class="scenario-title">{{ scenario.title }}</div>
@@ -694,7 +694,7 @@
                 const resp = await fetch('/api/trainer/feedback', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                    body: JSON.stringify({message: msg, level_code: '{{ level.code }}'})
+                    body: JSON.stringify({message: msg, level_code: '{{ level.code }}', segment: '{{ segment }}'})
                 });
                 const data = await resp.json();
                 if (data.success) {
@@ -735,7 +735,7 @@
 
         async function loadMyMessages() {
             try {
-                const resp = await fetch('/api/trainer/my-feedback');
+                const resp = await fetch('/api/trainer/my-feedback?segment={{ segment }}');
                 const data = await resp.json();
                 if (!data.success) { document.getElementById('messagesList').innerHTML = '<div style="color:#E57373;">Ошибка загрузки</div>'; return; }
                 const list = data.feedback;
@@ -768,7 +768,7 @@
 
         async function checkReadMessages() {
             try {
-                const resp = await fetch('/api/trainer/my-feedback');
+                const resp = await fetch('/api/trainer/my-feedback?segment={{ segment }}');
                 const data = await resp.json();
                 if (!data.success) return;
                 const readCount = data.feedback.filter(fb => fb.is_read).length;

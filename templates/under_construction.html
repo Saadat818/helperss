@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>В разработке - Helper</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenLight: #00d4aa;
+        }
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 48px 40px;
+            text-align: center;
+            max-width: 420px;
+            width: 90%;
+        }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+        h1 { font-size: 22px; margin-bottom: 10px; }
+        p { color: var(--muted); font-size: 15px; line-height: 1.6; margin-bottom: 28px; }
+        a {
+            display: inline-block;
+            padding: 12px 28px;
+            background: linear-gradient(90deg, var(--greenLight), var(--green));
+            color: #fff;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        a:hover { opacity: 0.88; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">🚧</div>
+        <h1>Раздел в разработке</h1>
+        <p>Раздел <strong>«{{ segment_name }}»</strong> скоро будет доступен.<br>Мы уже работаем над ним!</p>
+        <a href="/trainer">← Вернуться назад</a>
+    </div>
+    <script>
+        if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+    </script>
+</body>
+</html>

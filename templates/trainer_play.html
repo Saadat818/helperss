@@ -834,7 +834,7 @@
             <div class="modal-icon">😤</div>
             <div class="modal-title">Клиент бросил трубку!</div>
             <div class="modal-text">Уровень раздражения достиг максимума.</div>
-            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Вернуться' }}</a>
+            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', segment=segment, level_code=scenario.level_code) }}" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Вернуться' }}</a>
         </div>
     </div>
 
@@ -855,7 +855,7 @@
                 </div>
             </div>
 
-            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', level_code=scenario.level_code) }}" id="resultNavBtn" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Продолжить' }}</a>
+            <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) if preview_mode else url_for('trainer_level', segment=segment, level_code=scenario.level_code) }}" id="resultNavBtn" class="modal-btn">{{ '← Вернуться в редактор' if preview_mode else 'Продолжить' }}</a>
         </div>
     </div>
 

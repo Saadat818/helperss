@@ -388,6 +388,22 @@
         .flow-timer.danger  { color: #e74c3c; animation: timerPulse 0.6s ease-in-out infinite alternate; }
         .flow-timer.expired { color: #e74c3c; font-size: 13px; }
         @keyframes timerPulse { from { opacity: 1; } to { opacity: 0.5; } }
+
+        body.light #flowPanel {
+            background: #ffffff;
+            border-color: #c8d8e8;
+            box-shadow: 0 8px 40px rgba(0,0,0,.15);
+        }
+        body.light .flow-lvl-badge {
+            background: #e0f0f0; color: #007b7e;
+        }
+        body.light .flow-btn-sm {
+            background: #e0f0f0; color: #007b7e; border-color: #00d4aa88;
+        }
+        body.light .flow-btn-sm:hover { background: #c0e8e0; }
+        body.light .flow-status { color: #507070; }
+        body.light .flow-progress-bar { background: #d0e8e8; }
+        body.light .flow-timer { color: #407070; }
     </style>
 
     <div id="flowWidget">

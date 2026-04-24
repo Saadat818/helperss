@@ -7826,6 +7826,11 @@ def scenario_get_node(scenario_id, node_id):
     if not session.get('authenticated'):
         return jsonify({'success': False, 'error': 'Не авторизован'}), 401
 
+    # Проверяем, что сценарий активен (не черновик и не архив)
+    scenario = scenario_mgr.get_scenario(scenario_id)
+    if not scenario or scenario.get('status') != 'active':
+        return jsonify({'success': False, 'error': 'Сценарий недоступен'}), 404
+
     node = scenario_mgr.get_node(node_id)
     if not node or node['scenario_id'] != scenario_id:
         return jsonify({'success': False, 'error': 'Узел не найден'}), 404
@@ -7992,6 +7997,27 @@ def admin_scenario_delete(scenario_id):
     return redirect(url_for('admin_scenarios'))
 
 
+# ─── API: Обновление мета-данных сценария ──────────────────────
+
+@app.route('/api/admin/scenarios/<int:scenario_id>', methods=['PUT'])
+def api_scenario_meta_update(scenario_id):
+    """Сохранить заголовок, описание, категорию, теги сценария"""
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False}), 403
+    data = request.get_json() or {}
+    admin = session.get('admin_username', '')
+    scenario_mgr.update_scenario(
+        scenario_id=scenario_id,
+        title=data.get('title', ''),
+        description=data.get('description', ''),
+        category_id=data.get('category_id') or None,
+        tags=data.get('tags', ''),
+        updated_by=admin
+    )
+    return jsonify({'success': True})
+
+
 # ─── API для редактора узлов ────────────────────────────────────
 
 @app.route('/api/admin/scenarios/<int:scenario_id>/nodes', methods=['GET'])
@@ -8023,21 +8049,33 @@ def api_scenario_node_create(scenario_id):
     return jsonify({'success': True, 'node_id': node_id})
 
 
-@app.route('/api/admin/scenarios/nodes/<int:node_id>', methods=['PUT'])
-def api_scenario_node_update(node_id):
+@app.route('/api/admin/scenarios/<int:scenario_id>/nodes/<int:node_id>', methods=['PUT'])
+@app.route('/api/admin/scenarios/nodes/<int:node_id>', methods=['PUT'], defaults={'scenario_id': None})
+def api_scenario_node_update(scenario_id, node_id):
     err = _require_scenario_admin()
     if err:
         return jsonify({'success': False}), 403
+    # Проверяем принадлежность узла сценарию
+    if scenario_id is not None:
+        node = scenario_mgr.get_node(node_id)
+        if not node or node['scenario_id'] != scenario_id:
+            return jsonify({'success': False, 'error': 'Узел не принадлежит сценарию'}), 403
     data = request.get_json() or {}
     scenario_mgr.update_node(node_id, data)
     return jsonify({'success': True})
 
 
-@app.route('/api/admin/scenarios/nodes/<int:node_id>', methods=['DELETE'])
-def api_scenario_node_delete(node_id):
+@app.route('/api/admin/scenarios/<int:scenario_id>/nodes/<int:node_id>', methods=['DELETE'])
+@app.route('/api/admin/scenarios/nodes/<int:node_id>', methods=['DELETE'], defaults={'scenario_id': None})
+def api_scenario_node_delete(scenario_id, node_id):
     err = _require_scenario_admin()
     if err:
         return jsonify({'success': False}), 403
+    # Проверяем принадлежность узла сценарию
+    if scenario_id is not None:
+        node = scenario_mgr.get_node(node_id)
+        if not node or node['scenario_id'] != scenario_id:
+            return jsonify({'success': False, 'error': 'Узел не принадлежит сценарию'}), 403
     scenario_mgr.delete_node(node_id)
     return jsonify({'success': True})
 
@@ -8058,22 +8096,48 @@ def api_scenario_edge_create(scenario_id):
     return jsonify({'success': True, 'edge_id': edge_id})
 
 
-@app.route('/api/admin/scenarios/edges/<int:edge_id>', methods=['PUT'])
-def api_scenario_edge_update(edge_id):
+@app.route('/api/admin/scenarios/<int:scenario_id>/edges/<int:edge_id>', methods=['PUT'])
+@app.route('/api/admin/scenarios/edges/<int:edge_id>', methods=['PUT'], defaults={'scenario_id': None})
+def api_scenario_edge_update(scenario_id, edge_id):
     err = _require_scenario_admin()
     if err:
         return jsonify({'success': False}), 403
+    # Проверяем принадлежность ребра сценарию
+    if scenario_id is not None:
+        edge = scenario_mgr.get_edge(edge_id)
+        if not edge or edge['scenario_id'] != scenario_id:
+            return jsonify({'success': False, 'error': 'Ребро не принадлежит сценарию'}), 403
     data = request.get_json() or {}
     scenario_mgr.update_edge(edge_id, data.get('label', ''), data.get('sort_order', 0))
     return jsonify({'success': True})
 
 
-@app.route('/api/admin/scenarios/edges/<int:edge_id>', methods=['DELETE'])
-def api_scenario_edge_delete(edge_id):
+@app.route('/api/admin/scenarios/<int:scenario_id>/edges/<int:edge_id>', methods=['DELETE'])
+@app.route('/api/admin/scenarios/edges/<int:edge_id>', methods=['DELETE'], defaults={'scenario_id': None})
+def api_scenario_edge_delete(scenario_id, edge_id):
     err = _require_scenario_admin()
     if err:
         return jsonify({'success': False}), 403
+    # Проверяем принадлежность ребра сценарию
+    if scenario_id is not None:
+        edge = scenario_mgr.get_edge(edge_id)
+        if not edge or edge['scenario_id'] != scenario_id:
+            return jsonify({'success': False, 'error': 'Ребро не принадлежит сценарию'}), 403
     scenario_mgr.delete_edge(edge_id)
+    return jsonify({'success': True})
+
+
+# ─── Layout (позиции узлов на canvas) ──────────────────────────
+
+@app.route('/api/admin/scenarios/<int:scenario_id>/layout', methods=['PUT'])
+def api_scenario_layout(scenario_id):
+    """Сохранить позиции узлов на canvas"""
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False, 'error': 'Нет прав'}), 403
+    data = request.get_json() or {}
+    positions = data.get('positions', [])
+    scenario_mgr.update_layout(positions)
     return jsonify({'success': True})
 
 

@@ -72,9 +72,20 @@ class ScenarioManager:
                     internal_note TEXT DEFAULT '',
                     documents TEXT DEFAULT '',
                     links TEXT DEFAULT '',
+                    pos_x REAL DEFAULT 0,
+                    pos_y REAL DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # Миграция: добавить pos_x/pos_y если таблица уже существует
+            try:
+                c.execute("ALTER TABLE cs_nodes ADD COLUMN pos_x REAL DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                c.execute("ALTER TABLE cs_nodes ADD COLUMN pos_y REAL DEFAULT 0")
+            except Exception:
+                pass
 
             # Переходы между узлами (ребра дерева)
             c.execute("""
@@ -367,7 +378,8 @@ class ScenarioManager:
 
     def update_node(self, node_id: int, data: dict):
         allowed = ['node_type', 'title', 'content', 'is_root', 'sort_order',
-                   'answer_text', 'final_answer', 'internal_note', 'documents', 'links']
+                   'answer_text', 'final_answer', 'internal_note', 'documents', 'links',
+                   'pos_x', 'pos_y']
         fields = {k: v for k, v in data.items() if k in allowed}
         if not fields:
             return
@@ -386,6 +398,16 @@ class ScenarioManager:
             conn.execute("DELETE FROM cs_nodes WHERE id=?", (node_id,))
             conn.commit()
 
+    def update_layout(self, positions: list):
+        """Сохранить позиции узлов на canvas: [{'id': 1, 'x': 100, 'y': 200}, ...]"""
+        with self._connect() as conn:
+            for item in positions:
+                conn.execute(
+                    "UPDATE cs_nodes SET pos_x=?, pos_y=? WHERE id=?",
+                    (item.get('x', 0), item.get('y', 0), item['id'])
+                )
+            conn.commit()
+
     # ─── Рёбра ─────────────────────────────────────────────────────
 
     def create_edge(self, scenario_id: int, from_node_id: int,
@@ -397,6 +419,13 @@ class ScenarioManager:
             """, (scenario_id, from_node_id, to_node_id, label, sort_order))
             conn.commit()
             return cur.lastrowid
+
+    def get_edge(self, edge_id: int) -> Optional[Dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM cs_edges WHERE id=?", (edge_id,)
+            ).fetchone()
+            return dict(row) if row else None
 
     def update_edge(self, edge_id: int, label: str, sort_order: int = 0):
         with self._connect() as conn:

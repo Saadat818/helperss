@@ -1945,7 +1945,7 @@ def trainer_menu():
     """Страница выбора сегмента тренажера (КЦ / Филиалы)"""
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
-    return render_template('trainer_segments.html')
+    return render_template('trainer_segments.html', is_admin=session.get('admin_logged_in', False))
 
 
 TRAINER_SEGMENTS = {
@@ -1962,6 +1962,10 @@ def trainer_segment_menu(segment):
 
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
+
+    # Филиалы в разработке — доступны только администраторам
+    if segment == 'branch' and not session.get('admin_logged_in'):
+        return render_template('under_construction.html', segment_name='Филиалы')
 
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
@@ -1982,6 +1986,10 @@ def trainer_level(segment, level_code):
 
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
+
+    # Филиалы в разработке — доступны только администраторам
+    if segment == 'branch' and not session.get('admin_logged_in'):
+        return render_template('under_construction.html', segment_name='Филиалы')
 
     user_id = session['user_info'].get('username', 'anonymous')
     level = trainer_mgr.get_level_by_code(level_code)

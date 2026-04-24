@@ -1827,7 +1827,7 @@ class TrainerManager:
                            r.percent
                     FROM trainer_results r
                     JOIN trainer_scenarios s ON r.scenario_id = s.id
-                    WHERE s.segment = ?
+                    WHERE s.segment = ? AND r.user_id != 'obuchenie'
                 )
                 GROUP BY user_id
                 ORDER BY total_score DESC, completions DESC
@@ -1849,6 +1849,7 @@ class TrainerManager:
                            COALESCE(r.repeat_bonus, 0) as all_bonus,
                            r.percent
                     FROM trainer_results r
+                    WHERE r.user_id != 'obuchenie'
                 )
                 GROUP BY user_id
                 ORDER BY total_score DESC, completions DESC

@@ -179,6 +179,8 @@ class TrainerManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_steps_scenario ON trainer_steps(scenario_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_answers_step ON trainer_answers(step_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_results_user ON trainer_results(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_results_user_scenario ON trainer_results(user_id, scenario_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_results_scenario ON trainer_results(scenario_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_progress_user ON trainer_user_progress(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_audit_timestamp ON trainer_audit_log(timestamp)")
 
@@ -1827,56 +1829,70 @@ class TrainerManager:
                 'avg_percent': round(row[1] or 0, 1)
             })
 
-        # Топ пользователей по сегменту
+        # Топ пользователей — эффективный запрос через MAX(id) вместо коррелированного подзапроса
+        # Шаг 1: последний результат каждого пользователя по каждому сценарию (через MAX id)
         if segment:
             cursor.execute("""
-                SELECT user_id,
+                SELECT r.user_id,
                        COUNT(*) as completions,
-                       AVG(percent) as avg_percent,
-                       SUM(last_score) + SUM(all_bonus) as total_score
-                FROM (
-                    SELECT r.user_id,
-                           r.scenario_id,
-                           CASE WHEN r.id = (
-                               SELECT id FROM trainer_results r2
-                               WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
-                               ORDER BY completed_at DESC, id DESC LIMIT 1
-                           ) THEN r.score ELSE 0 END as last_score,
-                           COALESCE(r.repeat_bonus, 0) as all_bonus,
-                           r.percent
-                    FROM trainer_results r
-                    JOIN trainer_scenarios s ON r.scenario_id = s.id
-                    WHERE s.segment = ? AND r.user_id != 'obuchenie'
-                )
-                GROUP BY user_id
+                       AVG(r.percent) as avg_percent,
+                       SUM(CASE WHEN r.id = best.max_id THEN r.score ELSE 0 END)
+                           + SUM(COALESCE(r.repeat_bonus, 0)) as total_score
+                FROM trainer_results r
+                JOIN trainer_scenarios s ON r.scenario_id = s.id
+                JOIN (
+                    SELECT user_id, scenario_id, MAX(id) as max_id
+                    FROM trainer_results
+                    GROUP BY user_id, scenario_id
+                ) best ON best.user_id = r.user_id AND best.scenario_id = r.scenario_id
+                WHERE s.segment = ? AND r.user_id != 'obuchenie'
+                GROUP BY r.user_id
                 ORDER BY total_score DESC, completions DESC
             """, [segment])
         else:
             cursor.execute("""
-                SELECT user_id,
+                SELECT r.user_id,
                        COUNT(*) as completions,
-                       AVG(percent) as avg_percent,
-                       SUM(last_score) + SUM(all_bonus) as total_score
-                FROM (
-                    SELECT r.user_id,
-                           r.scenario_id,
-                           CASE WHEN r.id = (
-                               SELECT id FROM trainer_results r2
-                               WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
-                               ORDER BY completed_at DESC, id DESC LIMIT 1
-                           ) THEN r.score ELSE 0 END as last_score,
-                           COALESCE(r.repeat_bonus, 0) as all_bonus,
-                           r.percent
-                    FROM trainer_results r
-                    WHERE r.user_id != 'obuchenie'
-                )
-                GROUP BY user_id
+                       AVG(r.percent) as avg_percent,
+                       SUM(CASE WHEN r.id = best.max_id THEN r.score ELSE 0 END)
+                           + SUM(COALESCE(r.repeat_bonus, 0)) as total_score
+                FROM trainer_results r
+                JOIN (
+                    SELECT user_id, scenario_id, MAX(id) as max_id
+                    FROM trainer_results
+                    GROUP BY user_id, scenario_id
+                ) best ON best.user_id = r.user_id AND best.scenario_id = r.scenario_id
+                WHERE r.user_id != 'obuchenie'
+                GROUP BY r.user_id
                 ORDER BY total_score DESC, completions DESC
             """)
         top_users = [dict(row) for row in cursor.fetchall()]
 
-        for user in top_users:
-            user['badges'] = self.get_user_badges(user['user_id'])
+        # Бейджи — одним запросом для всех пользователей сразу (не N+1)
+        if top_users:
+            top_user_ids = [u['user_id'] for u in top_users]
+            placeholders = ','.join('?' * len(top_user_ids))
+            cursor.execute(f"""
+                SELECT r.user_id,
+                    COUNT(*) as total,
+                    AVG(r.final_loyalty) as avg_loyalty,
+                    SUM(CASE WHEN r.timeout_count = 0 THEN 1 ELSE 0 END) as no_timeout_count,
+                    SUM(CASE WHEN r.percent = 100 THEN 1 ELSE 0 END) as perfect_count,
+                    SUM(CASE WHEN r.percent >= 90 THEN 1 ELSE 0 END) as excellent_count,
+                    SUM(CASE WHEN r.is_game_over = 0 THEN 1 ELSE 0 END) as no_gameover_count,
+                    COUNT(DISTINCT s.level_id) as levels_touched
+                FROM trainer_results r
+                JOIN trainer_scenarios s ON r.scenario_id = s.id
+                WHERE r.user_id IN ({placeholders})
+                GROUP BY r.user_id
+            """, top_user_ids)
+            badge_rows = {row[0]: row for row in cursor.fetchall()}
+            for user in top_users:
+                row = badge_rows.get(user['user_id'])
+                if row:
+                    user['badges'] = self._compute_badges_from_row(row)
+                else:
+                    user['badges'] = []
 
         return {
             'total_scenarios': total_scenarios,
@@ -1983,6 +1999,46 @@ class TrainerManager:
                 'description': 'Первое прохождение тренажёра'
             })
 
+        return all_badges[:3]
+
+    def _compute_badges_from_row(self, row) -> list:
+        """Вычислить бейджи из уже готовой строки агрегата (без доп. запроса к БД)"""
+        total = row[1] if len(row) > 1 else row[0]
+        avg_loyalty = row[2] if len(row) > 2 else (row[1] or 0)
+        no_timeout_count = row[3] if len(row) > 3 else 0
+        perfect_count = row[4] if len(row) > 4 else 0
+        excellent_count = row[5] if len(row) > 5 else 0
+        no_gameover_count = row[6] if len(row) > 6 else 0
+        levels_touched = row[7] if len(row) > 7 else 0
+
+        total = total or 0
+        avg_loyalty = avg_loyalty or 0
+        no_timeout_count = no_timeout_count or 0
+        perfect_count = perfect_count or 0
+        excellent_count = excellent_count or 0
+        no_gameover_count = no_gameover_count or 0
+        levels_touched = levels_touched or 0
+
+        if total == 0:
+            return []
+
+        all_badges = []
+        if perfect_count >= 1:
+            all_badges.append({'code': 'perfectionist', 'name': 'Перфекционист', 'icon': '💎', 'description': 'Набрал 100% хотя бы в 1 сценарии'})
+        if no_gameover_count >= 5:
+            all_badges.append({'code': 'steel_nerves', 'name': 'Стальные нервы', 'icon': '🧘', 'description': '5+ сценариев без Game Over'})
+        if total >= 5 and no_timeout_count == total:
+            all_badges.append({'code': 'flash', 'name': 'Flash', 'icon': '⚡', 'description': '5+ сценариев без единого таймаута'})
+        if avg_loyalty >= 80:
+            all_badges.append({'code': 'anger_tamer', 'name': 'Укротитель', 'icon': '😊', 'description': 'Средняя лояльность клиента 80%+'})
+        if excellent_count >= 3:
+            all_badges.append({'code': 'expert', 'name': 'Знаток', 'icon': '📖', 'description': '3+ сценария с результатом 90%+'})
+        if total >= 10:
+            all_badges.append({'code': 'marathon', 'name': 'Марафонец', 'icon': '🏃', 'description': '10+ пройденных сценариев'})
+        if levels_touched >= 3:
+            all_badges.append({'code': 'level_conqueror', 'name': 'Покоритель', 'icon': '🏔️', 'description': 'Прошёл сценарии на 3+ уровнях'})
+        if not all_badges:
+            all_badges.append({'code': 'newbie', 'name': 'Новичок', 'icon': '🌱', 'description': 'Первое прохождение тренажёра'})
         return all_badges[:3]
 
     def get_scenario_statistics(self, scenario_id: int) -> Dict:

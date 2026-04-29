@@ -3738,6 +3738,7 @@ def admin_trainer_export():
 @AdminAuth.login_required
 def admin_trainer_audit():
     """Журнал изменений (аудит)"""
+    segment = request.args.get('segment', 'kc')
     page = request.args.get('page', 1, type=int)
     per_page = 50
     offset = (page - 1) * per_page
@@ -3745,7 +3746,7 @@ def admin_trainer_audit():
     logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset)
     stats = trainer_mgr.get_audit_stats()
 
-    return render_template('admin_trainer_audit.html', logs=logs, stats=stats, page=page)
+    return render_template('admin_trainer_audit.html', logs=logs, stats=stats, page=page, segment=segment)
 
 
 @app.route('/admin/trainer/audit/export')

@@ -426,7 +426,7 @@
             <h1>{{ seg_info.icon if seg_info else '🎯' }} Тренажер — {{ seg_info.name if seg_info else 'Управление' }}</h1>
             <div class="header-buttons">
                 <a href="{{ url_for('admin_trainer_feedback', segment=segment) }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
-                <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
+                <a href="{{ url_for('admin_trainer_audit', segment=segment) }}" class="btn btn-primary">📋 Журнал</a>
                 <a href="{{ url_for('admin_trainer_stats', segment=segment) }}" class="btn btn-primary">📊 Статистика</a>
                 <a href="{{ url_for('admin_trainer_drafts', segment=segment) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); position:relative;">✏️ Черновики{% if draft_count %}<span style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ draft_count }}</span>{% endif %}</a>
                 {# <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a> #}

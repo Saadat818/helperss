@@ -1835,8 +1835,10 @@ def other_problem():
     session['other_problem_type'] = other_problem_type
     is_cisco = other_problem_type == 'cisco'
 
-    # Проверка рабочего времени (Cisco — без ограничений, 24/7)
-    if not is_cisco:
+    # Проверка рабочего времени (Cisco — 24/7, но майские праздники блокируют всех)
+    now = datetime.now()
+    may_holiday = datetime(2026, 5, 1, 0, 0, 0) <= now < datetime(2026, 5, 11, 8, 30, 0)
+    if not is_cisco or may_holiday:
         working, off_hours_msg = is_working_hours()
         if not working:
             return render_template('off_hours.html', message=off_hours_msg)

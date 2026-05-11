@@ -2467,22 +2467,27 @@ class TrainerManager:
 
     def log_action(self, user_id: str, action: str, entity_type: str,
                    entity_id: int = None, entity_name: str = None,
-                   changes: dict = None, ip_address: str = None):
+                   changes: dict = None, ip_address: str = None, segment: str = None):
         """Записать действие в журнал аудита"""
         cursor = self.conn.cursor()
         try:
+            # Миграция: добавляем поле segment если его нет
+            cols = [r[1] for r in cursor.execute("PRAGMA table_info(trainer_audit_log)").fetchall()]
+            if 'segment' not in cols:
+                cursor.execute("ALTER TABLE trainer_audit_log ADD COLUMN segment TEXT DEFAULT 'kc'")
             changes_json = json.dumps(changes, ensure_ascii=False) if changes else None
             cursor.execute("""
                 INSERT INTO trainer_audit_log
-                (user_id, action, entity_type, entity_id, entity_name, changes_json, ip_address)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, action, entity_type, entity_id, entity_name, changes_json, ip_address))
+                (user_id, action, entity_type, entity_id, entity_name, changes_json, ip_address, segment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, action, entity_type, entity_id, entity_name, changes_json, ip_address, segment or 'kc'))
             self.conn.commit()
         except Exception as e:
             print(f"[log_action] Ошибка: {e}")
 
     def get_audit_log(self, limit: int = 100, offset: int = 0,
-                      entity_type: str = None, user_id: str = None) -> List[Dict]:
+                      entity_type: str = None, user_id: str = None,
+                      segment: str = None) -> List[Dict]:
         """Получить журнал аудита"""
         cursor = self.conn.cursor()
 
@@ -2496,6 +2501,10 @@ class TrainerManager:
         if user_id:
             query += " AND user_id = ?"
             params.append(user_id)
+
+        if segment:
+            query += " AND (segment = ? OR segment IS NULL)"
+            params.append(segment)
 
         query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])

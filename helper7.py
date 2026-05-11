@@ -1963,9 +1963,9 @@ def trainer_segment_menu(segment):
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
 
-    # Филиалы в разработке — доступны только администраторам
-    if segment == 'branch' and not session.get('admin_logged_in'):
-        return render_template('under_construction.html', segment_name='Филиалы')
+    # Филиалы в разработке — временно открыто для тестирования
+    # if segment == 'branch' and not session.get('admin_logged_in'):
+    #     return render_template('under_construction.html', segment_name='Филиалы')
 
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
@@ -1987,9 +1987,9 @@ def trainer_level(segment, level_code):
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
 
-    # Филиалы в разработке — доступны только администраторам
-    if segment == 'branch' and not session.get('admin_logged_in'):
-        return render_template('under_construction.html', segment_name='Филиалы')
+    # Филиалы в разработке — временно открыто для тестирования
+    # if segment == 'branch' and not session.get('admin_logged_in'):
+    #     return render_template('under_construction.html', segment_name='Филиалы')
 
     user_id = session['user_info'].get('username', 'anonymous')
     level = trainer_mgr.get_level_by_code(level_code)
@@ -2602,7 +2602,8 @@ def admin_trainer_create():
                 entity_id=result['id'],
                 entity_name=data['title'],
                 changes=data,
-                ip_address=request.remote_addr
+                ip_address=request.remote_addr,
+                segment=data.get('segment', 'kc')
             )
             if is_draft:
                 flash('Черновик создан! Добавьте шаги и опубликуйте когда будет готов.')
@@ -2728,7 +2729,8 @@ def admin_trainer_edit(scenario_id):
                 entity_id=scenario_id,
                 entity_name=data['title'],
                 changes=data,
-                ip_address=request.remote_addr
+                ip_address=request.remote_addr,
+                segment=data.get('segment', 'kc')
             )
 
             # Обновляем шаги и ответы
@@ -2874,7 +2876,8 @@ def admin_trainer_delete(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario_title,
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий удален')
     else:
@@ -2918,7 +2921,8 @@ def admin_trainer_publish(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий опубликован!')
     else:
@@ -2941,7 +2945,8 @@ def admin_trainer_archive(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий перемещён в архив.')
     else:
@@ -2964,7 +2969,8 @@ def admin_trainer_restore(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий восстановлен из архива и снова активен.')
     else:
@@ -2986,7 +2992,8 @@ def admin_trainer_duplicate(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=scenario.get('segment', 'kc') if scenario else 'kc'
         )
         flash('Сценарий продублирован и сохранён в черновиках!')
         return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
@@ -3239,7 +3246,8 @@ def admin_trainer_visual_save(scenario_id):
             entity_id=scenario_id,
             entity_name=scenario['title'],
             changes={'source': 'visual_editor', 'steps_count': len(client_nodes)},
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=scenario.get('segment', 'kc')
         )
 
         return jsonify({'success': True, 'message': 'Сценарий сохранен', 'id_remap': id_remap})
@@ -3743,7 +3751,7 @@ def admin_trainer_audit():
     per_page = 50
     offset = (page - 1) * per_page
 
-    logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset)
+    logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset, segment=segment)
     stats = trainer_mgr.get_audit_stats()
 
     return render_template('admin_trainer_audit.html', logs=logs, stats=stats, page=page, segment=segment)
@@ -4310,7 +4318,7 @@ def admin_login():
         # Тестовый режим для админа
         TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 
-        if TEST_MODE and password in ['admin', '123', 'test']:
+        if TEST_MODE and password in ['admin', '123', 'test', '1234']:
             session['admin_logged_in'] = True
             session['admin_username'] = username
             session['admin_role'] = ROLE_SUPER_ADMIN

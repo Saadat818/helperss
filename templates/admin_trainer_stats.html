@@ -407,7 +407,7 @@
     <div class="container">
         <div class="header">
             <h1>📊 Статистика — {{ seg_info.name if seg_info else 'Тренажер' }}</h1>
-            <a href="{{ url_for('admin_trainer_export') }}" class="btn btn-success">📥 Экспорт в Excel</a>
+            <a href="{{ url_for('admin_trainer_export', segment=segment) }}" class="btn btn-success">📥 Экспорт в Excel</a>
         </div>
 
         <!-- Main Stats -->

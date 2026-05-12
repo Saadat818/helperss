@@ -3464,9 +3464,10 @@ def admin_trainer_export():
         from datetime import datetime
         import pandas as pd
 
-        stats = trainer_mgr.get_statistics()
-        users_progress = trainer_mgr.get_all_users_progress()
-        detailed_results = trainer_mgr.get_detailed_results()
+        segment = request.args.get('segment')
+        stats = trainer_mgr.get_statistics(segment=segment)
+        users_progress = trainer_mgr.get_all_users_progress(segment=segment)
+        detailed_results = trainer_mgr.get_detailed_results(segment=segment)
 
         # Создаем Excel файл
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
@@ -3752,7 +3753,7 @@ def admin_trainer_audit():
     offset = (page - 1) * per_page
 
     logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset, segment=segment)
-    stats = trainer_mgr.get_audit_stats()
+    stats = trainer_mgr.get_audit_stats(segment=segment)
 
     return render_template('admin_trainer_audit.html', logs=logs, stats=stats, page=page, segment=segment)
 
@@ -3767,7 +3768,8 @@ def admin_trainer_audit_export():
         from datetime import datetime
         import pandas as pd
 
-        logs = trainer_mgr.get_audit_log(limit=10000)
+        segment = request.args.get('segment')
+        logs = trainer_mgr.get_audit_log(limit=10000, segment=segment)
 
         # Создаем Excel файл
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')

@@ -1985,27 +1985,32 @@ class TrainerManager:
             'max_percent': row['max_percent'] or 0
         }
 
-    def get_all_users_progress(self) -> List[Dict]:
+    def get_all_users_progress(self, segment: str = None) -> List[Dict]:
         """Получить прогресс всех пользователей для экспорта"""
         cursor = self.conn.cursor()
 
-        # Получаем всех пользователей с их статистикой
-        cursor.execute("""
+        seg_join = "JOIN trainer_scenarios s ON r.scenario_id = s.id" if segment else ""
+        seg_where = "WHERE s.segment = ?" if segment else ""
+        params = [segment] if segment else []
+
+        cursor.execute(f"""
             SELECT
-                user_id,
+                r.user_id,
                 COUNT(*) as total_completions,
-                COUNT(DISTINCT scenario_id) as unique_scenarios,
-                AVG(percent) as avg_percent,
-                MAX(percent) as best_percent,
-                MIN(completed_at) as first_completion,
-                MAX(completed_at) as last_completion,
-                SUM(CASE WHEN percent >= 80 THEN 1 ELSE 0 END) as excellent_count,
-                SUM(CASE WHEN percent >= 60 AND percent < 80 THEN 1 ELSE 0 END) as good_count,
-                SUM(CASE WHEN percent < 60 THEN 1 ELSE 0 END) as needs_work_count
-            FROM trainer_results
-            GROUP BY user_id
+                COUNT(DISTINCT r.scenario_id) as unique_scenarios,
+                AVG(r.percent) as avg_percent,
+                MAX(r.percent) as best_percent,
+                MIN(r.completed_at) as first_completion,
+                MAX(r.completed_at) as last_completion,
+                SUM(CASE WHEN r.percent >= 80 THEN 1 ELSE 0 END) as excellent_count,
+                SUM(CASE WHEN r.percent >= 60 AND r.percent < 80 THEN 1 ELSE 0 END) as good_count,
+                SUM(CASE WHEN r.percent < 60 THEN 1 ELSE 0 END) as needs_work_count
+            FROM trainer_results r
+            {seg_join}
+            {seg_where}
+            GROUP BY r.user_id
             ORDER BY avg_percent DESC
-        """)
+        """, params)
 
         users = []
         for row in cursor.fetchall():
@@ -2024,11 +2029,14 @@ class TrainerManager:
 
         return users
 
-    def get_detailed_results(self) -> List[Dict]:
+    def get_detailed_results(self, segment: str = None) -> List[Dict]:
         """Получить детальные результаты всех прохождений"""
         cursor = self.conn.cursor()
 
-        cursor.execute("""
+        seg_where = "WHERE s.segment = ?" if segment else ""
+        params = [segment] if segment else []
+
+        cursor.execute(f"""
             SELECT
                 r.user_id,
                 s.title as scenario_title,
@@ -2044,8 +2052,9 @@ class TrainerManager:
             FROM trainer_results r
             JOIN trainer_scenarios s ON r.scenario_id = s.id
             JOIN trainer_levels l ON s.level_id = l.id
+            {seg_where}
             ORDER BY r.completed_at DESC
-        """)
+        """, params)
 
         results = []
         for row in cursor.fetchall():
@@ -2522,41 +2531,44 @@ class TrainerManager:
 
         return logs
 
-    def get_audit_stats(self) -> Dict:
+    def get_audit_stats(self, segment: str = None) -> Dict:
         """Получить статистику аудита"""
         cursor = self.conn.cursor()
 
-        # Всего записей
-        cursor.execute("SELECT COUNT(*) FROM trainer_audit_log")
+        seg_where = "WHERE (segment = ? OR segment IS NULL)" if segment else ""
+        seg_and = "AND (segment = ? OR segment IS NULL)" if segment else ""
+        params = [segment] if segment else []
+
+        cursor.execute(f"SELECT COUNT(*) FROM trainer_audit_log {seg_where}", params)
         total = cursor.fetchone()[0]
 
-        # По типам действий
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT action, COUNT(*) as count
             FROM trainer_audit_log
+            {seg_where}
             GROUP BY action
             ORDER BY count DESC
-        """)
+        """, params)
         by_action = {row['action']: row['count'] for row in cursor.fetchall()}
 
-        # По пользователям
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT user_id, COUNT(*) as count
             FROM trainer_audit_log
+            {seg_where}
             GROUP BY user_id
             ORDER BY count DESC
             LIMIT 10
-        """)
+        """, params)
         by_user = [dict(row) for row in cursor.fetchall()]
 
-        # За последние 7 дней
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT DATE(timestamp) as date, COUNT(*) as count
             FROM trainer_audit_log
             WHERE timestamp >= datetime('now', '-7 days')
+            {seg_and}
             GROUP BY DATE(timestamp)
             ORDER BY date DESC
-        """)
+        """, params)
         by_date = [dict(row) for row in cursor.fetchall()]
 
         return {

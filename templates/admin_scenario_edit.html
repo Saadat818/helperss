@@ -6,22 +6,19 @@
     <title>Редактор сценария — {{ scenario.title }}</title>
     <style>
         :root {
-            --bg: #0f1117; --card: #1a1d27; --card2: #20242f;
-            --text: #e8e8f0; --muted: #8888aa; --border: #2a2d3e;
-            --green: #00c06b; --blue: #4d9fff; --red: #ff5555;
-            --yellow: #ffb800; --purple: #9d71ff; --orange: #ff8c42;
-            --node-q: #1e3a5f; --node-q-border: #4d9fff;
-            --node-f: #1a3d2b; --node-f-border: #00c06b;
-            --node-i: #3a2d1a; --node-i-border: #ffb800;
-            --node-s: #2d1a3d; --node-s-border: #9d71ff;
-        }
-        body.light {
-            --bg: #e8ecf2; --card: #fff; --card2: #f0f3f8;
-            --text: #1a1a2e; --muted: #606080; --border: #c0c8d8;
-            --node-q: #dbeafe; --node-q-border: #2563eb;
-            --node-f: #dcfce7; --node-f-border: #16a34a;
-            --node-i: #fef9c3; --node-i-border: #ca8a04;
-            --node-s: #f3e8ff; --node-s-border: #9333ea;
+            --bg: #f0f2f5;
+            --card: #ffffff; --card2: #f7f8fa;
+            --text: #1a2235; --muted: #64748b; --border: #d1d9e6;
+            --green: #16a34a; --blue: #2563eb; --red: #dc2626;
+            --yellow: #d97706; --purple: #7c3aed; --orange: #ea580c;
+            /* Узлы — BPMN-палитра */
+            --node-start-bg: #dbeafe; --node-start-bd: #3b82f6;
+            --node-q-bg: #fce7f3;    --node-q-bd: #db2777;
+            --node-f-bg: #dcfce7;    --node-f-bd: #16a34a;
+            --node-i-bg: #fef9c3;    --node-i-bd: #ca8a04;
+            /* Линии */
+            --edge-color: #94a3b8;
+            --edge-selected: #2563eb;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Segoe UI", system-ui, Arial; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -73,9 +70,11 @@
         /* Canvas */
         .canvas-wrap {
             flex: 1; position: relative; overflow: hidden;
-            background-color: var(--bg);
-            background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
-            background-size: 28px 28px;
+            background-color: #f8f9fb;
+            background-image:
+                linear-gradient(var(--border) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 24px 24px;
             cursor: grab;
         }
         .canvas-wrap.panning { cursor: grabbing; }
@@ -83,41 +82,141 @@
 
         /* SVG рёбра */
         .edges-svg { position: absolute; top: 0; left: 0; width: 5000px; height: 4000px; pointer-events: none; overflow: visible; }
-        .edge-path { fill: none; stroke: #3a4060; stroke-width: 2; pointer-events: stroke; cursor: pointer; }
-        .edge-path:hover, .edge-path.selected { stroke: var(--blue); stroke-width: 2.5; }
-        .edge-path.temp { stroke: var(--green); stroke-width: 2; stroke-dasharray: 6 3; pointer-events: none; }
+        .edge-path { fill: none; stroke: var(--edge-color); stroke-width: 1.8; pointer-events: stroke; cursor: pointer; }
+        .edge-path:hover, .edge-path.selected { stroke: var(--edge-selected); stroke-width: 2.5; }
+        .edge-path.temp { stroke: var(--blue); stroke-width: 1.8; stroke-dasharray: 6 3; pointer-events: none; }
 
-        /* Узлы */
-        .flow-node { position: absolute; min-width: 180px; max-width: 240px; border-radius: 10px; border: 2px solid; user-select: none; }
-        .flow-node:hover { box-shadow: 0 4px 20px rgba(0,0,0,.35); }
-        .flow-node.selected { box-shadow: 0 0 0 3px rgba(77,159,255,.45); }
-        .flow-node.dragging { opacity: .85; z-index: 100; cursor: grabbing; }
-        .flow-node.type-start   { background: var(--node-s); border-color: var(--node-s-border); }
-        .flow-node.type-question{ background: var(--node-q); border-color: var(--node-q-border); }
-        .flow-node.type-final   { background: var(--node-f); border-color: var(--node-f-border); }
-        .flow-node.type-info    { background: var(--node-i); border-color: var(--node-i-border); }
+        /* ── УЗЛЫ ── BPMN-style ────────────────────────────────────── */
+        .flow-node {
+            position: absolute; user-select: none;
+        }
+        .flow-node.dragging { opacity: .82; z-index: 100; cursor: grabbing; }
 
-        .node-header { padding: 7px 10px 5px; display: flex; align-items: center; gap: 5px; border-bottom: 1px solid rgba(255,255,255,.06); }
-        .node-type-badge { font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; }
-        .type-start .node-type-badge    { background: rgba(157,113,255,.3); color: var(--purple); }
-        .type-question .node-type-badge { background: rgba(77,159,255,.3); color: var(--blue); }
-        .type-final .node-type-badge    { background: rgba(0,192,107,.3); color: var(--green); }
-        .type-info .node-type-badge     { background: rgba(255,184,0,.3); color: var(--yellow); }
-        .node-root-badge { font-size: 9px; background: rgba(157,113,255,.2); color: var(--purple); padding: 1px 4px; border-radius: 3px; font-weight: 700; }
-        .node-hdr-actions { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
-        .flow-node:hover .node-hdr-actions { opacity: 1; }
-        .node-del-btn { width: 20px; height: 20px; border-radius: 4px; background: rgba(255,85,85,.15); color: var(--red); border: none; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; }
-        .node-del-btn:hover { background: var(--red); color: #fff; }
-        .node-body { padding: 8px 10px 10px; position: relative; }
-        .node-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; word-break: break-word; line-height: 1.3; }
-        .node-content { font-size: 11px; color: var(--muted); line-height: 1.4; word-break: break-word; max-height: 44px; overflow: hidden; }
-        .node-final-label { font-size: 10px; color: var(--green); margin-top: 4px; font-style: italic; }
+        /* Прямоугольные узлы: start, info, final */
+        .flow-node.type-start,
+        .flow-node.type-info,
+        .flow-node.type-final { width: 160px; min-height: 52px; }
+
+        /* Ромб: question */
+        .flow-node.type-question { width: 140px; height: 140px; }
+
+        .shape-shell {
+            position: relative; width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            transition: filter .15s;
+        }
+        .flow-node:hover .shape-shell { filter: brightness(.96); }
+        .flow-node.selected .shape-shell { filter: brightness(.93); }
+
+        /* start — скруглённый прямоугольник (rounded) */
+        .type-start .shape-shell {
+            background: var(--node-start-bg);
+            border: 1.5px solid var(--node-start-bd);
+            border-radius: 26px;
+            padding: 10px 14px;
+            min-height: 52px;
+        }
+        /* info — обычный прямоугольник */
+        .type-info .shape-shell {
+            background: var(--node-i-bg);
+            border: 1.5px solid var(--node-i-bd);
+            border-radius: 5px;
+            padding: 8px 12px;
+            min-height: 52px;
+        }
+        /* final — прямоугольник с двойным бордером (финальное состояние) */
+        .type-final .shape-shell {
+            background: var(--node-f-bg);
+            border: 1.5px solid var(--node-f-bd);
+            border-radius: 5px;
+            padding: 8px 12px;
+            min-height: 52px;
+            box-shadow: inset 0 0 0 3px var(--node-f-bg), inset 0 0 0 5px var(--node-f-bd);
+        }
+        /* question — ромб через clip-path */
+        .type-question .shape-shell {
+            background: var(--node-q-bg);
+            border: 1.5px solid var(--node-q-bd);
+            clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%);
+            padding: 20px 30px;
+            height: 140px;
+        }
+
+        /* selected outline */
+        .flow-node.selected .shape-shell {
+            outline: 2px solid var(--blue);
+            outline-offset: 2px;
+        }
+        .type-question.selected .shape-shell { outline: none; filter: drop-shadow(0 0 4px var(--blue)); }
+
+        /* Текст внутри узла */
+        .node-main {
+            width: 100%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center; gap: 3px;
+        }
+        .node-title {
+            font-size: 11.5px; font-weight: 600; color: #1e293b;
+            line-height: 1.3; word-break: break-word;
+        }
+        .type-start .node-title { font-size: 12px; font-weight: 700; }
+        .node-content {
+            font-size: 9.5px; color: #475569; line-height: 1.25;
+            word-break: break-word; max-height: 32px; overflow: hidden;
+        }
+        .node-final-label {
+            font-size: 9px; color: #166534; line-height: 1.2; font-style: italic;
+        }
+
+        /* Бейджи */
+        .node-chip {
+            position: absolute; top: -8px; left: 8px;
+            font-size: 8.5px; font-weight: 700; letter-spacing: .03em;
+            padding: 1px 5px; border-radius: 999px; text-transform: uppercase;
+            background: #fff; border: 1px solid #cbd5e1; color: #64748b;
+            pointer-events: none;
+        }
+        .type-start    .node-chip { color: #2563eb; border-color: #bfdbfe; }
+        .type-info     .node-chip { color: #a16207; border-color: #fde68a; }
+        .type-question .node-chip {
+            top: -10px; left: 50%; transform: translateX(-50%);
+            color: #be185d; border-color: #fbcfe8;
+        }
+        .type-final    .node-chip { color: #15803d; border-color: #bbf7d0; }
+        .node-root-badge {
+            position: absolute; top: -8px; right: 8px;
+            font-size: 8.5px; font-weight: 700; padding: 1px 5px;
+            border-radius: 999px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+            pointer-events: none;
+        }
+        .node-del-btn {
+            position: absolute; top: -9px; right: 6px;
+            width: 18px; height: 18px; border-radius: 50%; background: #fff;
+            color: #dc2626; border: 1px solid #fecaca; cursor: pointer;
+            font-size: 10px; display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity .15s;
+            z-index: 20;
+        }
+        .flow-node:hover .node-del-btn { opacity: 1; }
+        .node-del-btn:hover { background: #dc2626; color: #fff; }
 
         /* Порты */
-        .port { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid; z-index: 10; transition: transform .1s; }
-        .port-out { bottom: -7px; left: 50%; transform: translateX(-50%); background: var(--card); border-color: var(--blue); cursor: crosshair; }
-        .port-out:hover { background: var(--blue); transform: translateX(-50%) scale(1.5); }
-        .port-in  { top: -7px; left: 50%; transform: translateX(-50%); background: var(--card); border-color: var(--green); pointer-events: none; }
+        .port {
+            position: absolute; width: 10px; height: 10px; border-radius: 50%;
+            border: 2px solid; z-index: 10; transition: transform .1s;
+            background: #fff;
+        }
+        .port-out {
+            bottom: -6px; left: 50%; transform: translateX(-50%);
+            border-color: #94a3b8; cursor: crosshair;
+        }
+        .port-out:hover { border-color: var(--blue); background: var(--blue); transform: translateX(-50%) scale(1.4); }
+        .port-in  {
+            top: -6px; left: 50%; transform: translateX(-50%);
+            border-color: #94a3b8; pointer-events: none;
+        }
+        /* для ромба порты нужно сдвинуть */
+        .type-question .port-out { bottom: 4px; }
+        .type-question .port-in  { top: 4px; }
 
         /* Зум */
         .zoom-controls { position: absolute; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 4px; z-index: 50; }
@@ -240,14 +339,11 @@
         <div class="canvas" id="canvas">
             <svg class="edges-svg" id="edgesSvg">
                 <defs>
-                    <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                        <polygon points="0 0,8 3,0 6" fill="#3a4060"/>
+                    <marker id="arr" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+                        <polygon points="0 0,7 2.5,0 5" fill="#94a3b8"/>
                     </marker>
-                    <marker id="arr-blue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                        <polygon points="0 0,8 3,0 6" fill="#4d9fff"/>
-                    </marker>
-                    <marker id="arr-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                        <polygon points="0 0,8 3,0 6" fill="#00c06b"/>
+                    <marker id="arr-blue" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+                        <polygon points="0 0,7 2.5,0 5" fill="#2563eb"/>
                     </marker>
                 </defs>
             </svg>
@@ -411,7 +507,13 @@ function fitView(){
     const nl=Object.values(nodes);
     if(!nl.length)return;
     let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-    nl.forEach(n=>{x0=Math.min(x0,n.pos_x);y0=Math.min(y0,n.pos_y);x1=Math.max(x1,n.pos_x+220);y1=Math.max(y1,n.pos_y+100);});
+    nl.forEach(n=>{
+        const dims=nodeDims(n);
+        x0=Math.min(x0,n.pos_x);
+        y0=Math.min(y0,n.pos_y);
+        x1=Math.max(x1,n.pos_x+dims.w);
+        y1=Math.max(y1,n.pos_y+dims.h);
+    });
     const ww=wrap.clientWidth,wh=wrap.clientHeight;
     const gw=x1-x0+100,gh=y1-y0+100;
     zoom=Math.min(ww/gw,wh/gh,1.5);zoom=Math.max(.2,zoom);
@@ -425,10 +527,11 @@ function updateMM(){
     const ctx=mc.getContext('2d');
     ctx.clearRect(0,0,160,100);
     const sc=0.038;
-    const cols={start:'#9d71ff',question:'#4d9fff',final:'#00c06b',info:'#ffb800'};
+    const cols={start:'#3b82f6',question:'#db2777',final:'#16a34a',info:'#d97706'};
     Object.values(nodes).forEach(n=>{
+        const dims=nodeDims(n);
         ctx.fillStyle=cols[n.node_type]||'#4d9fff';
-        ctx.fillRect(n.pos_x*sc,n.pos_y*sc,180*sc,70*sc);
+        ctx.fillRect(n.pos_x*sc,n.pos_y*sc,dims.w*sc,dims.h*sc);
     });
     const vp=document.getElementById('mmVp');
     const vx=(-panX/zoom)*sc,vy=(-panY/zoom)*sc;
@@ -441,6 +544,22 @@ const TL={start:'Старт',question:'Вопрос',final:'Финал',info:'И
 const TI={start:'🟣',question:'🔵',final:'🟢',info:'🟡'};
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function tr(s,n){return s&&s.length>n?s.slice(0,n)+'…':(s||'');}
+function nodeDims(n){
+    if(n.node_type==='question')return {w:140,h:140};
+    if(n.node_type==='start')return {w:160,h:52};
+    if(n.node_type==='final')return {w:160,h:52};
+    return {w:160,h:52}; // info
+}
+function nodePreview(n){
+    const parts=[];
+    if(n.content)parts.push(n.content);
+    if(n.final_answer && n.node_type!=='final')parts.push(n.final_answer);
+    if(n.internal_note)parts.push(n.internal_note);
+    return tr(parts.find(Boolean)||'', n.node_type==='question'?42:70);
+}
+function nodeLabel(n){
+    return n.title || nodePreview(n) || '(без названия)';
+}
 
 function renderNode(n){
     let el=document.getElementById('nd-'+n.id);
@@ -452,21 +571,21 @@ function renderNode(n){
     }
     el.className='flow-node type-'+n.node_type+(selNode==n.id?' selected':'');
     el.style.cssText=`left:${n.pos_x}px;top:${n.pos_y}px;`;
+    const preview=nodePreview(n);
+    const title=nodeLabel(n);
     el.innerHTML=`
-    <div class="node-header">
-        <span class="node-type-badge">${TI[n.node_type]} ${TL[n.node_type]||n.node_type}</span>
-        ${n.is_root?'<span class="node-root-badge">★ START</span>':''}
-        <div class="node-hdr-actions">
-            <button class="node-del-btn" data-del="${n.id}">✕</button>
+    <span class="node-chip">${TL[n.node_type]||n.node_type}</span>
+    ${n.is_root?'<span class="node-root-badge">Старт</span>':''}
+    <button class="node-del-btn" data-del="${n.id}">✕</button>
+    <div class="shape-shell">
+        <div class="node-main">
+            <div class="node-title">${esc(tr(title, n.node_type==='start' ? 42 : 64))}</div>
+            ${preview && preview!==title ? `<div class="node-content">${esc(preview)}</div>` : ''}
+            ${n.final_answer && n.node_type==='final' ? `<div class="node-final-label">${esc(tr(n.final_answer,72))}</div>` : ''}
         </div>
     </div>
-    <div class="node-body">
-        <div class="node-title">${esc(tr(n.title||'(без названия)',55))}</div>
-        ${n.content?`<div class="node-content">${esc(tr(n.content,85))}</div>`:''}
-        ${n.final_answer?`<div class="node-final-label">💬 ${esc(tr(n.final_answer,55))}</div>`:''}
-        ${n.node_type!=='final'?`<div class="port port-out" data-port="${n.id}"></div>`:''}
-        <div class="port port-in"></div>
-    </div>`;
+    ${n.node_type!=='final'?`<div class="port port-out" data-port="${n.id}"></div>`:''}
+    <div class="port port-in"></div>`;
 }
 
 function renderAll(){
@@ -496,11 +615,26 @@ function nodeCenter(n,port){
         return {x: cx, y: n.pos_y};
     }
 }
-function bezier(x1,y1,x2,y2){
-    // Вертикальный безье — контрольные точки строго вертикально
-    const dist = Math.abs(y2-y1);
-    const cp = Math.max(dist * 0.5, 60);
-    return `M${x1},${y1} C${x1},${y1+cp} ${x2},${y2-cp} ${x2},${y2}`;
+function orthPath(x1,y1,x2,y2){
+    const leg=34;
+    if(y2<=y1+leg){
+        const dir=x2>=x1?1:-1;
+        const side=Math.max(Math.abs(x2-x1)/2,72)*dir;
+        const bendX=x1+side;
+        const downY=y1+leg;
+        const upY=y2-leg;
+        return `M${x1},${y1} L${x1},${downY} L${bendX},${downY} L${bendX},${upY} L${x2},${upY} L${x2},${y2}`;
+    }
+    const midY=y1+Math.max((y2-y1)/2,leg);
+    return `M${x1},${y1} L${x1},${midY} L${x2},${midY} L${x2},${y2}`;
+}
+
+function edgeLabelPoint(fr,to){
+    if(to.y<=fr.y+34){
+        const dir=to.x>=fr.x?1:-1;
+        return {x:fr.x+Math.max(Math.abs(to.x-fr.x)/2,72)*dir,y:fr.y+34};
+    }
+    return {x:(fr.x+to.x)/2,y:fr.y+Math.max((to.y-fr.y)/2,34)};
 }
 function renderEdges(){
     svg.querySelectorAll('.eg').forEach(g=>g.remove());
@@ -508,7 +642,7 @@ function renderEdges(){
         const fn=nodes[e.from_node_id],tn=nodes[e.to_node_id];
         if(!fn||!tn)return;
         const fr=nodeCenter(fn,'out'),to=nodeCenter(tn,'in');
-        const d=bezier(fr.x,fr.y,to.x,to.y);
+        const d=orthPath(fr.x,fr.y,to.x,to.y);
         const g=document.createElementNS('http://www.w3.org/2000/svg','g');
         g.classList.add('eg');g.dataset.eid=e.id;
         const path=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -520,7 +654,7 @@ function renderEdges(){
         path.addEventListener('click',()=>selectEdge(e.id));
         g.appendChild(path);
         if(e.label){
-            const mx=(fr.x+to.x)/2,my=(fr.y+to.y)/2,tw=e.label.length*7+14;
+            const pt=edgeLabelPoint(fr,to),mx=pt.x,my=pt.y,tw=e.label.length*7+14;
             const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
             r.setAttribute('x',mx-tw/2);r.setAttribute('y',my-10);r.setAttribute('width',tw);r.setAttribute('height',18);
             r.setAttribute('rx',4);r.setAttribute('fill','var(--card)');r.setAttribute('stroke','var(--border)');r.setAttribute('stroke-width','1');
@@ -601,7 +735,7 @@ document.addEventListener('mousemove',ev=>{
         const wr=wrap.getBoundingClientRect();
         const tx=(ev.clientX-wr.left-panX)/zoom;
         const ty=(ev.clientY-wr.top-panY)/zoom;
-        tempEdge.setAttribute('d',bezier(fr.x,fr.y,tx,ty));
+        tempEdge.setAttribute('d',orthPath(fr.x,fr.y,tx,ty));
     }
 });
 
@@ -880,29 +1014,138 @@ async function saveAll(){
 setInterval(()=>{if(dirty)saveAll();},60000);
 window.onbeforeunload=()=>{if(dirty)return 'Есть несохранённые изменения';};
 
-// ── Авторасстановка ──────────────────────────────────────────────
+// ── Авторасстановка — Sugiyama-style иерархический layout ───────
 function autoLayout(){
-    const nl=Object.values(nodes);if(!nl.length)return;
-    const inDeg={};nl.forEach(n=>inDeg[n.id]=0);
-    Object.values(edges).forEach(e=>{if(inDeg[e.to_node_id]!==undefined)inDeg[e.to_node_id]++;});
-    let queue=nl.filter(n=>n.is_root||inDeg[n.id]===0).map(n=>n.id);
-    if(!queue.length&&nl.length)queue=[nl[0].id];
-    const levels={};const visited=new Set();let lvl=0;let cur=[...queue];
-    while(cur.length){
-        const next=[];
-        cur.forEach(id=>{
-            if(visited.has(id))return;visited.add(id);
-            if(!levels[lvl])levels[lvl]=[];levels[lvl].push(id);
-            Object.values(edges).filter(e=>e.from_node_id===id).forEach(e=>{if(!visited.has(e.to_node_id))next.push(e.to_node_id);});
-        });
-        cur=next;lvl++;
-    }
-    nl.forEach(n=>{if(!visited.has(n.id)){levels[lvl]=levels[lvl]||[];levels[lvl].push(n.id);}});
-    const HGAP=260,VGAP=160;
-    Object.entries(levels).forEach(([l,ids])=>{
-        const tw=ids.length*HGAP;
-        ids.forEach((id,i)=>{nodes[id].pos_x=i*HGAP-tw/2+800;nodes[id].pos_y=parseInt(l)*VGAP+100;});
+    const nl=Object.values(nodes);
+    if(!nl.length)return;
+
+    // --- 1. Строим граф ---
+    const sortedEdges=Object.values(edges).slice()
+        .sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)||a.id-b.id);
+    const children={}, inDeg={};
+    nl.forEach(n=>{children[n.id]=[];inDeg[n.id]=0;});
+    sortedEdges.forEach(e=>{
+        if(!nodes[e.from_node_id]||!nodes[e.to_node_id])return;
+        if(!children[e.from_node_id].includes(e.to_node_id)){
+            children[e.from_node_id].push(e.to_node_id);
+            inDeg[e.to_node_id]++;
+        }
     });
+
+    // --- 2. Находим корни ---
+    let roots=nl.filter(n=>n.is_root).map(n=>n.id);
+    if(!roots.length) roots=nl.filter(n=>inDeg[n.id]===0).map(n=>n.id);
+    if(!roots.length) roots=[nl[0].id];
+
+    // --- 3. Назначаем слои (BFS, учитываем обратные рёбра) ---
+    const layer={};
+    const visited=new Set();
+    const queue=[...roots.map(id=>({id,lv:0}))];
+    roots.forEach(id=>visited.add(id));
+    while(queue.length){
+        const {id,lv}=queue.shift();
+        layer[id]=(layer[id]!==undefined)?Math.max(layer[id],lv):lv;
+        children[id].forEach(cid=>{
+            const nextLv=lv+1;
+            if(layer[cid]!==undefined){
+                // обновляем слой если нужно уйти глубже
+                if(nextLv>layer[cid]){
+                    layer[cid]=nextLv;
+                    queue.push({id:cid,lv:nextLv});
+                }
+            } else {
+                layer[cid]=nextLv;
+                visited.add(cid);
+                queue.push({id:cid,lv:nextLv});
+            }
+        });
+    }
+    // Несвязные узлы — кладём отдельно справа
+    nl.forEach(n=>{if(layer[n.id]===undefined)layer[n.id]=0;});
+
+    // --- 4. Группируем по слоям ---
+    const maxLayer=Math.max(...Object.values(layer));
+    const layers=[];
+    for(let i=0;i<=maxLayer;i++) layers.push([]);
+    nl.forEach(n=>layers[layer[n.id]].push(n.id));
+
+    // --- 5. Размеры и отступы ---
+    const NODE_W=160, NODE_H_RECT=52, NODE_H_DIAMOND=140;
+    const HGAP=60,  // горизонтальный зазор между узлами
+          VGAP=80,  // вертикальный зазор между слоями
+          MARGIN_X=100, MARGIN_Y=80;
+
+    function nodeH(id){ return nodes[id]?.node_type==='question'?NODE_H_DIAMOND:NODE_H_RECT; }
+    function nodeW(id){ return nodes[id]?.node_type==='question'?NODE_H_DIAMOND:NODE_W; } // ромб квадратный
+
+    // --- 6. Рекурсивно считаем ширину поддерева ---
+    const subtreeW={};
+    const visited2=new Set();
+    function calcSubtreeW(id){
+        if(subtreeW[id]!==undefined)return subtreeW[id];
+        if(visited2.has(id)){subtreeW[id]=nodeW(id);return nodeW(id);}
+        visited2.add(id);
+        const kids=children[id].filter(c=>layer[c]===layer[id]+1);
+        if(!kids.length){subtreeW[id]=nodeW(id);return nodeW(id);}
+        const total=kids.reduce((s,c)=>s+calcSubtreeW(c),0)+(kids.length-1)*HGAP;
+        subtreeW[id]=Math.max(nodeW(id),total);
+        return subtreeW[id];
+    }
+    nl.forEach(n=>calcSubtreeW(n.id));
+
+    // --- 7. Размещаем узлы сверху вниз ---
+    // Считаем Y каждого слоя
+    const layerY=[MARGIN_Y];
+    for(let i=1;i<=maxLayer;i++){
+        const prevH=Math.max(...layers[i-1].map(id=>nodeH(id)));
+        layerY.push(layerY[i-1]+prevH+VGAP);
+    }
+
+    const placed=new Set();
+    function placeNode(id, cx){
+        if(placed.has(id))return;
+        placed.add(id);
+        const w=nodeW(id);
+        nodes[id].pos_x=cx-w/2;
+        nodes[id].pos_y=layerY[layer[id]];
+        const kids=children[id].filter(c=>layer[c]===layer[id]+1);
+        if(!kids.length)return;
+        // Центрируем детей под родителем
+        const totalW=kids.reduce((s,c)=>s+calcSubtreeW(c),0)+(kids.length-1)*HGAP;
+        let curX=cx-totalW/2;
+        kids.forEach(cid=>{
+            const cw=calcSubtreeW(cid);
+            placeNode(cid,curX+cw/2);
+            curX+=cw+HGAP;
+        });
+    }
+
+    // Размещаем лес корней горизонтально
+    const rootTotalW=roots.reduce((s,id)=>s+calcSubtreeW(id),0)+(roots.length-1)*HGAP;
+    let curX=MARGIN_X+rootTotalW/2;
+    // Если корень один — центрируем по оси
+    if(roots.length===1){
+        curX=MARGIN_X+calcSubtreeW(roots[0])/2;
+        placeNode(roots[0],curX);
+    } else {
+        let rx=MARGIN_X;
+        roots.forEach(id=>{
+            const w=calcSubtreeW(id);
+            placeNode(id,rx+w/2);
+            rx+=w+HGAP*2;
+        });
+    }
+
+    // Несвязные — правее всех
+    const maxX=Math.max(...nl.map(n=>n.pos_x+nodeW(n.id)||0));
+    let orphanX=maxX+HGAP*2, orphanY=MARGIN_Y;
+    nl.forEach(n=>{
+        if(!placed.has(n.id)){
+            n.pos_x=orphanX; n.pos_y=orphanY;
+            orphanY+=nodeH(n.id)+VGAP;
+        }
+    });
+
     renderAll();saveLayout();fitView();toast('Авторасстановка применена');
 }
 
@@ -961,11 +1204,11 @@ function tryPublish(){
 // ── Инициализация ────────────────────────────────────────────────
 (function init(){
     const hasPos=Object.values(nodes).some(n=>n.pos_x||n.pos_y);
+    if(localStorage.getItem('theme')!=='dark')document.body.classList.add('light');
     renderAll();applyT();
     if(!hasPos&&Object.keys(nodes).length){autoLayout();}
     else{fitView();}
     pushHist();
-    if(localStorage.getItem('theme')==='light')document.body.classList.add('light');
 })();
 </script>
 </body>

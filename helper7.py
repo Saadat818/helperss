@@ -6343,6 +6343,32 @@ def _problem_label_sql(alias: str = 'c') -> str:
     return f"COALESCE(NULLIF(TRIM({alias}.problem), ''), 'Без привязки')"
 
 
+def _resolution_group_case(alias: str = 'c') -> str:
+    """Группировка для SLA-отчёта: Cisco отдельно, текстовые одиночные заявки в 'Другие'."""
+    return f"""
+        CASE
+            WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN 'cisco'
+            WHEN NULLIF(TRIM(COALESCE({alias}.subproblem_id, '')), '') IS NOT NULL
+                THEN 'sid:' || TRIM({alias}.subproblem_id)
+            WHEN NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '') IS NOT NULL
+                THEN 'pid:' || TRIM({alias}.problem_id)
+            ELSE 'other'
+        END
+    """
+
+
+def _resolution_label_case(alias: str = 'c') -> str:
+    return f"""
+        CASE
+            WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN 'Cisco проблемы'
+            WHEN NULLIF(TRIM(COALESCE({alias}.subproblem_id, '')), '') IS NULL
+             AND NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '') IS NULL
+                THEN 'Другие проблемы'
+            ELSE COALESCE(NULLIF(TRIM({alias}.problem), ''), 'Без привязки')
+        END
+    """
+
+
 def _parse_problem_filters() -> list[str]:
     values = []
     seen = set()
@@ -6357,8 +6383,8 @@ def _parse_problem_filters() -> list[str]:
 def _load_resolution_rows(start_at: str, end_at: str, problem_keys: list[str] | None = None) -> list[dict]:
     """Загружает решённые заявки за период по дате решения."""
     problem_keys = problem_keys or []
-    key_sql = _problem_key_sql('c')
-    label_sql = _problem_label_sql('c')
+    key_sql = _resolution_group_case('c')
+    label_sql = _resolution_label_case('c')
 
     if ANALYTICS_USE_POSTGRES:
         filter_sql = ""
@@ -6497,8 +6523,8 @@ def _load_resolution_rows(start_at: str, end_at: str, problem_keys: list[str] | 
 
 def _load_resolution_problem_options(start_at: str, end_at: str) -> list[dict]:
     """Список проблем для фильтра. Берём из созданных заявок, а не только из решённых."""
-    key_sql = _problem_key_sql('e')
-    label_sql = _problem_label_sql('e')
+    key_sql = _resolution_group_case('e')
+    label_sql = _resolution_label_case('e')
 
     def _normalize(rows: list[dict]) -> list[dict]:
         data = []

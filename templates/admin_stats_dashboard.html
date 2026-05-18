@@ -844,6 +844,7 @@
         let resolutionProblemOptions = [];
         let selectedResolutionProblemKeys = new Set();
         let stagedResolutionProblemKeys = new Set();
+        let selectedResolutionAllProblems = true;
 
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
@@ -937,14 +938,22 @@
 
             resolutionProblemOptions = problemsResp.data || [];
             const availableKeys = new Set(resolutionProblemOptions.map(item => item.key));
-            selectedResolutionProblemKeys = new Set(
-                [...selectedResolutionProblemKeys].filter(key => availableKeys.has(key))
-            );
+            if (!selectedResolutionAllProblems) {
+                selectedResolutionProblemKeys = new Set(
+                    [...selectedResolutionProblemKeys].filter(key => availableKeys.has(key))
+                );
+            }
             updateResolutionFilterLabel();
             renderResolutionProblemOptions();
 
             const avgParams = new URLSearchParams({ days: currentPeriod });
-            [...selectedResolutionProblemKeys].forEach(key => avgParams.append('problem_key', key));
+            if (!selectedResolutionAllProblems) {
+                if (selectedResolutionProblemKeys.size) {
+                    [...selectedResolutionProblemKeys].forEach(key => avgParams.append('problem_key', key));
+                } else {
+                    avgParams.append('problem_key', '__none__');
+                }
+            }
             const avgResp = await fetch(`/api/stats/avg_resolution?${avgParams}`).then(r => r.json());
 
             if (!avgResp.success) {
@@ -960,7 +969,7 @@
             document.getElementById('avgResolutionTime').textContent = data.avg_time || '—';
             document.getElementById('avgResolutionCount').textContent = data.resolved_count ?? 0;
             document.getElementById('avgResolutionFilterCount').textContent =
-                selectedResolutionProblemKeys.size ? String(selectedResolutionProblemKeys.size) : 'Все';
+                selectedResolutionAllProblems ? 'Все' : String(selectedResolutionProblemKeys.size);
         }
 
         function updateResolutionTable(items) {
@@ -1001,7 +1010,9 @@
             const willOpen = !menu.classList.contains('open');
             document.querySelectorAll('.resolution-filter-menu').forEach(el => el.classList.remove('open'));
             if (!willOpen) return;
-            stagedResolutionProblemKeys = new Set(selectedResolutionProblemKeys);
+            stagedResolutionProblemKeys = selectedResolutionAllProblems
+                ? new Set(resolutionProblemOptions.map(item => item.key))
+                : new Set(selectedResolutionProblemKeys);
             menu.classList.add('open');
             document.getElementById('resolutionFilterSearch').value = '';
             renderResolutionProblemOptions();
@@ -1009,11 +1020,17 @@
 
         function closeProblemFilter() {
             document.getElementById('resolutionFilterMenu').classList.remove('open');
-            stagedResolutionProblemKeys = new Set(selectedResolutionProblemKeys);
+            stagedResolutionProblemKeys = selectedResolutionAllProblems
+                ? new Set(resolutionProblemOptions.map(item => item.key))
+                : new Set(selectedResolutionProblemKeys);
         }
 
         function applyResolutionProblemFilter() {
-            selectedResolutionProblemKeys = new Set(stagedResolutionProblemKeys);
+            selectedResolutionAllProblems = resolutionProblemOptions.length > 0
+                && stagedResolutionProblemKeys.size >= resolutionProblemOptions.length;
+            selectedResolutionProblemKeys = selectedResolutionAllProblems
+                ? new Set()
+                : new Set(stagedResolutionProblemKeys);
             closeProblemFilter();
             updateResolutionFilterLabel();
             loadResolutionAnalytics();
@@ -1021,26 +1038,18 @@
 
         function toggleAllResolutionProblems(checked) {
             if (checked) {
-                stagedResolutionProblemKeys.clear();
-            } else {
                 stagedResolutionProblemKeys = new Set(resolutionProblemOptions.map(item => item.key));
+            } else {
+                stagedResolutionProblemKeys.clear();
             }
             renderResolutionProblemOptions();
         }
 
         function toggleResolutionProblem(key, checked) {
-            if (stagedResolutionProblemKeys.size === 0) {
-                stagedResolutionProblemKeys = new Set(resolutionProblemOptions.map(item => item.key));
-            }
-
             if (checked) {
                 stagedResolutionProblemKeys.add(key);
             } else {
                 stagedResolutionProblemKeys.delete(key);
-            }
-
-            if (stagedResolutionProblemKeys.size >= resolutionProblemOptions.length) {
-                stagedResolutionProblemKeys.clear();
             }
 
             renderResolutionProblemOptions();
@@ -1053,8 +1062,16 @@
 
         function updateResolutionFilterLabel() {
             const label = document.getElementById('resolutionFilterLabel');
-            if (!resolutionProblemOptions.length || selectedResolutionProblemKeys.size === 0) {
+            if (!resolutionProblemOptions.length) {
                 label.textContent = 'Все проблемы';
+                return;
+            }
+            if (selectedResolutionAllProblems) {
+                label.textContent = 'Все проблемы';
+                return;
+            }
+            if (selectedResolutionProblemKeys.size === 0) {
+                label.textContent = '0 проблем';
                 return;
             }
             if (selectedResolutionProblemKeys.size === 1) {
@@ -1066,7 +1083,7 @@
         }
 
         function renderResolutionProblemOptions() {
-            const allSelected = stagedResolutionProblemKeys.size === 0;
+            const allSelected = resolutionProblemOptions.length > 0 && stagedResolutionProblemKeys.size >= resolutionProblemOptions.length;
             const optionsEl = document.getElementById('resolutionProblemOptions');
             const search = (document.getElementById('resolutionFilterSearch').value || '').trim().toLowerCase();
             document.getElementById('resolutionSelectAll').checked = allSelected;
@@ -1082,7 +1099,7 @@
             }
 
             optionsEl.innerHTML = items.map(item => {
-                const checked = allSelected || stagedResolutionProblemKeys.has(item.key);
+                const checked = stagedResolutionProblemKeys.has(item.key);
                 const encodedKey = encodeURIComponent(item.key || '');
                 return `
                     <label class="resolution-filter-option">

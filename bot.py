@@ -355,6 +355,88 @@ def _remove_ticket_buttons(chat_id, message_id):
         print(f"[ticket_buttons] Не удалось убрать кнопки message_id={message_id}: {e}")
 
 
+def _parse_event_details(value):
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(str(value))
+    except Exception:
+        return {}
+
+
+def _record_ticket_reject_prompt(ticket_number, problem, original_message,
+                                 prompt_message_id, original_message_id,
+                                 original_chat_id, actor):
+    if ticket_number is None or not prompt_message_id:
+        return
+    log_ticket_event(
+        'ticket_reject_requested',
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_name=actor.get('name') or '',
+        actor_username=actor.get('username') or '',
+        details={
+            'prompt_message_id': prompt_message_id,
+            'original_message_id': original_message_id,
+            'original_chat_id': original_chat_id,
+            'original_message': (original_message or '')[:1000],
+        }
+    )
+
+
+def _find_ticket_reject_prompt(prompt_message_id):
+    if not prompt_message_id:
+        return None
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT ticket_number, problem, details_json
+                        FROM ticket_events
+                        WHERE event_type = 'ticket_reject_requested'
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 200
+                    """)
+                    rows = [dict(row) for row in cur.fetchall()]
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT ticket_number, problem, details_json
+                    FROM ticket_events
+                    WHERE event_type = 'ticket_reject_requested'
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 200
+                """)
+                rows = [dict(row) for row in cur.fetchall()]
+    except Exception as e:
+        print(f"[ticket_reject_prompt] Ошибка поиска подсказки: {e}")
+        return None
+
+    for row in rows:
+        details = _parse_event_details(row.get('details_json'))
+        if str(details.get('prompt_message_id') or '') == str(prompt_message_id):
+            return {
+                'ticket_number': int(row.get('ticket_number') or 0) or None,
+                'problem': row.get('problem') or '',
+                'original_message_id': _env_int_from_value(details.get('original_message_id'), 0),
+                'original_chat_id': _env_int_from_value(details.get('original_chat_id'), 0),
+                'original_message': details.get('original_message') or '',
+            }
+    return None
+
+
+def _reply_ticket_number_required(message):
+    bot.reply_to(
+        message,
+        "Не нашёл номер заявки. Ответьте на исходную заявку или на подсказку, где указан номер заявки."
+    )
+
+
 def _current_duty_actor():
     settings = _get_duty_settings()
     telegram_id = _env_int_from_value(settings.get('current_duty_telegram_id'), 0)
@@ -525,6 +607,9 @@ def handle_ticket_done(call):
         original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
         resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
         ticket_number = extract_ticket_number(original_message)
+        if ticket_number is None:
+            bot.answer_callback_query(call.id, "Не нашёл номер заявки")
+            return
         lock_reason = _ticket_action_lock_reason(ticket_number)
         if lock_reason:
             _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
@@ -587,19 +672,34 @@ def handle_ticket_reject_prompt(call):
     try:
         original_message = call.message.text or call.message.caption or ""
         ticket_number = extract_ticket_number(original_message)
+        if ticket_number is None:
+            bot.answer_callback_query(call.id, "Не нашёл номер заявки")
+            return
         lock_reason = _ticket_action_lock_reason(ticket_number)
         if lock_reason:
             _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
             bot.answer_callback_query(call.id, lock_reason)
             print(f"⛔ [handle_ticket_reject_prompt] {lock_reason}")
             return
-        bot.send_message(
+        prompt_msg = bot.send_message(
             TECH_SUPPORT_CHAT_ID,
             f"❌ Для отклонения заявки №{ticket_number or '—'} ответьте на исходную заявку текстом:\n"
             f"<code>Отклонён: причина отклонения</code>",
             message_thread_id=NEW_TICKETS_THREAD_ID,
             parse_mode='HTML',
             reply_to_message_id=call.message.message_id
+        )
+        _record_ticket_reject_prompt(
+            ticket_number,
+            parse_ticket_fields(original_message).get('problem', original_message),
+            original_message,
+            getattr(prompt_msg, 'message_id', None),
+            call.message.message_id,
+            call.message.chat.id,
+            {
+                'name': call.from_user.first_name or call.from_user.username or str(call.from_user.id),
+                'username': call.from_user.username or str(call.from_user.id),
+            }
         )
         bot.answer_callback_query(call.id, "Укажите причину отклонения ответом на заявку")
     except Exception as e:
@@ -615,6 +715,9 @@ def handle_ticket_mass_incident(call):
     try:
         original_message = call.message.text or call.message.caption or ""
         ticket_number = extract_ticket_number(original_message)
+        if ticket_number is None:
+            bot.answer_callback_query(call.id, "Не нашёл номер заявки")
+            return
         parsed = parse_ticket_fields(original_message)
         resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
         lock_reason = _ticket_action_lock_reason(ticket_number)
@@ -716,10 +819,19 @@ def handle_channel_messages(message):
 
         # Проверяем есть ли reply (ответ на сообщение)
         if message.reply_to_message:
-            original_message_id = message.reply_to_message.message_id
+            reply_message = message.reply_to_message
+            original_message_id = reply_message.message_id
+            original_chat_id = reply_message.chat.id
             text = message.text.lower() if message.text else ""
-            original_ticket_text = message.reply_to_message.text or message.reply_to_message.caption or ''
+            original_ticket_text = reply_message.text or reply_message.caption or ''
+            prompt_context = _find_ticket_reject_prompt(original_message_id)
+            if prompt_context:
+                original_message_id = prompt_context.get('original_message_id') or original_message_id
+                original_chat_id = prompt_context.get('original_chat_id') or original_chat_id
+                original_ticket_text = prompt_context.get('original_message') or original_ticket_text
             ticket_number = extract_ticket_number(original_ticket_text)
+            if prompt_context and prompt_context.get('ticket_number'):
+                ticket_number = prompt_context.get('ticket_number')
             parsed = parse_ticket_fields(original_ticket_text)
             actor = {
                 'name': message.from_user.first_name or message.from_user.username or str(message.from_user.id),
@@ -727,12 +839,21 @@ def handle_channel_messages(message):
             }
             problem = parsed.get('problem', original_ticket_text)
             rejection_reason = _parse_rejection_reason(message.text or '')
+            is_ticket_action = (
+                "массовый инцидент" in text or
+                "отклон" in text or
+                "готово" in text or
+                "решена" in text
+            )
+            if is_ticket_action and ticket_number is None:
+                _reply_ticket_number_required(message)
+                return
 
             # Проверяем ключевые слова для перемещения заявки
             if "массовый инцидент" in text:
                 lock_reason = _ticket_action_lock_reason(ticket_number)
                 if lock_reason:
-                    _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                    _remove_ticket_buttons(original_chat_id, original_message_id)
                     bot.reply_to(message, lock_reason)
                     return
                 log_ticket_event(
@@ -745,7 +866,7 @@ def handle_channel_messages(message):
                     actor_name=actor['name'],
                     actor_username=actor['username']
                 )
-                _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                _remove_ticket_buttons(original_chat_id, original_message_id)
                 bot.send_message(
                     TECH_SUPPORT_CHAT_ID,
                     f"⚠️ Заявка №{ticket_number or '—'} отмечена как массовый инцидент.",
@@ -757,7 +878,7 @@ def handle_channel_messages(message):
                     return
                 lock_reason = _ticket_action_lock_reason(ticket_number)
                 if lock_reason:
-                    _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                    _remove_ticket_buttons(original_chat_id, original_message_id)
                     bot.reply_to(message, lock_reason)
                     return
                 details = {'reason': rejection_reason}
@@ -773,7 +894,7 @@ def handle_channel_messages(message):
                         actor_username=actor['username'],
                         details=details
                     )
-                _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                _remove_ticket_buttons(original_chat_id, original_message_id)
                 bot.send_message(
                     TECH_SUPPORT_CHAT_ID,
                     f"❌ ЗАЯВКА ОТКЛОНЕНА ❌\n\n"
@@ -787,7 +908,7 @@ def handle_channel_messages(message):
             elif "готово" in text or "решена" in text:
                 lock_reason = _ticket_action_lock_reason(ticket_number)
                 if lock_reason:
-                    _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                    _remove_ticket_buttons(original_chat_id, original_message_id)
                     bot.reply_to(message, lock_reason)
                     return
                 for event_type in ('ticket_resolved_by_staff', 'ticket_ready_for_feedback'):
@@ -802,7 +923,7 @@ def handle_channel_messages(message):
                         actor_username=actor['username'],
                         details={'source': 'telegram_reply'} if event_type == 'ticket_ready_for_feedback' else None
                     )
-                _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                _remove_ticket_buttons(original_chat_id, original_message_id)
                 bot.send_message(
                     TECH_SUPPORT_CHAT_ID,
                     f"✅ Заявка №{ticket_number or '—'} готова и ожидает подтверждения инициатора.",

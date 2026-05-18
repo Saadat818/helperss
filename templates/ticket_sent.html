@@ -142,6 +142,70 @@
             transform: translateY(0);
         }
 
+        .ticket-feedback {
+            margin: 0 auto 28px;
+            padding: 18px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            text-align: left;
+        }
+
+        body.light .ticket-feedback {
+            background: #f8f9fa;
+        }
+
+        .ticket-feedback.hidden {
+            display: none;
+        }
+
+        .ticket-feedback-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .ticket-feedback-status {
+            font-size: 14px;
+            color: var(--muted);
+            margin-bottom: 14px;
+        }
+
+        .feedback-actions {
+            display: none;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .feedback-actions.visible {
+            display: flex;
+        }
+
+        .feedback-button {
+            border: 0;
+            border-radius: 10px;
+            padding: 11px 16px;
+            font-weight: 700;
+            cursor: pointer;
+            color: #fff;
+        }
+
+        .feedback-button.resolved {
+            background: var(--green);
+        }
+
+        .feedback-button.not-resolved {
+            background: #d9534f;
+        }
+
+        .feedback-message {
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 10px;
+            min-height: 18px;
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 40px 28px;
@@ -168,6 +232,15 @@
         <div class="icon">✅</div>
         <h2>Заявка отправлена!</h2>
         <p>Ваша заявка была успешно отправлена специалистам технической поддержки. Ожидайте, они скоро с вами свяжутся.</p>
+        <div class="ticket-feedback" id="ticketFeedback">
+            <div class="ticket-feedback-title">Статус заявки №{{ session.get('current_ticket_number') or '—' }}</div>
+            <div class="ticket-feedback-status" id="ticketStatusText">Проверяем статус...</div>
+            <div class="feedback-actions" id="feedbackActions">
+                <button class="feedback-button resolved" type="button" onclick="sendFeedback('resolved')">Решено</button>
+                <button class="feedback-button not-resolved" type="button" onclick="sendFeedback('not_resolved')">Не решено</button>
+            </div>
+            <div class="feedback-message" id="feedbackMessage"></div>
+        </div>
         <a href="{{ url_for('go_home') }}" class="home-button">На главную</a>
     </div>
 
@@ -196,6 +269,74 @@
                 document.getElementById('themeToggle').textContent = '☀️';
             }
         });
+    </script>
+    <script>
+        const ticketNumber = {{ (session.get('current_ticket_number') or 0)|tojson }};
+        const csrfToken = '{{ csrf_token() }}';
+        const feedbackBox = document.getElementById('ticketFeedback');
+        const statusText = document.getElementById('ticketStatusText');
+        const feedbackActions = document.getElementById('feedbackActions');
+        const feedbackMessage = document.getElementById('feedbackMessage');
+
+        function setFeedbackMessage(text) {
+            feedbackMessage.textContent = text || '';
+        }
+
+        async function loadTicketStatus() {
+            if (!ticketNumber) {
+                feedbackBox.classList.add('hidden');
+                return;
+            }
+            try {
+                const response = await fetch(`/api/ticket_status/${ticketNumber}`, { credentials: 'same-origin' });
+                const data = await response.json();
+                if (!data.success) {
+                    statusText.textContent = data.error || 'Не удалось получить статус';
+                    feedbackActions.classList.remove('visible');
+                    return;
+                }
+                statusText.textContent = `Текущий статус: ${data.status_label || '—'}`;
+                if (data.can_feedback) {
+                    feedbackActions.classList.add('visible');
+                    setFeedbackMessage('Подтвердите, решена ли проблема.');
+                } else {
+                    feedbackActions.classList.remove('visible');
+                }
+            } catch (e) {
+                statusText.textContent = 'Ошибка проверки статуса';
+                feedbackActions.classList.remove('visible');
+            }
+        }
+
+        async function sendFeedback(action) {
+            setFeedbackMessage('Сохраняем...');
+            feedbackActions.classList.remove('visible');
+            try {
+                const response = await fetch(`/api/ticket_feedback/${ticketNumber}`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ action })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    setFeedbackMessage(data.error || 'Не удалось сохранить ответ');
+                    await loadTicketStatus();
+                    return;
+                }
+                statusText.textContent = `Текущий статус: ${data.status_label || '—'}`;
+                setFeedbackMessage(action === 'resolved' ? 'Спасибо, заявка закрыта.' : 'Заявка переоткрыта и возвращена в работу.');
+            } catch (e) {
+                setFeedbackMessage('Ошибка сети');
+                await loadTicketStatus();
+            }
+        }
+
+        loadTicketStatus();
+        setInterval(loadTicketStatus, 10000);
     </script>
 </body>
 </html>

@@ -456,6 +456,20 @@ except (ValueError, TypeError) as e:
 SUPPORT_STAFF_IDS_STR = os.getenv('SUPPORT_STAFF_IDS', '')
 SUPPORT_STAFF_IDS = [int(x.strip()) for x in SUPPORT_STAFF_IDS_STR.split(',') if x.strip().isdigit()]
 
+
+def _env_int(name: str, default: int = 0) -> int:
+    try:
+        return int(str(os.getenv(name, str(default))).strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
+CURRENT_DUTY_TELEGRAM_ID = _env_int('CURRENT_DUTY_TELEGRAM_ID', 0)
+CURRENT_DUTY_USERNAME = os.getenv('CURRENT_DUTY_USERNAME', '').strip().lstrip('@')
+CURRENT_DUTY_NAME = os.getenv('CURRENT_DUTY_NAME', '').strip()
+OVERLOAD_TICKET_LIMIT = max(1, _env_int('OVERLOAD_TICKET_LIMIT', 5))
+OVERLOAD_ALERT_THREAD_ID = _env_int('OVERLOAD_ALERT_THREAD_ID', 0)
+
 if not BOT_TOKEN:
     print("Ошибка: BOT_TOKEN не найден в переменных окружения. Пожалуйста, проверьте ваш .env файл.")
     exit()
@@ -576,7 +590,8 @@ def _init_analytics_tables():
                             is_cisco INTEGER DEFAULT 0,
                             actor_name TEXT,
                             actor_username TEXT,
-                            actor_role TEXT
+                            actor_role TEXT,
+                            details_json JSONB
                         )
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_created_at ON ticket_events(created_at)")
@@ -584,6 +599,7 @@ def _init_analytics_tables():
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON ticket_events(ticket_number)")
                     cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS problem_id TEXT")
                     cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS subproblem_id TEXT")
+                    cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS details_json JSONB")
 
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS topic_changes (
@@ -646,7 +662,8 @@ def _init_analytics_tables():
                         is_cisco INTEGER DEFAULT 0,
                         actor_name TEXT,
                         actor_username TEXT,
-                        actor_role TEXT
+                        actor_role TEXT,
+                        details_json TEXT
                     )
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_created_at ON ticket_events(created_at)")
@@ -695,6 +712,7 @@ def _init_analytics_tables():
                 for col_name, col_type in (
                     ("problem_id", "TEXT"),
                     ("subproblem_id", "TEXT"),
+                    ("details_json", "TEXT"),
                 ):
                     if col_name not in existing_ticket_cols:
                         cur.execute(f"ALTER TABLE ticket_events ADD COLUMN {col_name} {col_type}")
@@ -867,7 +885,8 @@ def _parse_ticket_text_fields(text: str) -> dict:
 
 def log_ticket_event(event_type: str, ticket_number: int | None = None, problem: str = '',
                      channel: str = '', topic_name: str = '', is_cisco: bool = False,
-                     actor_override: dict | None = None, user_info_override: dict | None = None):
+                     actor_override: dict | None = None, user_info_override: dict | None = None,
+                     details: dict | None = None):
     """Логирует событие по заявке для аналитики."""
     try:
         actor = actor_override or _current_actor()
@@ -900,7 +919,8 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
             1 if is_cisco else 0,
             str(actor['name'])[:200],
             str(actor['username'])[:200],
-            str(actor['role'])[:100]
+            str(actor['role'])[:100],
+            json.dumps(_sanitize_audit_payload(details or {}), ensure_ascii=False)
         )
         if ANALYTICS_USE_POSTGRES:
             with _pg_connect() as conn:
@@ -909,8 +929,8 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
                         INSERT INTO ticket_events (
                             created_at, event_type, ticket_number, problem, problem_id, subproblem_id,
                             department, user_name, workplace, channel, topic_name, is_cisco,
-                            actor_name, actor_username, actor_role
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            actor_name, actor_username, actor_role, details_json
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                     """, payload)
                 conn.commit()
         else:
@@ -919,12 +939,277 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
                     INSERT INTO ticket_events (
                         created_at, event_type, ticket_number, problem, problem_id, subproblem_id,
                         department, user_name, workplace, channel, topic_name, is_cisco,
-                        actor_name, actor_username, actor_role
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        actor_name, actor_username, actor_role, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, payload)
                 conn.commit()
     except Exception as e:
         print(f"[analytics] Ошибка логирования ticket_event: {e}")
+
+
+TICKET_STATUS_LABELS = {
+    'in_work': 'В работе',
+    'ready_for_feedback': 'Готово',
+    'closed': 'Решено',
+    'rejected': 'Отклонён',
+    'mass_incident': 'Массовый инцидент',
+    'closed_auto': 'Авто-закрыта',
+    'unknown': 'Неизвестно',
+}
+
+
+def _parse_event_details(value: Any) -> dict:
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(str(value))
+    except Exception:
+        return {}
+
+
+def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, dict]:
+    """Собирает текущие статусы заявок из event log без перезаписи старых данных."""
+    if ticket_numbers is not None:
+        ticket_numbers = [int(n) for n in ticket_numbers if n is not None]
+        if not ticket_numbers:
+            return {}
+
+    if ANALYTICS_USE_POSTGRES:
+        where = "WHERE ticket_number IS NOT NULL"
+        params: list[Any] = []
+        if ticket_numbers is not None:
+            where += " AND ticket_number = ANY(%s)"
+            params.append(ticket_numbers)
+        query = f"""
+            SELECT id, created_at::text AS created_at, event_type, ticket_number, problem,
+                   department, user_name, workplace, is_cisco,
+                   actor_name, actor_username, actor_role, details_json
+            FROM ticket_events
+            {where}
+            ORDER BY ticket_number ASC, created_at ASC, id ASC
+        """
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = [dict(row) for row in cur.fetchall()]
+    else:
+        where = "WHERE ticket_number IS NOT NULL"
+        params = []
+        if ticket_numbers is not None:
+            placeholders = ",".join("?" * len(ticket_numbers))
+            where += f" AND ticket_number IN ({placeholders})"
+            params.extend(ticket_numbers)
+        query = f"""
+            SELECT id, created_at, event_type, ticket_number, problem,
+                   department, user_name, workplace, is_cisco,
+                   actor_name, actor_username, actor_role, details_json
+            FROM ticket_events
+            {where}
+            ORDER BY ticket_number ASC, created_at ASC, id ASC
+        """
+        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(query, params)
+            rows = [dict(row) for row in cur.fetchall()]
+
+    states: dict[int, dict] = {}
+    for row in rows:
+        ticket_number = row.get('ticket_number')
+        if ticket_number is None:
+            continue
+        ticket_number = int(ticket_number)
+        details = _parse_event_details(row.get('details_json'))
+        state = states.setdefault(ticket_number, {
+            'ticket_number': ticket_number,
+            'status': 'unknown',
+            'status_label': TICKET_STATUS_LABELS['unknown'],
+            'problem': '',
+            'department': '',
+            'user_name': '',
+            'workplace': '',
+            'is_cisco': False,
+            'created_at': '',
+            'updated_at': '',
+            'ready_at': '',
+            'closed_at': '',
+            'resolved_by': '',
+            'assigned_name': '',
+            'assigned_username': '',
+            'reject_reason': '',
+            'details': {},
+        })
+
+        event_type = row.get('event_type') or ''
+        created_at = str(row.get('created_at') or '')[:19]
+        state['updated_at'] = created_at or state['updated_at']
+        if row.get('problem'):
+            state['problem'] = row.get('problem') or state['problem']
+        if row.get('department'):
+            state['department'] = row.get('department') or state['department']
+        if row.get('user_name'):
+            state['user_name'] = row.get('user_name') or state['user_name']
+        if row.get('workplace'):
+            state['workplace'] = row.get('workplace') or state['workplace']
+        state['is_cisco'] = bool(row.get('is_cisco')) or state['is_cisco']
+
+        if event_type == 'ticket_created':
+            state['created_at'] = state['created_at'] or created_at
+            state['status'] = 'in_work'
+        elif event_type in ('ticket_assigned_to_duty', 'ticket_assigned_to_staff'):
+            state['assigned_name'] = row.get('actor_name') or state['assigned_name']
+            state['assigned_username'] = row.get('actor_username') or state['assigned_username']
+            if state['status'] not in ('ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'):
+                state['status'] = 'in_work'
+        elif event_type == 'ticket_reopened_by_user':
+            state['status'] = 'in_work'
+            state['ready_at'] = ''
+            state['closed_at'] = ''
+            state['resolved_by'] = ''
+            state['details'] = details
+        elif event_type == 'ticket_ready_for_feedback':
+            state['status'] = 'ready_for_feedback'
+            state['ready_at'] = created_at
+            state['resolved_by'] = row.get('actor_name') or state['resolved_by']
+        elif event_type == 'ticket_resolved_by_staff':
+            # Legacy close marker and SLA endpoint. New flow also writes ticket_ready_for_feedback after it.
+            state['status'] = 'closed'
+            state['ready_at'] = created_at
+            state['closed_at'] = created_at
+            state['resolved_by'] = row.get('actor_name') or state['resolved_by']
+        elif event_type == 'ticket_user_confirmed_resolved':
+            state['status'] = 'closed'
+            state['closed_at'] = created_at
+            state['details'] = details
+        elif event_type in ('ticket_rejected', 'ticket_not_relevant'):
+            state['status'] = 'rejected'
+            state['closed_at'] = created_at
+            state['reject_reason'] = details.get('reason') or state['reject_reason']
+        elif event_type == 'ticket_mass_incident':
+            state['status'] = 'mass_incident'
+            state['details'] = details
+        elif event_type == 'ticket_auto_closed_reset_call':
+            state['status'] = 'closed_auto'
+            state['closed_at'] = created_at
+            state['details'] = details
+
+        state['status_label'] = TICKET_STATUS_LABELS.get(state['status'], TICKET_STATUS_LABELS['unknown'])
+
+    return states
+
+
+def _get_ticket_state(ticket_number: int) -> dict | None:
+    return _load_ticket_states([ticket_number]).get(int(ticket_number))
+
+
+def _current_duty_actor() -> dict:
+    username = CURRENT_DUTY_USERNAME or (str(CURRENT_DUTY_TELEGRAM_ID) if CURRENT_DUTY_TELEGRAM_ID else 'duty')
+    name = CURRENT_DUTY_NAME or CURRENT_DUTY_USERNAME or 'Дежурный'
+    return {'name': name, 'username': username, 'role': 'support_duty'}
+
+
+def _format_duty_mention(actor: dict) -> str:
+    name = html_escape(actor.get('name') or actor.get('username') or 'дежурный')
+    if CURRENT_DUTY_TELEGRAM_ID:
+        return f'<a href="tg://user?id={CURRENT_DUTY_TELEGRAM_ID}">{name}</a>'
+    username = (actor.get('username') or '').strip().lstrip('@')
+    return f'@{html_escape(username)}' if username and username != 'duty' else name
+
+
+def _send_support_message(text: str, thread_id: int | None = None, parse_mode: str | None = None, **kwargs):
+    try:
+        return bot.send_message(
+            TECH_SUPPORT_CHAT_ID,
+            text,
+            message_thread_id=thread_id or OVERLOAD_ALERT_THREAD_ID or IN_PROGRESS_THREAD_ID or NEW_TICKETS_THREAD_ID,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+    except Exception as e:
+        print(f"[telegram] Ошибка отправки служебного сообщения: {e}")
+        return None
+
+
+def _recent_overload_alert_sent(actor_username: str) -> bool:
+    if not actor_username:
+        return False
+    since = (datetime.now() - timedelta(minutes=60)).strftime('%Y-%m-%d %H:%M:%S')
+    if ANALYTICS_USE_POSTGRES:
+        query = """
+            SELECT COUNT(*) AS c
+            FROM ticket_events
+            WHERE event_type = 'ticket_overload_alert_sent'
+              AND actor_username = %s
+              AND created_at >= %s
+        """
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, [actor_username, since])
+                row = cur.fetchone()
+                return int(row['c'] if isinstance(row, dict) else row[0]) > 0
+    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM ticket_events
+            WHERE event_type = 'ticket_overload_alert_sent'
+              AND actor_username = ?
+              AND created_at >= ?
+        """, [actor_username, since])
+        return int(cur.fetchone()[0] or 0) > 0
+
+
+def _maybe_send_overload_alert(actor: dict):
+    username = actor.get('username') or ''
+    if not username:
+        return
+    states = _load_ticket_states()
+    active = [
+        s for s in states.values()
+        if s.get('status') == 'in_work' and (s.get('assigned_username') or '') == username
+    ]
+    if len(active) <= OVERLOAD_TICKET_LIMIT or _recent_overload_alert_sent(username):
+        return
+
+    ticket_numbers = sorted(s['ticket_number'] for s in active)
+    mention = _format_duty_mention(actor)
+    _send_support_message(
+        f"⚠️ <b>Перегрузка дежурного</b>\n\n"
+        f"{mention}: в работе {len(active)} заявок.\n"
+        f"Порог: {OVERLOAD_TICKET_LIMIT}.\n"
+        f"Заявки: {', '.join('№' + str(n) for n in ticket_numbers[:15])}",
+        parse_mode='HTML'
+    )
+    log_ticket_event(
+        event_type='ticket_overload_alert_sent',
+        actor_override=actor,
+        details={'open_count': len(active), 'ticket_numbers': ticket_numbers}
+    )
+
+
+def _assign_ticket(ticket_number: int, problem: str, actor: dict, event_type: str):
+    if not ticket_number:
+        return
+    log_ticket_event(
+        event_type=event_type,
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_override=actor,
+        details={'assigned_to': actor.get('username') or actor.get('name') or ''}
+    )
+    _maybe_send_overload_alert(actor)
+
+
+def _assign_ticket_to_current_duty(ticket_number: int, problem: str):
+    _assign_ticket(ticket_number, problem, _current_duty_actor(), 'ticket_assigned_to_duty')
+
+
+def _is_reset_call_ticket(problem: str, topic_name: str = '') -> bool:
+    text = f"{problem or ''} {topic_name or ''}".lower().replace('ё', 'е')
+    return 'сброс звонка' in text
+
 
 def log_manual_open(manual_title: str, has_video: bool):
     """Логирует факт открытия инструкции (видео/текст)."""
@@ -1100,11 +1385,13 @@ def load_manuals():
     return admin_manager.load_manuals()
 
 def create_ticket_buttons():
-    """Создает кнопки для заявки: Готово и Не актуально"""
+    """Создает кнопки статусов для заявки."""
     markup = InlineKeyboardMarkup(row_width=2)
     button_done = InlineKeyboardButton("Готово ✅", callback_data="ticket_done")
-    button_not_relevant = InlineKeyboardButton("Не актуально ❌", callback_data="ticket_not_relevant")
-    markup.add(button_done, button_not_relevant)
+    button_reject = InlineKeyboardButton("Отклонён ❌", callback_data="ticket_reject_prompt")
+    button_mass = InlineKeyboardButton("Массовый инцидент ⚠️", callback_data="ticket_mass_incident")
+    markup.add(button_done, button_reject)
+    markup.add(button_mass)
     return markup
 
 # Функция для получения URL изображения
@@ -1168,9 +1455,67 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
 
     # Тематика НЕ отправляется в Telegram - только для маркировки в CRM
     # topic_info используется только на стороне веб-приложения
+    topic_id = None
+    topic_name = None
+    if topic_info:
+        topic_name = topic_info.get('topic')
+        try:
+            if has_request_context() and request.method == 'POST':
+                topic_id = request.form.get('selected_topic_id')
+                if topic_id:
+                    topic_id = int(topic_id)
+        except Exception:
+            topic_id = None
 
     try:
         target_thread_id = thread_id or NEW_TICKETS_THREAD_ID
+        is_cisco_ticket = (target_thread_id == CISCO_TICKETS_THREAD_ID and CISCO_TICKETS_THREAD_ID != 0)
+
+        if _is_reset_call_ticket(problem, topic_name or ''):
+            print(f"[send_ticket] Авто-закрытие заявки №{ticket_number}: сброс звонка")
+            msg = bot.send_message(
+                TECH_SUPPORT_CHAT_ID,
+                support_message + "\nСтатус: авто-закрыта (сброс звонка)",
+                message_thread_id=SOLVED_TICKETS_THREAD_ID or target_thread_id,
+                parse_mode='Markdown'
+            )
+            if sm:
+                sm.log_request(
+                    result_type=RESULT_TICKET_CREATED,
+                    problem_description=problem,
+                    department=department,
+                    name=name,
+                    workplace=workplace,
+                    problem_id=session.get('problem_id'),
+                    subproblem_id=session.get('current_subproblem_id'),
+                    topic_id=topic_id,
+                    topic_name=topic_name
+                )
+            log_ticket_event(
+                event_type='ticket_created',
+                ticket_number=ticket_number,
+                problem=problem,
+                channel=topic_info.get('channel', '') if topic_info else '',
+                topic_name=topic_name or '',
+                is_cisco=is_cisco_ticket
+            )
+            system_actor = {'name': 'Helper', 'username': 'helper-system', 'role': 'system'}
+            log_ticket_event(
+                event_type='ticket_resolved_by_staff',
+                ticket_number=ticket_number,
+                problem=problem,
+                actor_override=system_actor,
+                details={'auto_close_reason': 'reset_call'}
+            )
+            log_ticket_event(
+                event_type='ticket_auto_closed_reset_call',
+                ticket_number=ticket_number,
+                problem=problem,
+                actor_override=system_actor,
+                details={'reason': 'сброс звонка'}
+            )
+            return msg
+
         print(f"[send_ticket] Отправка новой заявки в чат {TECH_SUPPORT_CHAT_ID}")
         msg = bot.send_message(
             TECH_SUPPORT_CHAT_ID,
@@ -1220,21 +1565,6 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
             except Exception as e:
                 print(f"[send_ticket] Ошибка при отправке видео: {e}")
 
-        # Логируем в PostgreSQL для статистики
-        topic_id = None
-        topic_name = None
-        if topic_info:
-            topic_name = topic_info.get('topic')
-            # Можно попробовать извлечь topic_id из session или topic_info
-            try:
-                from flask import request
-                if request.method == 'POST':
-                    topic_id = request.form.get('selected_topic_id')
-                    if topic_id:
-                        topic_id = int(topic_id)
-            except:
-                pass
-
         if sm:
             sm.log_request(
                 result_type=RESULT_TICKET_CREATED,
@@ -1254,14 +1584,91 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
             problem=problem,
             channel=topic_info.get('channel', '') if topic_info else '',
             topic_name=topic_name or '',
-            is_cisco=(target_thread_id == CISCO_TICKETS_THREAD_ID and CISCO_TICKETS_THREAD_ID != 0)
+            is_cisco=is_cisco_ticket
         )
+        _assign_ticket_to_current_duty(ticket_number, problem)
 
         return msg
     except Exception as e:
         print("[send_ticket] Ошибка при отправке заявки:", e)
         traceback.print_exc()
         return None
+
+
+def _staff_actor_from_call(call) -> dict:
+    return {
+        'name': call.from_user.first_name or call.from_user.username or str(call.from_user.id),
+        'username': call.from_user.username or str(call.from_user.id),
+        'role': 'staff'
+    }
+
+
+def _staff_actor_from_message(message) -> dict:
+    return {
+        'name': message.from_user.first_name or message.from_user.username or str(message.from_user.id),
+        'username': message.from_user.username or str(message.from_user.id),
+        'role': 'staff'
+    }
+
+
+def _parse_rejection_reason(text: str) -> str:
+    if not text:
+        return ''
+    match = re.search(r'отклон[её]н\w*\s*[:\-—]\s*(.+)$', text, flags=re.IGNORECASE | re.DOTALL)
+    return (match.group(1).strip() if match else '')[:500]
+
+
+def _mark_ticket_ready_for_feedback(ticket_number: int | None, problem: str, original_message: str, actor: dict):
+    if ticket_number is None:
+        return
+    log_ticket_event(
+        event_type='ticket_resolved_by_staff',
+        ticket_number=ticket_number,
+        problem=problem,
+        channel='',
+        topic_name='',
+        actor_override=actor
+    )
+    log_ticket_event(
+        event_type='ticket_ready_for_feedback',
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_override=actor,
+        details={'source': 'telegram', 'original_message': original_message[:500]}
+    )
+
+
+def _mark_ticket_rejected(ticket_number: int | None, problem: str, actor: dict, reason: str):
+    if ticket_number is None:
+        return
+    details = {'reason': reason}
+    log_ticket_event(
+        event_type='ticket_rejected',
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_override=actor,
+        details=details
+    )
+    # Legacy event for old counters/exports.
+    log_ticket_event(
+        event_type='ticket_not_relevant',
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_override=actor,
+        details=details
+    )
+
+
+def _mark_ticket_mass_incident(ticket_number: int | None, problem: str, actor: dict):
+    if ticket_number is None:
+        return
+    log_ticket_event(
+        event_type='ticket_mass_incident',
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_override=actor
+    )
+
 # обработчик кнопки
 # обработчик кнопки "Готово"
 @bot.callback_query_handler(func=lambda call: call.data == "ticket_done")
@@ -1278,18 +1685,14 @@ def handle_ticket_done(call):
 
         print(f"📋 [handle_ticket_done] ticket_number={ticket_number}, resolver={resolver_name}")
 
-        actor_override = {
-            'name': resolver_name,
-            'username': call.from_user.username or str(call.from_user.id),
-            'role': 'staff'
-        }
+        actor_override = _staff_actor_from_call(call)
 
         # Отправляем одно объединенное сообщение в раздел "В работе"
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"✅ НОВАЯ ЗАЯВКА РЕШЕНА ✅\n\n"
+            f"✅ ЗАЯВКА ГОТОВА, ЖДЁТ ПОДТВЕРЖДЕНИЯ ✅\n\n"
             f"{original_message}\n\n"
-            f"👤 Решена сотрудником: {resolver_name}",
+            f"👤 Отметил готово: {resolver_name}",
             message_thread_id=IN_PROGRESS_THREAD_ID
         )
 
@@ -1300,19 +1703,8 @@ def handle_ticket_done(call):
             reply_markup=None
         )
 
-        log_ticket_event(
-            event_type='ticket_resolved_by_staff',
-            ticket_number=ticket_number,
-            problem=parsed.get('problem') or original_message,
-            channel='',
-            topic_name='',
-            actor_override=actor_override,
-            user_info_override={
-                'department': parsed.get('department', ''),
-                'name': parsed.get('name', ''),
-                'workplace': parsed.get('workplace', '')
-            }
-        )
+        problem = parsed.get('problem') or original_message
+        _mark_ticket_ready_for_feedback(ticket_number, problem, original_message, actor_override)
 
         print(f"✅ Кнопка 'Готово' успешно обработана! ticket_number={ticket_number}")
 
@@ -1321,52 +1713,54 @@ def handle_ticket_done(call):
         traceback.print_exc()
 
 # обработчик кнопки "Не актуально"
-@bot.callback_query_handler(func=lambda call: call.data == "ticket_not_relevant")
-def handle_ticket_not_relevant(call):
-    print(f"🔔 Получен callback от кнопки 'Не актуально'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
+@bot.callback_query_handler(func=lambda call: call.data in ("ticket_reject_prompt", "ticket_not_relevant"))
+def handle_ticket_reject_prompt(call):
+    print(f"🔔 Получен callback от кнопки 'Отклонён'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
+    try:
+        original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
+        ticket_number = extract_ticket_number_from_text(original_message)
+        bot.answer_callback_query(call.id, "Укажите причину отклонения ответом на заявку")
+        bot.send_message(
+            TECH_SUPPORT_CHAT_ID,
+            f"❌ Для отклонения заявки №{ticket_number or '—'} ответьте на исходную заявку текстом:\n"
+            f"<code>Отклонён: причина отклонения</code>",
+            message_thread_id=NEW_TICKETS_THREAD_ID,
+            parse_mode='HTML',
+            reply_to_message_id=call.message.message_id
+        )
+        print(f"ℹ️ Запрошена причина отклонения ticket_number={ticket_number}")
+    except Exception as e:
+        print(f"❌ Ошибка при запросе причины отклонения: {e}")
+        traceback.print_exc()
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "ticket_mass_incident")
+def handle_ticket_mass_incident(call):
+    print(f"🔔 Получен callback от кнопки 'Массовый инцидент'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
     try:
         original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
         ticket_number = extract_ticket_number_from_text(original_message)
         parsed = _parse_ticket_text_fields(original_message)
-        actor_override = {
-            'name': call.from_user.first_name or call.from_user.username or str(call.from_user.id),
-            'username': call.from_user.username or str(call.from_user.id),
-            'role': 'staff'
-        }
-        # Убираем кнопки с оригинального сообщения
+        actor_override = _staff_actor_from_call(call)
+
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None
         )
 
-        # Отправляем отдельное сообщение о том, что заявка не актуальна
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"❌ ЗАЯВКА НЕ АКТУАЛЬНА ❌\n\n"
-            f"Заявка отмечена сотрудником {escape_markdown(call.from_user.first_name or '')} как не актуальная.\n"
-            f"Решение не требуется.",
-            message_thread_id=NEW_TICKETS_THREAD_ID,
-            parse_mode='Markdown',
-            reply_to_message_id=call.message.message_id
+            f"⚠️ МАССОВЫЙ ИНЦИДЕНТ ⚠️\n\n"
+            f"{original_message}\n\n"
+            f"👤 Отметил: {actor_override['name']}",
+            message_thread_id=IN_PROGRESS_THREAD_ID
         )
 
-        log_ticket_event(
-            event_type='ticket_not_relevant',
-            ticket_number=ticket_number,
-            problem=parsed.get('problem') or original_message,
-            actor_override=actor_override,
-            user_info_override={
-                'department': parsed.get('department', ''),
-                'name': parsed.get('name', ''),
-                'workplace': parsed.get('workplace', '')
-            }
-        )
-
-        print("✅ Кнопка 'Не актуально' успешно обработана!")
-
+        _mark_ticket_mass_incident(ticket_number, parsed.get('problem') or original_message, actor_override)
+        print(f"✅ Массовый инцидент обработан ticket_number={ticket_number}")
     except Exception as e:
-        print(f"❌ Ошибка при обработке кнопки 'Не актуально': {e}")
+        print(f"❌ Ошибка при обработке массового инцидента: {e}")
         traceback.print_exc()
 
 def send_solved_ticket(problem):
@@ -2025,6 +2419,110 @@ def show_success():
     return render_template('success.html')
 
 
+def _session_owns_ticket(ticket_number: int) -> bool:
+    try:
+        return int(session.get('current_ticket_number') or 0) == int(ticket_number)
+    except (TypeError, ValueError):
+        return False
+
+
+@app.route('/api/ticket_status/<int:ticket_number>')
+@rate_limit(max_requests=30, window=60)
+def api_ticket_status(ticket_number: int):
+    if 'user_info' not in session or not session.get('authenticated') or not _session_owns_ticket(ticket_number):
+        return jsonify({'success': False, 'error': 'Недоступно'}), 403
+    try:
+        state = _get_ticket_state(ticket_number)
+        if not state:
+            return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        return jsonify({
+            'success': True,
+            'ticket_number': ticket_number,
+            'status': state.get('status'),
+            'status_label': state.get('status_label'),
+            'can_feedback': state.get('status') == 'ready_for_feedback',
+            'ready_at': state.get('ready_at') or '',
+            'assigned_name': state.get('assigned_name') or '',
+            'assigned_username': state.get('assigned_username') or '',
+        })
+    except Exception as e:
+        print(f"[api_ticket_status] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения статуса заявки'}), 500
+
+
+@app.route('/api/ticket_feedback/<int:ticket_number>', methods=['POST'])
+@rate_limit(max_requests=10, window=60)
+def api_ticket_feedback(ticket_number: int):
+    if 'user_info' not in session or not session.get('authenticated') or not _session_owns_ticket(ticket_number):
+        return jsonify({'success': False, 'error': 'Недоступно'}), 403
+    try:
+        state = _get_ticket_state(ticket_number)
+        if not state:
+            return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        if state.get('status') != 'ready_for_feedback':
+            return jsonify({'success': False, 'error': 'Заявка пока не ожидает подтверждения'}), 409
+
+        payload = request.get_json(silent=True) or {}
+        action = str(payload.get('action') or '').strip()
+        problem = state.get('problem') or session.get('problem_title') or ''
+        user_info = session.get('user_info', {}) or {}
+        actor = {
+            'name': user_info.get('name') or user_info.get('username') or 'Инициатор',
+            'username': user_info.get('username') or '',
+            'role': 'user'
+        }
+
+        if action == 'resolved':
+            log_ticket_event(
+                event_type='ticket_user_confirmed_resolved',
+                ticket_number=ticket_number,
+                problem=problem,
+                actor_override=actor,
+                details={'feedback': 'resolved'}
+            )
+            _send_support_message(
+                f"✅ <b>Заявка подтверждена инициатором</b>\n\n"
+                f"№{ticket_number}\n"
+                f"Сотрудник: {html_escape(actor['name'])}\n"
+                f"Статус: Решено",
+                thread_id=SOLVED_TICKETS_THREAD_ID or IN_PROGRESS_THREAD_ID,
+                parse_mode='HTML'
+            )
+        elif action == 'not_resolved':
+            log_ticket_event(
+                event_type='ticket_reopened_by_user',
+                ticket_number=ticket_number,
+                problem=problem,
+                actor_override=actor,
+                details={'feedback': 'not_resolved'}
+            )
+            duty_actor = _current_duty_actor()
+            _assign_ticket_to_current_duty(ticket_number, problem)
+            _send_support_message(
+                f"🔁 <b>Заявка переоткрыта инициатором</b>\n\n"
+                f"№{ticket_number}\n"
+                f"Сотрудник: {html_escape(actor['name'])}\n"
+                f"Назначено: {_format_duty_mention(duty_actor)}",
+                thread_id=NEW_TICKETS_THREAD_ID or IN_PROGRESS_THREAD_ID,
+                parse_mode='HTML'
+            )
+        else:
+            return jsonify({'success': False, 'error': 'Неверное действие'}), 400
+
+        new_state = _get_ticket_state(ticket_number) or {}
+        return jsonify({
+            'success': True,
+            'ticket_number': ticket_number,
+            'status': new_state.get('status'),
+            'status_label': new_state.get('status_label')
+        })
+    except Exception as e:
+        print(f"[api_ticket_feedback] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка сохранения обратной связи'}), 500
+
+
 # --- Обновлённый маршрут finish_unsolved с логированием ---
 @app.route('/finish_unsolved')
 def finish_unsolved():
@@ -2437,13 +2935,43 @@ def handle_channel_messages(message):
             original_ticket_text = message.reply_to_message.text or message.reply_to_message.caption or ''
             ticket_number = extract_ticket_number_from_text(original_ticket_text)
             parsed = _parse_ticket_text_fields(original_ticket_text)
-            actor_override = {
-                'name': message.from_user.first_name or message.from_user.username or str(message.from_user.id),
-                'username': message.from_user.username or str(message.from_user.id),
-                'role': 'staff'
-            }
+            actor_override = _staff_actor_from_message(message)
+            problem = parsed.get('problem') or original_ticket_text
+            rejection_reason = _parse_rejection_reason(message.text or '')
 
-            if "в работе" in text or "в процессе" in text or "решена" in text or "готово" in text:
+            if "массовый инцидент" in text:
+                _mark_ticket_mass_incident(ticket_number, problem, actor_override)
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"⚠️ Заявка №{ticket_number or '—'} отмечена как массовый инцидент.",
+                    message_thread_id=IN_PROGRESS_THREAD_ID
+                )
+            elif "отклон" in text:
+                if not rejection_reason:
+                    bot.reply_to(
+                        message,
+                        "Для отклонения укажите причину в формате: Отклонён: причина"
+                    )
+                    return
+                _mark_ticket_rejected(ticket_number, problem, actor_override, rejection_reason)
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"❌ ЗАЯВКА ОТКЛОНЕНА ❌\n\n"
+                    f"№{ticket_number or '—'}\n"
+                    f"Причина: {html_escape(rejection_reason)}\n"
+                    f"Сотрудник: {html_escape(actor_override['name'])}",
+                    message_thread_id=NEW_TICKETS_THREAD_ID,
+                    parse_mode='HTML',
+                    reply_to_message_id=original_message_id
+                )
+            elif "готово" in text or "решена" in text:
+                _mark_ticket_ready_for_feedback(ticket_number, problem, original_ticket_text, actor_override)
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"✅ Заявка №{ticket_number or '—'} готова и ожидает подтверждения инициатора.",
+                    message_thread_id=IN_PROGRESS_THREAD_ID
+                )
+            elif "в работе" in text or "в процессе" in text:
                 print("➡ Пересылаем в IN_PROGRESS_THREAD")
                 bot.copy_message(
                     chat_id=TECH_SUPPORT_CHAT_ID,
@@ -2464,14 +2992,16 @@ def handle_channel_messages(message):
                 log_ticket_event(
                     event_type='ticket_status_update_by_staff',
                     ticket_number=ticket_number,
-                    problem=parsed.get('problem') or original_ticket_text,
+                    problem=problem,
                     actor_override=actor_override,
                     user_info_override={
                         'department': parsed.get('department', ''),
                         'name': parsed.get('name', ''),
                         'workplace': parsed.get('workplace', '')
-                    }
+                    },
+                    details={'status': 'in_work'}
                 )
+                _assign_ticket(ticket_number, problem, actor_override, 'ticket_assigned_to_staff')
         else:
             print("❌ Не прошли проверки (нет reply_to_message или ID не в SUPPORT_STAFF_IDS)")
     except Exception as e:
@@ -7728,44 +8258,11 @@ def api_stats_topics_history():
 def api_stats_pending_tickets():
     """API: заявки которые отправлены но ещё не решены."""
     try:
-        if ANALYTICS_USE_POSTGRES:
-            with _pg_connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT ticket_number, problem, department, user_name, is_cisco,
-                               MIN(created_at) as created_at
-                        FROM ticket_events
-                        WHERE event_type = 'ticket_created'
-                          AND ticket_number IS NOT NULL
-                          AND ticket_number NOT IN (
-                            SELECT ticket_number FROM ticket_events
-                            WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
-                              AND ticket_number IS NOT NULL
-                          )
-                        GROUP BY ticket_number, problem, department, user_name, is_cisco
-                        ORDER BY MIN(created_at) ASC
-                    """)
-                    rows = [dict(r) for r in cur.fetchall()]
-        else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
-                conn.row_factory = sqlite3.Row
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT ticket_number, problem, department, user_name, is_cisco,
-                           MIN(created_at) as created_at
-                    FROM ticket_events
-                    WHERE event_type = 'ticket_created'
-                      AND ticket_number IS NOT NULL
-                      AND ticket_number NOT IN (
-                        SELECT ticket_number FROM ticket_events
-                        WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
-                          AND ticket_number IS NOT NULL
-                      )
-                    GROUP BY ticket_number, problem, department, user_name, is_cisco
-                    ORDER BY MIN(created_at) ASC
-                """)
-                rows = [dict(r) for r in cur.fetchall()]
-
+        active_statuses = {'in_work', 'ready_for_feedback', 'mass_incident'}
+        rows = [
+            state for state in _load_ticket_states().values()
+            if state.get('status') in active_statuses
+        ]
         now = datetime.now()
         for row in rows:
             created = row.get('created_at', '')
@@ -7788,6 +8285,7 @@ def api_stats_pending_tickets():
                 except Exception:
                     row['waiting_time'] = '—'
                     row['waiting_hours'] = 0
+        rows = sorted(rows, key=lambda x: x.get('created_at') or '')
 
         return jsonify({'success': True, 'data': rows, 'total': len(rows)})
     except Exception as e:
@@ -7803,102 +8301,37 @@ def api_stats_tickets_journal():
     try:
         start_at, end_at = _resolve_period_range()
         limit = max(1, min(request.args.get('limit', 100, type=int), 500))
-
-        if ANALYTICS_USE_POSTGRES:
-            with _pg_connect() as conn:
-                with conn.cursor() as cur:
-                    # Все созданные заявки за период
-                    cur.execute("""
-                        SELECT ticket_number, problem, department, user_name, workplace,
-                               is_cisco, created_at::text as created_at
-                        FROM ticket_events
-                        WHERE event_type = 'ticket_created'
-                          AND ticket_number IS NOT NULL
-                          AND created_at BETWEEN %s AND %s
-                        ORDER BY created_at DESC
-                        LIMIT %s
-                    """, (start_at, end_at, limit))
-                    created_rows = [dict(r) for r in cur.fetchall()]
-
-                    # Все решения/закрытия за период (или вообще — для нерешённых)
-                    ticket_nums = [r['ticket_number'] for r in created_rows]
-                    resolved_map = {}
-                    if ticket_nums:
-                        cur.execute("""
-                            SELECT ticket_number, event_type, actor_name, created_at::text as resolved_at
-                            FROM ticket_events
-                            WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
-                              AND ticket_number = ANY(%s)
-                            ORDER BY created_at ASC
-                        """, (ticket_nums,))
-                        for r in cur.fetchall():
-                            tn = r['ticket_number']
-                            if tn not in resolved_map:
-                                resolved_map[tn] = dict(r)
-        else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
-                conn.row_factory = sqlite3.Row
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT ticket_number, problem, department, user_name, workplace,
-                           is_cisco, created_at
-                    FROM ticket_events
-                    WHERE event_type = 'ticket_created'
-                      AND ticket_number IS NOT NULL
-                      AND created_at BETWEEN ? AND ?
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (start_at, end_at, limit))
-                created_rows = [dict(r) for r in cur.fetchall()]
-
-                ticket_nums = [r['ticket_number'] for r in created_rows]
-                resolved_map = {}
-                if ticket_nums:
-                    placeholders = ','.join('?' * len(ticket_nums))
-                    cur.execute(f"""
-                        SELECT ticket_number, event_type, actor_name, created_at as resolved_at
-                        FROM ticket_events
-                        WHERE event_type IN ('ticket_resolved_by_staff', 'ticket_not_relevant')
-                          AND ticket_number IN ({placeholders})
-                        ORDER BY created_at ASC
-                    """, ticket_nums)
-                    for r in cur.fetchall():
-                        r = dict(r)
-                        tn = r['ticket_number']
-                        if tn not in resolved_map:
-                            resolved_map[tn] = r
-
         now = datetime.now()
         result = []
-        for row in created_rows:
-            tn = row['ticket_number']
-            resolution = resolved_map.get(tn)
+        states = [
+            state for state in _load_ticket_states().values()
+            if start_at <= (state.get('created_at') or '') <= end_at
+        ]
+        states = sorted(states, key=lambda x: x.get('created_at') or '', reverse=True)[:limit]
 
+        for state in states:
+            tn = state['ticket_number']
+            resolved_at = state.get('ready_at') or state.get('closed_at') or ''
             entry = {
                 'ticket_number': tn,
-                'problem': row.get('problem', ''),
-                'department': row.get('department', ''),
-                'user_name': row.get('user_name', ''),
-                'workplace': row.get('workplace', ''),
-                'is_cisco': bool(row.get('is_cisco')),
-                'created_at': str(row.get('created_at', ''))[:19],
-                'status': 'pending',
-                'resolved_by': None,
-                'resolved_at': None,
+                'problem': state.get('problem', ''),
+                'department': state.get('department', ''),
+                'user_name': state.get('user_name', ''),
+                'workplace': state.get('workplace', ''),
+                'is_cisco': bool(state.get('is_cisco')),
+                'created_at': str(state.get('created_at', ''))[:19],
+                'status': state.get('status') or 'unknown',
+                'status_label': state.get('status_label') or 'Неизвестно',
+                'resolved_by': state.get('resolved_by') or state.get('assigned_name') or None,
+                'resolved_at': resolved_at or None,
                 'resolution_time': None,
                 'resolution_minutes': None
             }
 
-            if resolution:
-                et = resolution.get('event_type', '')
-                entry['status'] = 'resolved' if et == 'ticket_resolved_by_staff' else 'not_relevant'
-                entry['resolved_by'] = resolution.get('actor_name', '')
-                entry['resolved_at'] = str(resolution.get('resolved_at', ''))[:19]
-
-                # Время решения
+            if resolved_at:
                 try:
-                    created_str = str(row.get('created_at', ''))[:19]
-                    resolved_str = str(resolution.get('resolved_at', ''))[:19]
+                    created_str = str(state.get('created_at', ''))[:19]
+                    resolved_str = str(resolved_at)[:19]
                     dt_created = datetime.strptime(created_str, '%Y-%m-%d %H:%M:%S')
                     dt_resolved = datetime.strptime(resolved_str, '%Y-%m-%d %H:%M:%S')
                     delta = dt_resolved - dt_created
@@ -7915,9 +8348,8 @@ def api_stats_tickets_journal():
                 except Exception:
                     entry['resolution_time'] = '—'
             else:
-                # Нерешённая — считаем сколько ждёт
                 try:
-                    created_str = str(row.get('created_at', ''))[:19]
+                    created_str = str(state.get('created_at', ''))[:19]
                     dt_created = datetime.strptime(created_str, '%Y-%m-%d %H:%M:%S')
                     delta = now - dt_created
                     total_min = delta.total_seconds() / 60

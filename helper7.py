@@ -6343,28 +6343,41 @@ def _problem_label_sql(alias: str = 'c') -> str:
     return f"COALESCE(NULLIF(TRIM({alias}.problem), ''), 'Без привязки')"
 
 
+RESOLUTION_PROBLEM_GROUPS = (
+    ('pid:1', '1. Проблемы с почтой', '1'),
+    ('pid:2', '2. Настройка Тонкий VISA', '2'),
+    ('pid:3', '3. Не работает наушник - звук/микрофон', '3'),
+    ('pid:4', '4. Настройка прокси Windows', '4'),
+    ('pid:5', '5. Монитор не включается', '5'),
+    ('pid:6', '6. Проблемы с CISCO', '6'),
+    ('pid:7', '7. Другая проблема', '7'),
+)
+
+
 def _resolution_group_case(alias: str = 'c') -> str:
-    """Группировка для SLA-отчёта: Cisco отдельно, текстовые одиночные заявки в 'Другие'."""
+    """Группировка SLA по верхним категориям с главного экрана проблем."""
+    problem_id = f"NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '')"
     return f"""
         CASE
-            WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN 'cisco'
-            WHEN NULLIF(TRIM(COALESCE({alias}.subproblem_id, '')), '') IS NOT NULL
-                THEN 'sid:' || TRIM({alias}.subproblem_id)
-            WHEN NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '') IS NOT NULL
-                THEN 'pid:' || TRIM({alias}.problem_id)
-            ELSE 'other'
+            WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN 'pid:6'
+            WHEN {problem_id} IN ('1', '2', '3', '4', '5', '6', '7') THEN 'pid:' || {problem_id}
+            ELSE 'pid:7'
         END
     """
 
 
 def _resolution_label_case(alias: str = 'c') -> str:
+    problem_id = f"NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '')"
     return f"""
         CASE
-            WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN 'Cisco проблемы'
-            WHEN NULLIF(TRIM(COALESCE({alias}.subproblem_id, '')), '') IS NULL
-             AND NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '') IS NULL
-                THEN 'Другие проблемы'
-            ELSE COALESCE(NULLIF(TRIM({alias}.problem), ''), 'Без привязки')
+            WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN '6. Проблемы с CISCO'
+            WHEN {problem_id} = '1' THEN '1. Проблемы с почтой'
+            WHEN {problem_id} = '2' THEN '2. Настройка Тонкий VISA'
+            WHEN {problem_id} = '3' THEN '3. Не работает наушник - звук/микрофон'
+            WHEN {problem_id} = '4' THEN '4. Настройка прокси Windows'
+            WHEN {problem_id} = '5' THEN '5. Монитор не включается'
+            WHEN {problem_id} = '6' THEN '6. Проблемы с CISCO'
+            ELSE '7. Другая проблема'
         END
     """
 
@@ -6527,16 +6540,34 @@ def _load_resolution_problem_options(start_at: str, end_at: str) -> list[dict]:
     label_sql = _resolution_label_case('e')
 
     def _normalize(rows: list[dict]) -> list[dict]:
-        data = []
+        groups = {
+            key: {
+                'key': key,
+                'label': label,
+                'problem_id': problem_id,
+                'subproblem_id': '',
+                'count': 0
+            }
+            for key, label, problem_id in RESOLUTION_PROBLEM_GROUPS
+        }
         for row in rows:
-            data.append({
-                'key': row.get('problem_key') or 'txt:Без привязки',
-                'label': row.get('problem_label') or 'Без привязки',
-                'problem_id': row.get('problem_id') or '',
+            key = row.get('problem_key') or 'pid:7'
+            if key not in groups:
+                key = 'pid:7'
+            groups[key]['count'] += int(row.get('count') or 0)
+            if not groups[key]['subproblem_id']:
+                groups[key]['subproblem_id'] = row.get('subproblem_id') or ''
+        return [
+            {
+                'key': key,
+                'label': label,
+                'problem_id': problem_id,
                 'subproblem_id': row.get('subproblem_id') or '',
-                'count': int(row.get('count') or 0)
-            })
-        return sorted(data, key=lambda x: (-x['count'], (x['label'] or '').lower()))
+                'count': groups[key]['count']
+            }
+            for key, label, problem_id in RESOLUTION_PROBLEM_GROUPS
+            for row in (groups[key],)
+        ]
 
     if ANALYTICS_USE_POSTGRES:
         query = f"""

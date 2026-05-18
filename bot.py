@@ -5,6 +5,7 @@ Telegram Bot для Helper - отдельный процесс
 """
 
 import os
+import json
 import traceback
 from dotenv import load_dotenv
 import telebot
@@ -15,7 +16,8 @@ load_dotenv()
 
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
+from html import escape as html_escape
 
 APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
@@ -23,6 +25,22 @@ TECH_SUPPORT_CHAT_ID = int(os.getenv('TECH_SUPPORT_CHAT_ID', '0'))
 NEW_TICKETS_THREAD_ID = int(os.getenv('NEW_TICKETS_THREAD_ID', '0'))
 IN_PROGRESS_THREAD_ID = int(os.getenv('IN_PROGRESS_THREAD_ID', '0'))
 SOLVED_TICKETS_THREAD_ID = int(os.getenv('SOLVED_TICKETS_THREAD_ID', '0'))
+
+
+def _env_int(name: str, default: int = 0) -> int:
+    try:
+        return int(str(os.getenv(name, str(default))).strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
+CURRENT_DUTY_TELEGRAM_ID = _env_int('CURRENT_DUTY_TELEGRAM_ID', 0)
+CURRENT_DUTY_USERNAME = os.getenv('CURRENT_DUTY_USERNAME', '').strip().lstrip('@')
+CURRENT_DUTY_NAME = os.getenv('CURRENT_DUTY_NAME', '').strip()
+OVERLOAD_TICKET_LIMIT = max(1, _env_int('OVERLOAD_TICKET_LIMIT', 5))
+OVERLOAD_ALERT_THREAD_ID = _env_int('OVERLOAD_ALERT_THREAD_ID', 0)
+SUPPORT_STAFF_IDS_STR = os.getenv('SUPPORT_STAFF_IDS', '')
+SUPPORT_STAFF_IDS = [int(x.strip()) for x in SUPPORT_STAFF_IDS_STR.split(',') if x.strip().isdigit()]
 
 # --- Аналитика: запись событий в БД ---
 ANALYTICS_BACKEND = os.getenv('ANALYTICS_BACKEND', 'sqlite')
@@ -47,6 +65,75 @@ def _pg_connect():
         cursor_factory=psycopg2.extras.RealDictCursor,
         connect_timeout=10
     )
+
+
+def _sanitize_details(details):
+    sanitized = {}
+    for key, value in (details or {}).items():
+        value = str(value)
+        sanitized[str(key)] = value[:500] + ("...[truncated]" if len(value) > 500 else "")
+    return sanitized
+
+
+def _ensure_ticket_events_table():
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS ticket_events (
+                            id BIGSERIAL PRIMARY KEY,
+                            created_at TIMESTAMP NOT NULL,
+                            event_type TEXT NOT NULL,
+                            ticket_number INTEGER,
+                            problem TEXT,
+                            problem_id TEXT,
+                            subproblem_id TEXT,
+                            department TEXT,
+                            user_name TEXT,
+                            workplace TEXT,
+                            channel TEXT,
+                            topic_name TEXT,
+                            is_cisco INTEGER DEFAULT 0,
+                            actor_name TEXT,
+                            actor_username TEXT,
+                            actor_role TEXT,
+                            details_json JSONB
+                        )
+                    """)
+                    cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS details_json JSONB")
+                conn.commit()
+        else:
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS ticket_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        ticket_number INTEGER,
+                        problem TEXT,
+                        problem_id TEXT,
+                        subproblem_id TEXT,
+                        department TEXT,
+                        user_name TEXT,
+                        workplace TEXT,
+                        channel TEXT,
+                        topic_name TEXT,
+                        is_cisco INTEGER DEFAULT 0,
+                        actor_name TEXT,
+                        actor_username TEXT,
+                        actor_role TEXT,
+                        details_json TEXT
+                    )
+                """)
+                cur = conn.cursor()
+                cur.execute("PRAGMA table_info(ticket_events)")
+                cols = {row[1] for row in cur.fetchall()}
+                if 'details_json' not in cols:
+                    cur.execute("ALTER TABLE ticket_events ADD COLUMN details_json TEXT")
+                conn.commit()
+    except Exception as e:
+        print(f"[analytics] Ошибка миграции ticket_events: {e}")
 
 
 def extract_ticket_number(text: str):
@@ -78,13 +165,14 @@ def parse_ticket_fields(text: str) -> dict:
 
 def log_ticket_event(event_type, ticket_number=None, problem='',
                      department='', user_name='', workplace='',
-                     actor_name='', actor_username=''):
+                     actor_name='', actor_username='', details=None):
     """Записывает событие заявки в БД."""
     try:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        details_json = json.dumps(_sanitize_details(details), ensure_ascii=False)
         payload = (now, event_type, ticket_number, problem[:500],
                    department[:200], user_name[:200], workplace[:100],
-                   '', '', 0, actor_name[:200], actor_username[:200], 'staff')
+                   '', '', 0, actor_name[:200], actor_username[:200], 'staff', details_json)
         if ANALYTICS_USE_POSTGRES:
             with _pg_connect() as conn:
                 with conn.cursor() as cur:
@@ -93,8 +181,8 @@ def log_ticket_event(event_type, ticket_number=None, problem='',
                             created_at, event_type, ticket_number, problem,
                             department, user_name, workplace,
                             channel, topic_name, is_cisco,
-                            actor_name, actor_username, actor_role
-                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            actor_name, actor_username, actor_role, details_json
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
                     """, payload)
                 conn.commit()
         else:
@@ -104,13 +192,148 @@ def log_ticket_event(event_type, ticket_number=None, problem='',
                         created_at, event_type, ticket_number, problem,
                         department, user_name, workplace,
                         channel, topic_name, is_cisco,
-                        actor_name, actor_username, actor_role
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        actor_name, actor_username, actor_role, details_json
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, payload)
                 conn.commit()
         print(f"[analytics] Записано: {event_type} ticket_number={ticket_number}")
     except Exception as e:
         print(f"[analytics] Ошибка логирования: {e}")
+
+
+def _parse_rejection_reason(text: str) -> str:
+    match = re.search(r'отклон[её]н\w*\s*[:\-—]\s*(.+)$', text or '', flags=re.IGNORECASE | re.DOTALL)
+    return (match.group(1).strip() if match else '')[:500]
+
+
+def _current_duty_actor():
+    username = CURRENT_DUTY_USERNAME or (str(CURRENT_DUTY_TELEGRAM_ID) if CURRENT_DUTY_TELEGRAM_ID else 'duty')
+    name = CURRENT_DUTY_NAME or CURRENT_DUTY_USERNAME or 'Дежурный'
+    return {'name': name, 'username': username}
+
+
+def _format_duty_mention(actor):
+    name = html_escape(actor.get('name') or actor.get('username') or 'дежурный')
+    if CURRENT_DUTY_TELEGRAM_ID:
+        return f'<a href="tg://user?id={CURRENT_DUTY_TELEGRAM_ID}">{name}</a>'
+    username = (actor.get('username') or '').strip().lstrip('@')
+    return f'@{html_escape(username)}' if username and username != 'duty' else name
+
+
+def _load_active_ticket_count(actor_username):
+    if not actor_username:
+        return 0, []
+    if ANALYTICS_USE_POSTGRES:
+        query = """
+            SELECT id, created_at::text AS created_at, event_type, ticket_number, actor_username
+            FROM ticket_events
+            WHERE ticket_number IS NOT NULL
+            ORDER BY ticket_number ASC, created_at ASC, id ASC
+        """
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                rows = [dict(row) for row in cur.fetchall()]
+    else:
+        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, created_at, event_type, ticket_number, actor_username
+                FROM ticket_events
+                WHERE ticket_number IS NOT NULL
+                ORDER BY ticket_number ASC, created_at ASC, id ASC
+            """)
+            rows = [dict(row) for row in cur.fetchall()]
+
+    states = {}
+    for row in rows:
+        tn = row.get('ticket_number')
+        state = states.setdefault(tn, {'status': 'unknown', 'assigned_username': ''})
+        event_type = row.get('event_type') or ''
+        if event_type == 'ticket_created':
+            state['status'] = 'in_work'
+        elif event_type in ('ticket_assigned_to_duty', 'ticket_assigned_to_staff'):
+            state['assigned_username'] = row.get('actor_username') or state['assigned_username']
+            if state['status'] not in ('ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'):
+                state['status'] = 'in_work'
+        elif event_type == 'ticket_reopened_by_user':
+            state['status'] = 'in_work'
+        elif event_type == 'ticket_ready_for_feedback':
+            state['status'] = 'ready_for_feedback'
+        elif event_type in ('ticket_user_confirmed_resolved', 'ticket_resolved_by_staff'):
+            state['status'] = 'closed'
+        elif event_type in ('ticket_rejected', 'ticket_not_relevant'):
+            state['status'] = 'rejected'
+        elif event_type == 'ticket_mass_incident':
+            state['status'] = 'mass_incident'
+        elif event_type == 'ticket_auto_closed_reset_call':
+            state['status'] = 'closed_auto'
+
+    active = [tn for tn, st in states.items() if st['status'] == 'in_work' and st['assigned_username'] == actor_username]
+    return len(active), sorted(active)
+
+
+def _recent_overload_alert_sent(actor_username):
+    since = (datetime.now() - timedelta(minutes=60)).strftime('%Y-%m-%d %H:%M:%S')
+    if ANALYTICS_USE_POSTGRES:
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT COUNT(*) AS c FROM ticket_events
+                    WHERE event_type='ticket_overload_alert_sent'
+                      AND actor_username=%s
+                      AND created_at >= %s
+                """, [actor_username, since])
+                row = cur.fetchone()
+                return int(row['c'] if isinstance(row, dict) else row[0]) > 0
+    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FROM ticket_events
+            WHERE event_type='ticket_overload_alert_sent'
+              AND actor_username=?
+              AND created_at >= ?
+        """, [actor_username, since])
+        return int(cur.fetchone()[0] or 0) > 0
+
+
+def _maybe_send_overload_alert(actor):
+    count, tickets = _load_active_ticket_count(actor.get('username') or '')
+    if count <= OVERLOAD_TICKET_LIMIT or _recent_overload_alert_sent(actor.get('username') or ''):
+        return
+    bot.send_message(
+        TECH_SUPPORT_CHAT_ID,
+        f"⚠️ <b>Перегрузка дежурного</b>\n\n"
+        f"{_format_duty_mention(actor)}: в работе {count} заявок.\n"
+        f"Порог: {OVERLOAD_TICKET_LIMIT}.\n"
+        f"Заявки: {', '.join('№' + str(n) for n in tickets[:15])}",
+        message_thread_id=OVERLOAD_ALERT_THREAD_ID or IN_PROGRESS_THREAD_ID or NEW_TICKETS_THREAD_ID,
+        parse_mode='HTML'
+    )
+    log_ticket_event(
+        'ticket_overload_alert_sent',
+        actor_name=actor.get('name') or '',
+        actor_username=actor.get('username') or '',
+        details={'open_count': count, 'ticket_numbers': tickets}
+    )
+
+
+def _assign_ticket(ticket_number, problem, actor, event_type='ticket_assigned_to_staff'):
+    if not ticket_number:
+        return
+    log_ticket_event(
+        event_type,
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_name=actor.get('name') or '',
+        actor_username=actor.get('username') or '',
+        details={'assigned_to': actor.get('username') or actor.get('name') or ''}
+    )
+    _maybe_send_overload_alert(actor)
+
+
+_ensure_ticket_events_table()
 
 if not BOT_TOKEN:
     print("❌ Ошибка: BOT_TOKEN не найден в .env файле")
@@ -147,9 +370,9 @@ def handle_ticket_done(call):
         # Отправляем одно объединенное сообщение в раздел "В работе"
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"✅ НОВАЯ ЗАЯВКА РЕШЕНА ✅\n\n"
+            f"✅ ЗАЯВКА ГОТОВА, ЖДЁТ ПОДТВЕРЖДЕНИЯ ✅\n\n"
             f"{original_message}\n\n"
-            f"👤 Решена сотрудником: {resolver_name}",
+            f"👤 Отметил готово: {resolver_name}",
             message_thread_id=IN_PROGRESS_THREAD_ID
         )
 
@@ -173,8 +396,19 @@ def handle_ticket_done(call):
             actor_name=resolver_name,
             actor_username=call.from_user.username or str(call.from_user.id)
         )
+        log_ticket_event(
+            event_type='ticket_ready_for_feedback',
+            ticket_number=ticket_number,
+            problem=parsed.get('problem', original_message),
+            department=parsed.get('department', ''),
+            user_name=parsed.get('name', ''),
+            workplace=parsed.get('workplace', ''),
+            actor_name=resolver_name,
+            actor_username=call.from_user.username or str(call.from_user.id),
+            details={'source': 'telegram'}
+        )
 
-        bot.answer_callback_query(call.id, "✅ Заявка перемещена в 'В работе'")
+        bot.answer_callback_query(call.id, "✅ Заявка ждёт подтверждения инициатора")
         print("✅ Callback 'Готово' обработан успешно")
 
     except Exception as e:
@@ -186,34 +420,49 @@ def handle_ticket_done(call):
 # ============================================================================
 # Обработчик кнопки "Не актуально"
 # ============================================================================
-@bot.callback_query_handler(func=lambda call: call.data == "ticket_not_relevant")
-def handle_ticket_not_relevant(call):
-    """Обработка нажатия кнопки 'Не актуально'"""
-    print(f"🔔 Получен callback 'Не актуально'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
+@bot.callback_query_handler(func=lambda call: call.data in ("ticket_reject_prompt", "ticket_not_relevant"))
+def handle_ticket_reject_prompt(call):
+    """Запрос обязательной причины отклонения."""
+    print(f"🔔 Получен callback 'Отклонён'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
     try:
-        # Убираем кнопки с оригинального сообщения
+        original_message = call.message.text or call.message.caption or ""
+        ticket_number = extract_ticket_number(original_message)
+        bot.send_message(
+            TECH_SUPPORT_CHAT_ID,
+            f"❌ Для отклонения заявки №{ticket_number or '—'} ответьте на исходную заявку текстом:\n"
+            f"<code>Отклонён: причина отклонения</code>",
+            message_thread_id=NEW_TICKETS_THREAD_ID,
+            parse_mode='HTML',
+            reply_to_message_id=call.message.message_id
+        )
+        bot.answer_callback_query(call.id, "Укажите причину отклонения ответом на заявку")
+    except Exception as e:
+        print(f"❌ Ошибка в handle_ticket_reject_prompt: {e}")
+        traceback.print_exc()
+        bot.answer_callback_query(call.id, "❌ Ошибка при обработке")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "ticket_mass_incident")
+def handle_ticket_mass_incident(call):
+    """Обработка статуса 'Массовый инцидент'."""
+    print(f"🔔 Получен callback 'Массовый инцидент'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
+    try:
+        original_message = call.message.text or call.message.caption or ""
+        ticket_number = extract_ticket_number(original_message)
+        parsed = parse_ticket_fields(original_message)
+        resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None
         )
-
-        # Отправляем отдельное сообщение о том, что заявка не актуальна
-        original_message = call.message.text or call.message.caption or ""
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"❌ ЗАЯВКА НЕ АКТУАЛЬНА ❌\n\n"
-            f"Заявка отмечена сотрудником {call.from_user.first_name} как не актуальная.\n"
-            f"Никаких действий не требуется.",
-            message_thread_id=NEW_TICKETS_THREAD_ID
+            f"⚠️ МАССОВЫЙ ИНЦИДЕНТ ⚠️\n\n{original_message}\n\n👤 Отметил: {resolver_name}",
+            message_thread_id=IN_PROGRESS_THREAD_ID
         )
-
-        # Логируем в БД
-        ticket_number = extract_ticket_number(original_message)
-        parsed = parse_ticket_fields(original_message)
-        resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
         log_ticket_event(
-            event_type='ticket_not_relevant',
+            event_type='ticket_mass_incident',
             ticket_number=ticket_number,
             problem=parsed.get('problem', original_message),
             department=parsed.get('department', ''),
@@ -222,12 +471,9 @@ def handle_ticket_not_relevant(call):
             actor_name=resolver_name,
             actor_username=call.from_user.username or str(call.from_user.id)
         )
-
-        bot.answer_callback_query(call.id, "✅ Заявка отмечена как неактуальная")
-        print("✅ Callback 'Не актуально' обработан успешно")
-
+        bot.answer_callback_query(call.id, "⚠️ Массовый инцидент зафиксирован")
     except Exception as e:
-        print(f"❌ Ошибка в handle_ticket_not_relevant: {e}")
+        print(f"❌ Ошибка в handle_ticket_mass_incident: {e}")
         traceback.print_exc()
         bot.answer_callback_query(call.id, "❌ Ошибка при обработке")
 
@@ -296,14 +542,87 @@ def handle_channel_messages(message):
     """Обработка сообщений в группах - пересылка заявок"""
     try:
         print(f"📨 Получено сообщение в группе: {message.text[:50] if message.text else 'N/A'} от {message.from_user.id}")
+        if SUPPORT_STAFF_IDS and message.from_user.id not in SUPPORT_STAFF_IDS:
+            print("❌ Сообщение не от сотрудника техподдержки")
+            return
 
         # Проверяем есть ли reply (ответ на сообщение)
         if message.reply_to_message:
             original_message_id = message.reply_to_message.message_id
             text = message.text.lower() if message.text else ""
+            original_ticket_text = message.reply_to_message.text or message.reply_to_message.caption or ''
+            ticket_number = extract_ticket_number(original_ticket_text)
+            parsed = parse_ticket_fields(original_ticket_text)
+            actor = {
+                'name': message.from_user.first_name or message.from_user.username or str(message.from_user.id),
+                'username': message.from_user.username or str(message.from_user.id)
+            }
+            problem = parsed.get('problem', original_ticket_text)
+            rejection_reason = _parse_rejection_reason(message.text or '')
 
             # Проверяем ключевые слова для перемещения заявки
-            if "в работе" in text or "в процессе" in text or "решена" in text or "готово" in text:
+            if "массовый инцидент" in text:
+                log_ticket_event(
+                    'ticket_mass_incident',
+                    ticket_number=ticket_number,
+                    problem=problem,
+                    department=parsed.get('department', ''),
+                    user_name=parsed.get('name', ''),
+                    workplace=parsed.get('workplace', ''),
+                    actor_name=actor['name'],
+                    actor_username=actor['username']
+                )
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"⚠️ Заявка №{ticket_number or '—'} отмечена как массовый инцидент.",
+                    message_thread_id=IN_PROGRESS_THREAD_ID
+                )
+            elif "отклон" in text:
+                if not rejection_reason:
+                    bot.reply_to(message, "Для отклонения укажите причину в формате: Отклонён: причина")
+                    return
+                details = {'reason': rejection_reason}
+                for event_type in ('ticket_rejected', 'ticket_not_relevant'):
+                    log_ticket_event(
+                        event_type,
+                        ticket_number=ticket_number,
+                        problem=problem,
+                        department=parsed.get('department', ''),
+                        user_name=parsed.get('name', ''),
+                        workplace=parsed.get('workplace', ''),
+                        actor_name=actor['name'],
+                        actor_username=actor['username'],
+                        details=details
+                    )
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"❌ ЗАЯВКА ОТКЛОНЕНА ❌\n\n"
+                    f"№{ticket_number or '—'}\n"
+                    f"Причина: {html_escape(rejection_reason)}\n"
+                    f"Сотрудник: {html_escape(actor['name'])}",
+                    message_thread_id=NEW_TICKETS_THREAD_ID,
+                    parse_mode='HTML',
+                    reply_to_message_id=original_message_id
+                )
+            elif "готово" in text or "решена" in text:
+                for event_type in ('ticket_resolved_by_staff', 'ticket_ready_for_feedback'):
+                    log_ticket_event(
+                        event_type,
+                        ticket_number=ticket_number,
+                        problem=problem,
+                        department=parsed.get('department', ''),
+                        user_name=parsed.get('name', ''),
+                        workplace=parsed.get('workplace', ''),
+                        actor_name=actor['name'],
+                        actor_username=actor['username'],
+                        details={'source': 'telegram_reply'} if event_type == 'ticket_ready_for_feedback' else None
+                    )
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"✅ Заявка №{ticket_number or '—'} готова и ожидает подтверждения инициатора.",
+                    message_thread_id=IN_PROGRESS_THREAD_ID
+                )
+            elif "в работе" in text or "в процессе" in text:
                 print("➡️  Пересылаем заявку в 'В работе'")
 
                 # Пересылаем оригинальное сообщение
@@ -322,6 +641,18 @@ def handle_channel_messages(message):
                     message_thread_id=IN_PROGRESS_THREAD_ID,
                     parse_mode=None
                 )
+                log_ticket_event(
+                    'ticket_status_update_by_staff',
+                    ticket_number=ticket_number,
+                    problem=problem,
+                    department=parsed.get('department', ''),
+                    user_name=parsed.get('name', ''),
+                    workplace=parsed.get('workplace', ''),
+                    actor_name=actor['name'],
+                    actor_username=actor['username'],
+                    details={'status': 'in_work'}
+                )
+                _assign_ticket(ticket_number, problem, actor, 'ticket_assigned_to_staff')
                 print("✅ Заявка перемещена в 'В работе'")
 
     except Exception as e:

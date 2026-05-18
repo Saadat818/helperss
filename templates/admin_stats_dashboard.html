@@ -669,6 +669,59 @@
         body.light .resolution-filter-head { border-bottom-color: #e6e9ee !important; }
         body.light .resolution-filter-head input { background: #fff !important; color: #1a1a2e !important; border-color: #d0d7de !important; }
         body.light .resolution-filter-cancel { background: #eef1f5 !important; color: #1a1a2e !important; }
+        .duty-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(140px, 1fr));
+            gap: 12px;
+            align-items: end;
+        }
+        .duty-field label {
+            display: block;
+            margin-bottom: 6px;
+            color: #97a1b6;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .duty-field input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: inherit;
+            font-size: 14px;
+        }
+        .duty-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .duty-save {
+            width: 100%;
+            min-height: 40px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #20c997, #138f70);
+            color: #fff;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .duty-status {
+            margin-top: 10px;
+            min-height: 18px;
+            color: #97a1b6;
+            font-size: 13px;
+        }
+        .duty-save:disabled {
+            opacity: 0.65;
+            cursor: wait;
+        }
+        @media (max-width: 1100px) {
+            .duty-grid { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+        }
+        @media (max-width: 640px) {
+            .duty-grid { grid-template-columns: 1fr; }
+        }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
@@ -738,6 +791,40 @@
             <div id="resolutionTable">
                 <div class="loading">Загрузка...</div>
             </div>
+        </div>
+
+        <div class="departments-table" style="margin-bottom: 30px; border-left-color: #ffc107;">
+            <h2>👤 Текущий дежурный</h2>
+            <p style="color:#97a1b6; margin-bottom:16px;">
+                Эти настройки используются для назначения новых и повторно открытых заявок, а также для alert о перегрузке.
+                Telegram ID и топик можно оставить пустыми, если достаточно обычного @username.
+            </p>
+            <div class="duty-grid">
+                <div class="duty-field">
+                    <label for="dutyName">Имя дежурного</label>
+                    <input id="dutyName" type="text" placeholder="Например: Иван">
+                </div>
+                <div class="duty-field">
+                    <label for="dutyUsername">Telegram username</label>
+                    <input id="dutyUsername" type="text" placeholder="ivanov или @ivanov">
+                </div>
+                <div class="duty-field">
+                    <label for="dutyTelegramId">Telegram ID</label>
+                    <input id="dutyTelegramId" type="number" placeholder="123456789">
+                </div>
+                <div class="duty-field">
+                    <label for="dutyOverloadLimit">Лимит заявок</label>
+                    <input id="dutyOverloadLimit" type="number" min="1" max="100" value="5">
+                </div>
+                <div class="duty-field">
+                    <label for="dutyAlertThreadId">Топик alerts</label>
+                    <input id="dutyAlertThreadId" type="number" placeholder="опционально">
+                </div>
+                <div class="duty-actions">
+                    <button class="duty-save" id="dutySaveBtn" type="button" onclick="saveDutySettings()">Сохранить</button>
+                </div>
+            </div>
+            <div class="duty-status" id="dutyStatus">Загрузка настроек...</div>
         </div>
 
         <!-- Общая статистика -->
@@ -845,11 +932,13 @@
         let selectedResolutionProblemKeys = new Set();
         let stagedResolutionProblemKeys = new Set();
         let selectedResolutionAllProblems = true;
+        const csrfToken = '{{ csrf_token() }}';
 
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
             const activeBtn = document.querySelector('.period-btn.active');
             loadStats(30, activeBtn);
+            loadDutySettings();
         });
 
         // Загрузка всей статистики
@@ -963,6 +1052,71 @@
 
             updateResolutionSummary(avgResp.data);
             updateResolutionTable(avgResp.data.items || []);
+        }
+
+        function setDutyStatus(message, isError = false) {
+            const el = document.getElementById('dutyStatus');
+            if (!el) return;
+            el.textContent = message || '';
+            el.style.color = isError ? '#e94b5a' : '#97a1b6';
+        }
+
+        function fillDutySettings(data) {
+            document.getElementById('dutyName').value = data.current_duty_name || '';
+            document.getElementById('dutyUsername').value = data.current_duty_username || '';
+            document.getElementById('dutyTelegramId').value = data.current_duty_telegram_id || '';
+            document.getElementById('dutyOverloadLimit').value = data.overload_ticket_limit || '5';
+            document.getElementById('dutyAlertThreadId').value = data.overload_alert_thread_id || '';
+        }
+
+        async function loadDutySettings() {
+            try {
+                const resp = await fetch('/api/admin/duty-settings').then(r => r.json());
+                if (!resp.success) {
+                    setDutyStatus(resp.error || 'Не удалось загрузить настройки', true);
+                    return;
+                }
+                fillDutySettings(resp.data || {});
+                const name = resp.data.current_duty_name || resp.data.current_duty_username || 'не указан';
+                setDutyStatus(`Текущий дежурный: ${name}. Лимит: ${resp.data.overload_ticket_limit || 5}`);
+            } catch (e) {
+                setDutyStatus('Ошибка загрузки настроек дежурного', true);
+            }
+        }
+
+        async function saveDutySettings() {
+            const saveBtn = document.getElementById('dutySaveBtn');
+            const payload = {
+                current_duty_name: document.getElementById('dutyName').value.trim(),
+                current_duty_username: document.getElementById('dutyUsername').value.trim(),
+                current_duty_telegram_id: document.getElementById('dutyTelegramId').value.trim(),
+                overload_ticket_limit: document.getElementById('dutyOverloadLimit').value.trim(),
+                overload_alert_thread_id: document.getElementById('dutyAlertThreadId').value.trim()
+            };
+            setDutyStatus('Сохраняем...');
+            if (saveBtn) saveBtn.disabled = true;
+            try {
+                const resp = await fetch('/api/admin/duty-settings', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                }).then(r => r.json());
+                if (!resp.success) {
+                    setDutyStatus(resp.error || 'Не удалось сохранить настройки', true);
+                    return;
+                }
+                fillDutySettings(resp.data || {});
+                const name = resp.data.current_duty_name || resp.data.current_duty_username || 'не указан';
+                setDutyStatus(`Сохранено. Текущий дежурный: ${name}`);
+            } catch (e) {
+                setDutyStatus('Ошибка сохранения настроек дежурного', true);
+            } finally {
+                if (saveBtn) saveBtn.disabled = false;
+            }
         }
 
         function updateResolutionSummary(data) {

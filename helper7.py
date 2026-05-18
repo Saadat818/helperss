@@ -603,6 +603,15 @@ def _init_analytics_tables():
                     cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS details_json JSONB")
 
                     cur.execute("""
+                        CREATE TABLE IF NOT EXISTS app_settings (
+                            key TEXT PRIMARY KEY,
+                            value TEXT,
+                            updated_at TIMESTAMP,
+                            updated_by TEXT
+                        )
+                    """)
+
+                    cur.execute("""
                         CREATE TABLE IF NOT EXISTS topic_changes (
                             id BIGSERIAL PRIMARY KEY,
                             created_at TIMESTAMP NOT NULL,
@@ -670,6 +679,15 @@ def _init_analytics_tables():
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_created_at ON ticket_events(created_at)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_type ON ticket_events(event_type)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON ticket_events(ticket_number)")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS app_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        updated_at TEXT,
+                        updated_by TEXT
+                    )
+                """)
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS topic_changes (
@@ -1105,26 +1123,116 @@ def _get_ticket_state(ticket_number: int) -> dict | None:
     return _load_ticket_states([ticket_number]).get(int(ticket_number))
 
 
+def _default_duty_settings() -> dict:
+    return {
+        'current_duty_name': CURRENT_DUTY_NAME,
+        'current_duty_username': CURRENT_DUTY_USERNAME,
+        'current_duty_telegram_id': str(CURRENT_DUTY_TELEGRAM_ID or ''),
+        'overload_ticket_limit': str(OVERLOAD_TICKET_LIMIT),
+        'overload_alert_thread_id': str(OVERLOAD_ALERT_THREAD_ID or ''),
+    }
+
+
+def _get_app_settings(keys: list[str] | None = None) -> dict:
+    keys = keys or list(_default_duty_settings().keys())
+    if not keys:
+        return {}
+    result = {}
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT key, value FROM app_settings WHERE key = ANY(%s)",
+                        [keys]
+                    )
+                    result = {row['key']: row.get('value') or '' for row in cur.fetchall()}
+        else:
+            placeholders = ",".join("?" * len(keys))
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", keys)
+                result = {row['key']: row['value'] or '' for row in cur.fetchall()}
+    except Exception as e:
+        print(f"[app_settings] Ошибка чтения настроек: {e}")
+    return result
+
+
+def _set_app_settings(values: dict, updated_by: str = ''):
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    clean_values = {str(k): str(v or '')[:300] for k, v in values.items()}
+    if not clean_values:
+        return
+    if ANALYTICS_USE_POSTGRES:
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                for key, value in clean_values.items():
+                    cur.execute("""
+                        INSERT INTO app_settings (key, value, updated_at, updated_by)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (key) DO UPDATE SET
+                            value = EXCLUDED.value,
+                            updated_at = EXCLUDED.updated_at,
+                            updated_by = EXCLUDED.updated_by
+                    """, [key, value, now, updated_by])
+            conn.commit()
+    else:
+        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            for key, value in clean_values.items():
+                conn.execute("""
+                    INSERT INTO app_settings (key, value, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at,
+                        updated_by = excluded.updated_by
+                """, [key, value, now, updated_by])
+            conn.commit()
+
+
+def _get_duty_settings() -> dict:
+    settings = _default_duty_settings()
+    settings.update(_get_app_settings(list(settings.keys())))
+    settings['current_duty_username'] = settings.get('current_duty_username', '').strip().lstrip('@')
+    settings['current_duty_name'] = settings.get('current_duty_name', '').strip()
+    settings['current_duty_telegram_id'] = str(_env_int_from_value(settings.get('current_duty_telegram_id'), 0) or '')
+    settings['overload_ticket_limit'] = str(max(1, _env_int_from_value(settings.get('overload_ticket_limit'), OVERLOAD_TICKET_LIMIT)))
+    settings['overload_alert_thread_id'] = str(_env_int_from_value(settings.get('overload_alert_thread_id'), 0) or '')
+    return settings
+
+
+def _env_int_from_value(value: Any, default: int = 0) -> int:
+    try:
+        return int(str(value if value is not None else default).strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
 def _current_duty_actor() -> dict:
-    username = CURRENT_DUTY_USERNAME or (str(CURRENT_DUTY_TELEGRAM_ID) if CURRENT_DUTY_TELEGRAM_ID else 'duty')
-    name = CURRENT_DUTY_NAME or CURRENT_DUTY_USERNAME or 'Дежурный'
+    settings = _get_duty_settings()
+    telegram_id = _env_int_from_value(settings.get('current_duty_telegram_id'), 0)
+    username = settings.get('current_duty_username') or (str(telegram_id) if telegram_id else 'duty')
+    name = settings.get('current_duty_name') or settings.get('current_duty_username') or 'Дежурный'
     return {'name': name, 'username': username, 'role': 'support_duty'}
 
 
 def _format_duty_mention(actor: dict) -> str:
     name = html_escape(actor.get('name') or actor.get('username') or 'дежурный')
-    if CURRENT_DUTY_TELEGRAM_ID:
-        return f'<a href="tg://user?id={CURRENT_DUTY_TELEGRAM_ID}">{name}</a>'
+    telegram_id = _env_int_from_value(_get_duty_settings().get('current_duty_telegram_id'), 0)
+    if telegram_id:
+        return f'<a href="tg://user?id={telegram_id}">{name}</a>'
     username = (actor.get('username') or '').strip().lstrip('@')
     return f'@{html_escape(username)}' if username and username != 'duty' else name
 
 
 def _send_support_message(text: str, thread_id: int | None = None, parse_mode: str | None = None, **kwargs):
     try:
+        alert_thread_id = _env_int_from_value(_get_duty_settings().get('overload_alert_thread_id'), 0)
         return bot.send_message(
             TECH_SUPPORT_CHAT_ID,
             text,
-            message_thread_id=thread_id or OVERLOAD_ALERT_THREAD_ID or IN_PROGRESS_THREAD_ID or NEW_TICKETS_THREAD_ID,
+            message_thread_id=thread_id or alert_thread_id or IN_PROGRESS_THREAD_ID or NEW_TICKETS_THREAD_ID,
             parse_mode=parse_mode,
             **kwargs
         )
@@ -1171,7 +1279,8 @@ def _maybe_send_overload_alert(actor: dict):
         s for s in states.values()
         if s.get('status') == 'in_work' and (s.get('assigned_username') or '') == username
     ]
-    if len(active) <= OVERLOAD_TICKET_LIMIT or _recent_overload_alert_sent(username):
+    limit = max(1, _env_int_from_value(_get_duty_settings().get('overload_ticket_limit'), OVERLOAD_TICKET_LIMIT))
+    if len(active) <= limit or _recent_overload_alert_sent(username):
         return
 
     ticket_numbers = sorted(s['ticket_number'] for s in active)
@@ -1179,7 +1288,7 @@ def _maybe_send_overload_alert(actor: dict):
     _send_support_message(
         f"⚠️ <b>Перегрузка дежурного</b>\n\n"
         f"{mention}: в работе {len(active)} заявок.\n"
-        f"Порог: {OVERLOAD_TICKET_LIMIT}.\n"
+        f"Порог: {limit}.\n"
         f"Заявки: {', '.join('№' + str(n) for n in ticket_numbers[:15])}",
         parse_mode='HTML'
     )
@@ -7566,6 +7675,48 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
 def admin_stats_dashboard():
     """Страница статистики с dashboard"""
     return render_template('admin_stats_dashboard.html')
+
+
+@app.route('/api/admin/duty-settings')
+@AdminAuth.manuals_required
+def api_admin_duty_settings_get():
+    try:
+        return jsonify({'success': True, 'data': _get_duty_settings()})
+    except Exception as e:
+        print(f"[api_admin_duty_settings_get] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения настроек дежурного'}), 500
+
+
+@app.route('/api/admin/duty-settings', methods=['POST'])
+@AdminAuth.manuals_required
+def api_admin_duty_settings_save():
+    try:
+        data = request.get_json(silent=True) or {}
+        name = str(data.get('current_duty_name') or '').strip()[:120]
+        username = str(data.get('current_duty_username') or '').strip().lstrip('@')[:120]
+        telegram_id = _env_int_from_value(data.get('current_duty_telegram_id'), 0)
+        overload_limit = max(1, min(_env_int_from_value(data.get('overload_ticket_limit'), OVERLOAD_TICKET_LIMIT), 100))
+        alert_thread_id = _env_int_from_value(data.get('overload_alert_thread_id'), 0)
+
+        if not name and not username and not telegram_id:
+            return jsonify({'success': False, 'error': 'Укажите имя, username или Telegram ID дежурного'}), 400
+
+        values = {
+            'current_duty_name': name,
+            'current_duty_username': username,
+            'current_duty_telegram_id': str(telegram_id or ''),
+            'overload_ticket_limit': str(overload_limit),
+            'overload_alert_thread_id': str(alert_thread_id or ''),
+        }
+        actor = _current_actor()
+        _set_app_settings(values, updated_by=actor.get('username') or actor.get('name') or '')
+        write_audit_log('POST /api/admin/duty-settings', 200, values)
+        return jsonify({'success': True, 'data': _get_duty_settings()})
+    except Exception as e:
+        print(f"[api_admin_duty_settings_save] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка сохранения настроек дежурного'}), 500
 
 
 @app.route('/api/stats/online')

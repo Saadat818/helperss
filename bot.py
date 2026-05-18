@@ -34,6 +34,13 @@ def _env_int(name: str, default: int = 0) -> int:
         return default
 
 
+def _env_int_from_value(value, default: int = 0) -> int:
+    try:
+        return int(str(value if value is not None else default).strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
 CURRENT_DUTY_TELEGRAM_ID = _env_int('CURRENT_DUTY_TELEGRAM_ID', 0)
 CURRENT_DUTY_USERNAME = os.getenv('CURRENT_DUTY_USERNAME', '').strip().lstrip('@')
 CURRENT_DUTY_NAME = os.getenv('CURRENT_DUTY_NAME', '').strip()
@@ -102,6 +109,14 @@ def _ensure_ticket_events_table():
                         )
                     """)
                     cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS details_json JSONB")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS app_settings (
+                            key TEXT PRIMARY KEY,
+                            value TEXT,
+                            updated_at TIMESTAMP,
+                            updated_by TEXT
+                        )
+                    """)
                 conn.commit()
         else:
             with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
@@ -131,6 +146,14 @@ def _ensure_ticket_events_table():
                 cols = {row[1] for row in cur.fetchall()}
                 if 'details_json' not in cols:
                     cur.execute("ALTER TABLE ticket_events ADD COLUMN details_json TEXT")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS app_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        updated_at TEXT,
+                        updated_by TEXT
+                    )
+                """)
                 conn.commit()
     except Exception as e:
         print(f"[analytics] Ошибка миграции ticket_events: {e}")
@@ -206,16 +229,61 @@ def _parse_rejection_reason(text: str) -> str:
     return (match.group(1).strip() if match else '')[:500]
 
 
+def _default_duty_settings():
+    return {
+        'current_duty_name': CURRENT_DUTY_NAME,
+        'current_duty_username': CURRENT_DUTY_USERNAME,
+        'current_duty_telegram_id': str(CURRENT_DUTY_TELEGRAM_ID or ''),
+        'overload_ticket_limit': str(OVERLOAD_TICKET_LIMIT),
+        'overload_alert_thread_id': str(OVERLOAD_ALERT_THREAD_ID or ''),
+    }
+
+
+def _get_app_settings(keys=None):
+    keys = keys or list(_default_duty_settings().keys())
+    if not keys:
+        return {}
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT key, value FROM app_settings WHERE key = ANY(%s)", [keys])
+                    return {row['key']: row.get('value') or '' for row in cur.fetchall()}
+        placeholders = ",".join("?" * len(keys))
+        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", keys)
+            return {row['key']: row['value'] or '' for row in cur.fetchall()}
+    except Exception as e:
+        print(f"[app_settings] Ошибка чтения настроек: {e}")
+        return {}
+
+
+def _get_duty_settings():
+    settings = _default_duty_settings()
+    settings.update(_get_app_settings(list(settings.keys())))
+    settings['current_duty_username'] = settings.get('current_duty_username', '').strip().lstrip('@')
+    settings['current_duty_name'] = settings.get('current_duty_name', '').strip()
+    settings['current_duty_telegram_id'] = str(_env_int_from_value(settings.get('current_duty_telegram_id'), 0) or '')
+    settings['overload_ticket_limit'] = str(max(1, _env_int_from_value(settings.get('overload_ticket_limit'), OVERLOAD_TICKET_LIMIT)))
+    settings['overload_alert_thread_id'] = str(_env_int_from_value(settings.get('overload_alert_thread_id'), 0) or '')
+    return settings
+
+
 def _current_duty_actor():
-    username = CURRENT_DUTY_USERNAME or (str(CURRENT_DUTY_TELEGRAM_ID) if CURRENT_DUTY_TELEGRAM_ID else 'duty')
-    name = CURRENT_DUTY_NAME or CURRENT_DUTY_USERNAME or 'Дежурный'
+    settings = _get_duty_settings()
+    telegram_id = _env_int_from_value(settings.get('current_duty_telegram_id'), 0)
+    username = settings.get('current_duty_username') or (str(telegram_id) if telegram_id else 'duty')
+    name = settings.get('current_duty_name') or settings.get('current_duty_username') or 'Дежурный'
     return {'name': name, 'username': username}
 
 
 def _format_duty_mention(actor):
     name = html_escape(actor.get('name') or actor.get('username') or 'дежурный')
-    if CURRENT_DUTY_TELEGRAM_ID:
-        return f'<a href="tg://user?id={CURRENT_DUTY_TELEGRAM_ID}">{name}</a>'
+    telegram_id = _env_int_from_value(_get_duty_settings().get('current_duty_telegram_id'), 0)
+    if telegram_id:
+        return f'<a href="tg://user?id={telegram_id}">{name}</a>'
     username = (actor.get('username') or '').strip().lstrip('@')
     return f'@{html_escape(username)}' if username and username != 'duty' else name
 
@@ -300,15 +368,18 @@ def _recent_overload_alert_sent(actor_username):
 
 def _maybe_send_overload_alert(actor):
     count, tickets = _load_active_ticket_count(actor.get('username') or '')
-    if count <= OVERLOAD_TICKET_LIMIT or _recent_overload_alert_sent(actor.get('username') or ''):
+    settings = _get_duty_settings()
+    limit = max(1, _env_int_from_value(settings.get('overload_ticket_limit'), OVERLOAD_TICKET_LIMIT))
+    alert_thread_id = _env_int_from_value(settings.get('overload_alert_thread_id'), 0)
+    if count <= limit or _recent_overload_alert_sent(actor.get('username') or ''):
         return
     bot.send_message(
         TECH_SUPPORT_CHAT_ID,
         f"⚠️ <b>Перегрузка дежурного</b>\n\n"
         f"{_format_duty_mention(actor)}: в работе {count} заявок.\n"
-        f"Порог: {OVERLOAD_TICKET_LIMIT}.\n"
+        f"Порог: {limit}.\n"
         f"Заявки: {', '.join('№' + str(n) for n in tickets[:15])}",
-        message_thread_id=OVERLOAD_ALERT_THREAD_ID or IN_PROGRESS_THREAD_ID or NEW_TICKETS_THREAD_ID,
+        message_thread_id=alert_thread_id or IN_PROGRESS_THREAD_ID or NEW_TICKETS_THREAD_ID,
         parse_mode='HTML'
     )
     log_ticket_event(

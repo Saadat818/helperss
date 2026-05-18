@@ -566,6 +566,109 @@
         body.light .stat-card, body.light .stat-item, body.light .problem-item { background: #fff !important; border-color: #d0d7de !important; }
         body.light .alert-success { color: #155724 !important; }
         body.light .alert-danger, body.light .danger { color: #721c24 !important; }
+        .resolution-filter-wrap { position: relative; }
+        .resolution-filter-btn {
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            color: #e9ecef;
+            cursor: pointer;
+        }
+        .resolution-filter-btn:hover { border-color: #20c997; color: #20c997; }
+        .resolution-filter-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: calc(100% + 10px);
+            width: 360px;
+            max-height: 420px;
+            overflow: hidden;
+            background: rgba(15, 20, 32, 0.98);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            box-shadow: 0 18px 48px rgba(0,0,0,0.28);
+            z-index: 50;
+        }
+        .resolution-filter-menu.open { display: block; }
+        .resolution-filter-head {
+            padding: 14px 14px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .resolution-filter-head input {
+            width: 100%;
+            padding: 9px 12px;
+            border-radius: 9px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: inherit;
+        }
+        .resolution-filter-body {
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 8px 10px 0;
+        }
+        .resolution-filter-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .resolution-filter-option:hover { background: rgba(255,255,255,0.05); }
+        .resolution-filter-option input { margin: 0; }
+        .resolution-filter-option .label {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+        }
+        .resolution-filter-option .meta {
+            color: #97a1b6;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .resolution-filter-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 12px 14px 14px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+        .resolution-filter-actions button {
+            padding: 8px 14px;
+            border: none;
+            border-radius: 9px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .resolution-filter-ok {
+            background: linear-gradient(135deg, #20c997, #138f70);
+            color: #fff;
+        }
+        .resolution-filter-cancel {
+            background: rgba(255,255,255,0.08);
+            color: #e9ecef;
+        }
+        .resolution-filter-empty {
+            padding: 18px 12px;
+            text-align: center;
+            color: #97a1b6;
+            font-size: 13px;
+        }
+        body.light .resolution-filter-btn { background: #fff !important; color: #1a1a2e !important; border-color: #d0d7de !important; }
+        body.light .resolution-filter-menu { background: rgba(255,255,255,0.98) !important; border-color: #d0d7de !important; }
+        body.light .resolution-filter-option:hover { background: #f4f6f8 !important; }
+        body.light .resolution-filter-actions { border-top-color: #e6e9ee !important; }
+        body.light .resolution-filter-head { border-bottom-color: #e6e9ee !important; }
+        body.light .resolution-filter-head input { background: #fff !important; color: #1a1a2e !important; border-color: #d0d7de !important; }
+        body.light .resolution-filter-cancel { background: #eef1f5 !important; color: #1a1a2e !important; }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
@@ -589,6 +692,52 @@
             <button class="period-btn active" onclick="loadStats(30, this)">30 дней</button>
             <button class="period-btn" onclick="loadStats(90, this)">90 дней</button>
             <button class="period-btn" onclick="loadStats(180, this)">180 дней</button>
+        </div>
+
+        <div class="departments-table" style="margin-bottom: 30px; border-left-color: #20c997;">
+            <h2 style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                <span>⏱️ Среднее время решения заявок</span>
+                <div class="resolution-filter-wrap">
+                    <button class="resolution-filter-btn" type="button" onclick="toggleProblemFilter()">
+                        Проблемы: <span id="resolutionFilterLabel">Все проблемы</span>
+                    </button>
+                    <div class="resolution-filter-menu" id="resolutionFilterMenu">
+                        <div class="resolution-filter-head">
+                            <input type="text" id="resolutionFilterSearch" placeholder="Поиск проблемы..." oninput="renderResolutionProblemOptions()">
+                        </div>
+                        <div class="resolution-filter-body">
+                            <label class="resolution-filter-option">
+                                <input type="checkbox" id="resolutionSelectAll" onchange="toggleAllResolutionProblems(this.checked)">
+                                <span class="label">Выделить все</span>
+                            </label>
+                            <div id="resolutionProblemOptions">
+                                <div class="resolution-filter-empty">Загрузка...</div>
+                            </div>
+                        </div>
+                        <div class="resolution-filter-actions">
+                            <button class="resolution-filter-cancel" type="button" onclick="closeProblemFilter()">Отмена</button>
+                            <button class="resolution-filter-ok" type="button" onclick="applyResolutionProblemFilter()">OK</button>
+                        </div>
+                    </div>
+                </div>
+            </h2>
+            <div class="stats-summary" style="margin-bottom: 20px;">
+                <div class="stat-card info">
+                    <div class="stat-label">Среднее время решения</div>
+                    <div class="stat-value" id="avgResolutionTime">—</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">Решено заявок</div>
+                    <div class="stat-value" id="avgResolutionCount">—</div>
+                </div>
+                <div class="stat-card neutral">
+                    <div class="stat-label">Выбор проблем</div>
+                    <div class="stat-value" id="avgResolutionFilterCount">Все</div>
+                </div>
+            </div>
+            <div id="resolutionTable">
+                <div class="loading">Загрузка...</div>
+            </div>
         </div>
 
         <!-- Общая статистика -->
@@ -692,6 +841,9 @@
     <script>
         let currentPeriod = 30;
         let timelineChart = null;
+        let resolutionProblemOptions = [];
+        let selectedResolutionProblemKeys = new Set();
+        let stagedResolutionProblemKeys = new Set();
 
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
@@ -766,10 +918,180 @@
                     document.getElementById('journalTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(journal.error || 'не удалось загрузить')}</div>`;
                 }
 
+                await loadResolutionAnalytics();
+
             } catch (error) {
                 console.error('Ошибка загрузки статистики');
                 showError('Ошибка загрузки статистики');
             }
+        }
+
+        async function loadResolutionAnalytics() {
+            const baseParams = new URLSearchParams({ days: currentPeriod });
+            const problemsResp = await fetch(`/api/stats/resolution_problems?${baseParams}`).then(r => r.json());
+
+            if (!problemsResp.success) {
+                document.getElementById('resolutionTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(problemsResp.error || 'не удалось загрузить список проблем')}</div>`;
+                return;
+            }
+
+            resolutionProblemOptions = problemsResp.data || [];
+            const availableKeys = new Set(resolutionProblemOptions.map(item => item.key));
+            selectedResolutionProblemKeys = new Set(
+                [...selectedResolutionProblemKeys].filter(key => availableKeys.has(key))
+            );
+            updateResolutionFilterLabel();
+            renderResolutionProblemOptions();
+
+            const avgParams = new URLSearchParams({ days: currentPeriod });
+            [...selectedResolutionProblemKeys].forEach(key => avgParams.append('problem_key', key));
+            const avgResp = await fetch(`/api/stats/avg_resolution?${avgParams}`).then(r => r.json());
+
+            if (!avgResp.success) {
+                document.getElementById('resolutionTable').innerHTML = `<div class="loading">Ошибка: ${escapeHtml(avgResp.error || 'не удалось загрузить среднее время')}</div>`;
+                return;
+            }
+
+            updateResolutionSummary(avgResp.data);
+            updateResolutionTable(avgResp.data.items || []);
+        }
+
+        function updateResolutionSummary(data) {
+            document.getElementById('avgResolutionTime').textContent = data.avg_time || '—';
+            document.getElementById('avgResolutionCount').textContent = data.resolved_count ?? 0;
+            document.getElementById('avgResolutionFilterCount').textContent =
+                selectedResolutionProblemKeys.size ? String(selectedResolutionProblemKeys.size) : 'Все';
+        }
+
+        function updateResolutionTable(items) {
+            const container = document.getElementById('resolutionTable');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="loading">Нет решённых заявок за выбранный период</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Проблема</th>
+                            <th style="text-align:center;">Решено</th>
+                            <th style="text-align:center;">Среднее время</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            items.forEach(item => {
+                html += `
+                    <tr>
+                        <td>${escapeHtml(item.label || 'Без привязки')}</td>
+                        <td style="text-align:center;">${escapeHtml(String(item.resolved_count || 0))}</td>
+                        <td style="text-align:center; font-weight:600; color:#20c997;">${escapeHtml(item.avg_time || '—')}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function toggleProblemFilter() {
+            const menu = document.getElementById('resolutionFilterMenu');
+            const willOpen = !menu.classList.contains('open');
+            document.querySelectorAll('.resolution-filter-menu').forEach(el => el.classList.remove('open'));
+            if (!willOpen) return;
+            stagedResolutionProblemKeys = new Set(selectedResolutionProblemKeys);
+            menu.classList.add('open');
+            document.getElementById('resolutionFilterSearch').value = '';
+            renderResolutionProblemOptions();
+        }
+
+        function closeProblemFilter() {
+            document.getElementById('resolutionFilterMenu').classList.remove('open');
+            stagedResolutionProblemKeys = new Set(selectedResolutionProblemKeys);
+        }
+
+        function applyResolutionProblemFilter() {
+            selectedResolutionProblemKeys = new Set(stagedResolutionProblemKeys);
+            closeProblemFilter();
+            updateResolutionFilterLabel();
+            loadResolutionAnalytics();
+        }
+
+        function toggleAllResolutionProblems(checked) {
+            if (checked) {
+                stagedResolutionProblemKeys.clear();
+            } else {
+                stagedResolutionProblemKeys = new Set(resolutionProblemOptions.map(item => item.key));
+            }
+            renderResolutionProblemOptions();
+        }
+
+        function toggleResolutionProblem(key, checked) {
+            if (stagedResolutionProblemKeys.size === 0) {
+                stagedResolutionProblemKeys = new Set(resolutionProblemOptions.map(item => item.key));
+            }
+
+            if (checked) {
+                stagedResolutionProblemKeys.add(key);
+            } else {
+                stagedResolutionProblemKeys.delete(key);
+            }
+
+            if (stagedResolutionProblemKeys.size >= resolutionProblemOptions.length) {
+                stagedResolutionProblemKeys.clear();
+            }
+
+            renderResolutionProblemOptions();
+        }
+
+        function toggleResolutionProblemFromInput(input) {
+            const encodedKey = input.dataset.key || '';
+            toggleResolutionProblem(decodeURIComponent(encodedKey), input.checked);
+        }
+
+        function updateResolutionFilterLabel() {
+            const label = document.getElementById('resolutionFilterLabel');
+            if (!resolutionProblemOptions.length || selectedResolutionProblemKeys.size === 0) {
+                label.textContent = 'Все проблемы';
+                return;
+            }
+            if (selectedResolutionProblemKeys.size === 1) {
+                const selected = resolutionProblemOptions.find(item => item.key === [...selectedResolutionProblemKeys][0]);
+                label.textContent = selected ? selected.label : '1 проблема';
+                return;
+            }
+            label.textContent = `${selectedResolutionProblemKeys.size} проблем`;
+        }
+
+        function renderResolutionProblemOptions() {
+            const allSelected = stagedResolutionProblemKeys.size === 0;
+            const optionsEl = document.getElementById('resolutionProblemOptions');
+            const search = (document.getElementById('resolutionFilterSearch').value || '').trim().toLowerCase();
+            document.getElementById('resolutionSelectAll').checked = allSelected;
+
+            let items = resolutionProblemOptions;
+            if (search) {
+                items = items.filter(item => (item.label || '').toLowerCase().includes(search));
+            }
+
+            if (!items.length) {
+                optionsEl.innerHTML = '<div class="resolution-filter-empty">Ничего не найдено</div>';
+                return;
+            }
+
+            optionsEl.innerHTML = items.map(item => {
+                const checked = allSelected || stagedResolutionProblemKeys.has(item.key);
+                const encodedKey = encodeURIComponent(item.key || '');
+                return `
+                    <label class="resolution-filter-option">
+                        <input type="checkbox" data-key="${encodedKey}" ${checked ? 'checked' : ''} onchange="toggleResolutionProblemFromInput(this)">
+                        <span class="label" title="${escapeHtml(item.label || 'Без привязки')}">${escapeHtml(item.label || 'Без привязки')}</span>
+                        <span class="meta">${escapeHtml(String(item.count || 0))}</span>
+                    </label>
+                `;
+            }).join('');
         }
 
         // Обновление общей статистики
@@ -1153,6 +1475,13 @@
                 container.innerHTML = '<div class="loading">Ошибка обновления</div>';
             }
         }
+
+        document.addEventListener('click', function(event) {
+            const wrap = event.target.closest('.resolution-filter-wrap');
+            if (!wrap) {
+                closeProblemFilter();
+            }
+        });
 
         function exportExcel() {
             const btn = document.getElementById('exportBtn');

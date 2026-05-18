@@ -566,6 +566,8 @@ def _init_analytics_tables():
                             event_type TEXT NOT NULL,
                             ticket_number INTEGER,
                             problem TEXT,
+                            problem_id TEXT,
+                            subproblem_id TEXT,
                             department TEXT,
                             user_name TEXT,
                             workplace TEXT,
@@ -580,6 +582,8 @@ def _init_analytics_tables():
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_created_at ON ticket_events(created_at)")
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_type ON ticket_events(event_type)")
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON ticket_events(ticket_number)")
+                    cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS problem_id TEXT")
+                    cur.execute("ALTER TABLE ticket_events ADD COLUMN IF NOT EXISTS subproblem_id TEXT")
 
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS topic_changes (
@@ -632,6 +636,8 @@ def _init_analytics_tables():
                         event_type TEXT NOT NULL,
                         ticket_number INTEGER,
                         problem TEXT,
+                        problem_id TEXT,
+                        subproblem_id TEXT,
                         department TEXT,
                         user_name TEXT,
                         workplace TEXT,
@@ -684,6 +690,15 @@ def _init_analytics_tables():
 
                 # Миграции SQLite: добавляем недостающие колонки
                 cur = conn.cursor()
+                cur.execute("PRAGMA table_info(ticket_events)")
+                existing_ticket_cols = {row[1] for row in cur.fetchall()}
+                for col_name, col_type in (
+                    ("problem_id", "TEXT"),
+                    ("subproblem_id", "TEXT"),
+                ):
+                    if col_name not in existing_ticket_cols:
+                        cur.execute(f"ALTER TABLE ticket_events ADD COLUMN {col_name} {col_type}")
+
                 cur.execute("PRAGMA table_info(topic_search_events)")
                 existing_cols = {row[1] for row in cur.fetchall()}
                 for col_name, col_type in (
@@ -865,11 +880,18 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
             for k in ('department', 'name', 'workplace'):
                 if k in user_info_override:
                     user_info[k] = user_info_override.get(k)
+        problem_id = ''
+        subproblem_id = ''
+        if has_request_context():
+            problem_id = str(session.get('problem_id', '') or '')[:100]
+            subproblem_id = str(session.get('current_subproblem_id', '') or '')[:100]
         payload = (
             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             event_type,
             ticket_number,
             str(problem)[:500],
+            problem_id,
+            subproblem_id,
             str(user_info.get('department', ''))[:200],
             str(user_info.get('name', ''))[:200],
             str(user_info.get('workplace', ''))[:100],
@@ -885,18 +907,20 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
                 with conn.cursor() as cur:
                     cur.execute("""
                         INSERT INTO ticket_events (
-                            created_at, event_type, ticket_number, problem, department, user_name, workplace,
-                            channel, topic_name, is_cisco, actor_name, actor_username, actor_role
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            created_at, event_type, ticket_number, problem, problem_id, subproblem_id,
+                            department, user_name, workplace, channel, topic_name, is_cisco,
+                            actor_name, actor_username, actor_role
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, payload)
                 conn.commit()
         else:
             with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     INSERT INTO ticket_events (
-                        created_at, event_type, ticket_number, problem, department, user_name, workplace,
-                        channel, topic_name, is_cisco, actor_name, actor_username, actor_role
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        created_at, event_type, ticket_number, problem, problem_id, subproblem_id,
+                        department, user_name, workplace, channel, topic_name, is_cisco,
+                        actor_name, actor_username, actor_role
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, payload)
                 conn.commit()
     except Exception as e:
@@ -6302,6 +6326,276 @@ def _resolve_period_range():
     return start_dt.strftime('%Y-%m-%d 00:00:00'), now.strftime('%Y-%m-%d %H:%M:%S')
 
 
+def _problem_key_sql(alias: str = 'c') -> str:
+    """Единый ключ проблемы для фильтрации и агрегации."""
+    return f"""
+        CASE
+            WHEN NULLIF(TRIM(COALESCE({alias}.subproblem_id, '')), '') IS NOT NULL
+                THEN 'sid:' || TRIM({alias}.subproblem_id)
+            WHEN NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '') IS NOT NULL
+                THEN 'pid:' || TRIM({alias}.problem_id)
+            ELSE 'txt:' || COALESCE(NULLIF(TRIM({alias}.problem), ''), 'Без привязки')
+        END
+    """
+
+
+def _problem_label_sql(alias: str = 'c') -> str:
+    return f"COALESCE(NULLIF(TRIM({alias}.problem), ''), 'Без привязки')"
+
+
+def _parse_problem_filters() -> list[str]:
+    values = []
+    seen = set()
+    for raw in request.args.getlist('problem_key'):
+        val = (raw or '').strip()
+        if val and val not in seen:
+            seen.add(val)
+            values.append(val[:300])
+    return values
+
+
+def _load_resolution_rows(start_at: str, end_at: str, problem_keys: list[str] | None = None) -> list[dict]:
+    """Загружает решённые заявки за период по дате решения."""
+    problem_keys = problem_keys or []
+    key_sql = _problem_key_sql('c')
+    label_sql = _problem_label_sql('c')
+
+    if ANALYTICS_USE_POSTGRES:
+        filter_sql = ""
+        if problem_keys:
+            filter_sql = f" AND {key_sql} = ANY(%s)"
+
+        query = f"""
+            WITH created AS (
+                SELECT
+                    ticket_number,
+                    MIN(created_at) AS created_at,
+                    MAX(problem) AS problem,
+                    MAX(problem_id) AS problem_id,
+                    MAX(subproblem_id) AS subproblem_id,
+                    MAX(department) AS department,
+                    MAX(user_name) AS user_name,
+                    MAX(workplace) AS workplace,
+                    MAX(is_cisco) AS is_cisco
+                FROM ticket_events
+                WHERE event_type = 'ticket_created'
+                  AND ticket_number IS NOT NULL
+                GROUP BY ticket_number
+            ),
+            resolved AS (
+                SELECT
+                    ticket_number,
+                    MIN(created_at) AS resolved_at
+                FROM ticket_events
+                WHERE event_type = 'ticket_resolved_by_staff'
+                  AND ticket_number IS NOT NULL
+                  AND created_at BETWEEN %s AND %s
+                GROUP BY ticket_number
+            ),
+            resolved_actor AS (
+                SELECT DISTINCT ON (ticket_number)
+                    ticket_number,
+                    actor_name
+                FROM ticket_events
+                WHERE event_type = 'ticket_resolved_by_staff'
+                  AND ticket_number IS NOT NULL
+                  AND created_at BETWEEN %s AND %s
+                ORDER BY ticket_number, created_at ASC, id ASC
+            )
+            SELECT
+                c.ticket_number,
+                c.created_at::text AS created_at,
+                r.resolved_at::text AS resolved_at,
+                COALESCE(ra.actor_name, '') AS resolved_by,
+                {label_sql} AS problem_label,
+                COALESCE(NULLIF(TRIM(c.problem_id), ''), '') AS problem_id,
+                COALESCE(NULLIF(TRIM(c.subproblem_id), ''), '') AS subproblem_id,
+                {key_sql} AS problem_key,
+                COALESCE(NULLIF(TRIM(c.department), ''), 'Не указан') AS department,
+                COALESCE(NULLIF(TRIM(c.user_name), ''), 'Неизвестно') AS user_name,
+                COALESCE(NULLIF(TRIM(c.workplace), ''), '') AS workplace,
+                COALESCE(c.is_cisco, 0) AS is_cisco,
+                EXTRACT(EPOCH FROM (r.resolved_at - c.created_at)) / 60.0 AS resolution_minutes
+            FROM resolved r
+            JOIN created c ON c.ticket_number = r.ticket_number
+            LEFT JOIN resolved_actor ra ON ra.ticket_number = r.ticket_number
+            WHERE c.created_at IS NOT NULL
+              AND r.resolved_at >= c.created_at
+              {filter_sql}
+            ORDER BY r.resolved_at DESC
+        """
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                if problem_keys:
+                    cur.execute(query, [start_at, end_at, start_at, end_at, problem_keys])
+                else:
+                    cur.execute(query, [start_at, end_at, start_at, end_at])
+                return [dict(row) for row in cur.fetchall()]
+
+    filter_sql = ""
+    params = [start_at, end_at]
+    if problem_keys:
+        placeholders = ",".join("?" * len(problem_keys))
+        filter_sql = f" AND {key_sql} IN ({placeholders})"
+        params.extend(problem_keys)
+
+    query = f"""
+        WITH created AS (
+            SELECT
+                ticket_number,
+                MIN(created_at) AS created_at,
+                MAX(problem) AS problem,
+                MAX(problem_id) AS problem_id,
+                MAX(subproblem_id) AS subproblem_id,
+                MAX(department) AS department,
+                MAX(user_name) AS user_name,
+                MAX(workplace) AS workplace,
+                MAX(is_cisco) AS is_cisco
+            FROM ticket_events
+            WHERE event_type = 'ticket_created'
+              AND ticket_number IS NOT NULL
+            GROUP BY ticket_number
+        ),
+        resolved AS (
+            SELECT
+                ticket_number,
+                MIN(created_at) AS resolved_at,
+                MAX(actor_name) AS resolved_by
+            FROM ticket_events
+            WHERE event_type = 'ticket_resolved_by_staff'
+              AND ticket_number IS NOT NULL
+              AND created_at BETWEEN ? AND ?
+            GROUP BY ticket_number
+        )
+        SELECT
+            c.ticket_number,
+            c.created_at AS created_at,
+            r.resolved_at AS resolved_at,
+            COALESCE(r.resolved_by, '') AS resolved_by,
+            {label_sql} AS problem_label,
+            COALESCE(NULLIF(TRIM(c.problem_id), ''), '') AS problem_id,
+            COALESCE(NULLIF(TRIM(c.subproblem_id), ''), '') AS subproblem_id,
+            {key_sql} AS problem_key,
+            COALESCE(NULLIF(TRIM(c.department), ''), 'Не указан') AS department,
+            COALESCE(NULLIF(TRIM(c.user_name), ''), 'Неизвестно') AS user_name,
+            COALESCE(NULLIF(TRIM(c.workplace), ''), '') AS workplace,
+            COALESCE(c.is_cisco, 0) AS is_cisco,
+            (julianday(r.resolved_at) - julianday(c.created_at)) * 1440.0 AS resolution_minutes
+        FROM resolved r
+        JOIN created c ON c.ticket_number = r.ticket_number
+        WHERE c.created_at IS NOT NULL
+          AND r.resolved_at >= c.created_at
+          {filter_sql}
+        ORDER BY r.resolved_at DESC
+    """
+    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(query, params)
+        return [dict(row) for row in cur.fetchall()]
+
+
+def _load_resolution_problem_options(start_at: str, end_at: str) -> list[dict]:
+    """Список проблем для фильтра. Берём из созданных заявок, а не только из решённых."""
+    key_sql = _problem_key_sql('e')
+    label_sql = _problem_label_sql('e')
+
+    def _normalize(rows: list[dict]) -> list[dict]:
+        data = []
+        for row in rows:
+            data.append({
+                'key': row.get('problem_key') or 'txt:Без привязки',
+                'label': row.get('problem_label') or 'Без привязки',
+                'problem_id': row.get('problem_id') or '',
+                'subproblem_id': row.get('subproblem_id') or '',
+                'count': int(row.get('count') or 0)
+            })
+        return sorted(data, key=lambda x: (-x['count'], (x['label'] or '').lower()))
+
+    if ANALYTICS_USE_POSTGRES:
+        query = f"""
+            SELECT
+                {key_sql} AS problem_key,
+                {label_sql} AS problem_label,
+                COALESCE(NULLIF(TRIM(MAX(e.problem_id)), ''), '') AS problem_id,
+                COALESCE(NULLIF(TRIM(MAX(e.subproblem_id)), ''), '') AS subproblem_id,
+                COUNT(*)::int AS count
+            FROM ticket_events e
+            WHERE e.event_type = 'ticket_created'
+              AND e.created_at BETWEEN %s AND %s
+            GROUP BY problem_key, problem_label
+            ORDER BY count DESC, problem_label ASC
+        """
+        fallback_query = f"""
+            SELECT
+                {key_sql} AS problem_key,
+                {label_sql} AS problem_label,
+                COALESCE(NULLIF(TRIM(MAX(e.problem_id)), ''), '') AS problem_id,
+                COALESCE(NULLIF(TRIM(MAX(e.subproblem_id)), ''), '') AS subproblem_id,
+                COUNT(*)::int AS count
+            FROM ticket_events e
+            WHERE e.event_type = 'ticket_created'
+            GROUP BY problem_key, problem_label
+            ORDER BY count DESC, problem_label ASC
+        """
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, [start_at, end_at])
+                rows = [dict(row) for row in cur.fetchall()]
+                if not rows:
+                    cur.execute(fallback_query)
+                    rows = [dict(row) for row in cur.fetchall()]
+                return _normalize(rows)
+
+    query = f"""
+        SELECT
+            {key_sql} AS problem_key,
+            {label_sql} AS problem_label,
+            COALESCE(NULLIF(TRIM(MAX(e.problem_id)), ''), '') AS problem_id,
+            COALESCE(NULLIF(TRIM(MAX(e.subproblem_id)), ''), '') AS subproblem_id,
+            COUNT(*) AS count
+        FROM ticket_events e
+        WHERE e.event_type = 'ticket_created'
+          AND e.created_at BETWEEN ? AND ?
+        GROUP BY problem_key, problem_label
+        ORDER BY count DESC, problem_label ASC
+    """
+    fallback_query = f"""
+        SELECT
+            {key_sql} AS problem_key,
+            {label_sql} AS problem_label,
+            COALESCE(NULLIF(TRIM(MAX(e.problem_id)), ''), '') AS problem_id,
+            COALESCE(NULLIF(TRIM(MAX(e.subproblem_id)), ''), '') AS subproblem_id,
+            COUNT(*) AS count
+        FROM ticket_events e
+        WHERE e.event_type = 'ticket_created'
+        GROUP BY problem_key, problem_label
+        ORDER BY count DESC, problem_label ASC
+    """
+    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(query, [start_at, end_at])
+        rows = [dict(row) for row in cur.fetchall()]
+        if not rows:
+            cur.execute(fallback_query)
+            rows = [dict(row) for row in cur.fetchall()]
+        return _normalize(rows)
+
+
+def _format_resolution_minutes(total_minutes: float | int | None) -> str:
+    if total_minutes is None:
+        return '—'
+    minutes = max(0, int(round(float(total_minutes))))
+    if minutes < 60:
+        return f"{minutes}м"
+    hours, mins = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}ч {mins}м"
+    days, hours = divmod(hours, 24)
+    return f"{days}д {hours}ч"
+
+
 def _load_ticket_dashboard_data(start_at: str, end_at: str):
     """Загружает и агрегирует события обращений для dashboard.
 
@@ -7071,6 +7365,79 @@ def api_stats_staff():
         print(f"[api_stats_staff] Ошибка: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Ошибка получения статистики по специалистам'}), 500
+
+
+@app.route('/api/stats/resolution_problems')
+@AdminAuth.manuals_required
+def api_stats_resolution_problems():
+    """Список проблем для фильтра среднего времени решения."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        data = _load_resolution_problem_options(start_at, end_at)
+        return jsonify({'success': True, 'data': data, 'total': len(data)})
+    except Exception as e:
+        print(f"[api_stats_resolution_problems] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения списка проблем'}), 500
+
+
+@app.route('/api/stats/avg_resolution')
+@AdminAuth.manuals_required
+def api_stats_avg_resolution():
+    """Среднее время решения по решённым заявкам."""
+    try:
+        start_at, end_at = _resolve_period_range()
+        problem_keys = _parse_problem_filters()
+        rows = _load_resolution_rows(start_at, end_at, problem_keys)
+
+        total_count = len(rows)
+        avg_minutes = 0.0
+        if total_count:
+            avg_minutes = sum(float(row.get('resolution_minutes') or 0) for row in rows) / total_count
+
+        problems_map = {}
+        for row in rows:
+            key = row.get('problem_key') or 'txt:Без привязки'
+            item = problems_map.setdefault(key, {
+                'key': key,
+                'label': row.get('problem_label') or 'Без привязки',
+                'problem_id': row.get('problem_id') or '',
+                'subproblem_id': row.get('subproblem_id') or '',
+                'resolved_count': 0,
+                'avg_minutes': 0.0
+            })
+            item['resolved_count'] += 1
+            item['avg_minutes'] += float(row.get('resolution_minutes') or 0)
+
+        items = []
+        for item in problems_map.values():
+            avg_item = item['avg_minutes'] / item['resolved_count'] if item['resolved_count'] else 0.0
+            items.append({
+                'key': item['key'],
+                'label': item['label'],
+                'problem_id': item['problem_id'],
+                'subproblem_id': item['subproblem_id'],
+                'resolved_count': item['resolved_count'],
+                'avg_minutes': round(avg_item, 1),
+                'avg_time': _format_resolution_minutes(avg_item)
+            })
+
+        items.sort(key=lambda x: (-int(x['resolved_count']), (x['label'] or '').lower()))
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'resolved_count': total_count,
+                'avg_minutes': round(avg_minutes, 1),
+                'avg_time': _format_resolution_minutes(avg_minutes),
+                'filters_applied': len(problem_keys),
+                'items': items
+            }
+        })
+    except Exception as e:
+        print(f"[api_stats_avg_resolution] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения среднего времени решения'}), 500
 
 
 @app.route('/api/stats/topics/summary')

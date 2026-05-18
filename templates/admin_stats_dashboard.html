@@ -1391,6 +1391,7 @@
                             <th>Отдел</th>
                             <th>Пользователь</th>
                             <th style="text-align:center;">Cisco</th>
+                            <th>Статус</th>
                             <th>Дата создания</th>
                             <th style="text-align:center;">Ожидание</th>
                         </tr>
@@ -1408,6 +1409,7 @@
                         <td style="${rowStyle}">${escapeHtml(t.department || '—')}</td>
                         <td style="${rowStyle}">${escapeHtml(t.user_name || '—')}</td>
                         <td style="text-align:center; ${rowStyle}">${t.is_cisco ? '✅' : '—'}</td>
+                        <td style="${rowStyle}">${escapeHtml(t.status_label || '—')}</td>
                         <td style="${rowStyle}">${escapeHtml((t.created_at || '').substring(0, 16))}</td>
                         <td style="text-align:center; ${waitStyle} ${rowStyle}">${escapeHtml(t.waiting_time || '—')}</td>
                     </tr>
@@ -1443,21 +1445,24 @@
                     <tbody>
             `;
             data.forEach(t => {
-                let statusText, statusColor;
-                if (t.status === 'resolved') {
-                    statusText = 'Решена';
+                let statusText = t.status_label || 'Ожидает';
+                let statusColor;
+                if (t.status === 'closed' || t.status === 'closed_auto') {
                     statusColor = '#28a745';
-                } else if (t.status === 'not_relevant') {
-                    statusText = 'Не актуальна';
+                } else if (t.status === 'rejected') {
                     statusColor = '#6c757d';
+                } else if (t.status === 'ready_for_feedback') {
+                    statusColor = '#0d6efd';
+                } else if (t.status === 'mass_incident') {
+                    statusColor = '#e94b5a';
                 } else {
-                    statusText = 'Ожидает';
                     statusColor = '#ff9800';
                 }
 
-                const isLong = t.status === 'pending' && (t.resolution_minutes || 0) >= 1440;
-                const rowBg = t.status === 'pending' ? (isLong ? 'background: rgba(233, 75, 90, 0.08) !important;' : 'background: rgba(255, 152, 0, 0.06) !important;') : '';
-                const timeColor = t.status === 'resolved' ? '#28a745' : (isLong ? '#e94b5a' : '#ff9800');
+                const isActive = t.status === 'in_work' || t.status === 'ready_for_feedback' || t.status === 'mass_incident';
+                const isLong = isActive && (t.resolution_minutes || 0) >= 1440;
+                const rowBg = isActive ? (isLong ? 'background: rgba(233, 75, 90, 0.08) !important;' : 'background: rgba(255, 152, 0, 0.06) !important;') : '';
+                const timeColor = (t.status === 'closed' || t.status === 'closed_auto') ? '#28a745' : (isLong ? '#e94b5a' : '#ff9800');
 
                 html += `
                     <tr>

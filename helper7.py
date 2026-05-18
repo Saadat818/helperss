@@ -17,7 +17,7 @@ import traceback
 import re
 from html import escape as html_escape
 from functools import wraps
-from time import time
+from time import time, sleep
 from collections import defaultdict
 from urllib.parse import urlparse
 
@@ -469,6 +469,7 @@ CURRENT_DUTY_USERNAME = os.getenv('CURRENT_DUTY_USERNAME', '').strip().lstrip('@
 CURRENT_DUTY_NAME = os.getenv('CURRENT_DUTY_NAME', '').strip()
 OVERLOAD_TICKET_LIMIT = max(1, _env_int('OVERLOAD_TICKET_LIMIT', 5))
 OVERLOAD_ALERT_THREAD_ID = _env_int('OVERLOAD_ALERT_THREAD_ID', 0)
+USER_FEEDBACK_TIMEOUT_SECONDS = max(60, _env_int('USER_FEEDBACK_TIMEOUT_SECONDS', 300))
 
 if not BOT_TOKEN:
     print("Ошибка: BOT_TOKEN не найден в переменных окружения. Пожалуйста, проверьте ваш .env файл.")
@@ -1204,6 +1205,32 @@ def _assign_ticket(ticket_number: int, problem: str, actor: dict, event_type: st
 
 def _assign_ticket_to_current_duty(ticket_number: int, problem: str):
     _assign_ticket(ticket_number, problem, _current_duty_actor(), 'ticket_assigned_to_duty')
+
+
+def _format_reopened_ticket_message(ticket_number: int, state: dict, actor: dict) -> str:
+    parts = [
+        f"🔁 *ПОВТОРНО ОТКРЫТА ЗАЯВКА №{ticket_number}* 🔁",
+        f"Отдел: {escape_markdown(state.get('department') or 'Неизвестно')}",
+        f"Имя: {escape_markdown(state.get('user_name') or 'Неизвестно')}",
+    ]
+    if state.get('workplace'):
+        parts.append(f"Рабочее место: {escape_markdown(state.get('workplace'))}")
+    parts.extend([
+        f"Проблема: {escape_markdown(state.get('problem') or 'Неизвестная проблема')}",
+        "",
+        f"Инициатор нажал: {escape_markdown('Не решено')}",
+        f"Назначено: {escape_markdown(actor.get('name') or actor.get('username') or 'Дежурный')}",
+    ])
+    return "\n".join(parts)
+
+
+def _send_reopened_ticket_card(ticket_number: int, state: dict, actor: dict):
+    return _send_support_message(
+        _format_reopened_ticket_message(ticket_number, state, actor),
+        thread_id=NEW_TICKETS_THREAD_ID or IN_PROGRESS_THREAD_ID,
+        parse_mode='Markdown',
+        reply_markup=create_ticket_buttons()
+    )
 
 
 def _is_reset_call_ticket(problem: str, topic_name: str = '') -> bool:
@@ -2426,6 +2453,80 @@ def _session_owns_ticket(ticket_number: int) -> bool:
         return False
 
 
+def _parse_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value)[:19], '%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return None
+
+
+def _auto_confirm_if_feedback_expired(state: dict, actor: dict | None = None) -> bool:
+    if not state or state.get('status') != 'ready_for_feedback':
+        return False
+    ready_at = _parse_datetime(state.get('ready_at') or '')
+    if not ready_at:
+        return False
+    if (datetime.now() - ready_at).total_seconds() < USER_FEEDBACK_TIMEOUT_SECONDS:
+        return False
+
+    ticket_number = int(state.get('ticket_number') or 0)
+    if not ticket_number:
+        return False
+    system_actor = actor or {'name': 'Helper', 'username': 'helper-system', 'role': 'system'}
+    log_ticket_event(
+        event_type='ticket_user_confirmed_resolved',
+        ticket_number=ticket_number,
+        problem=state.get('problem') or '',
+        actor_override=system_actor,
+        details={
+            'feedback': 'auto_resolved',
+            'reason': 'feedback_timeout',
+            'timeout_seconds': USER_FEEDBACK_TIMEOUT_SECONDS
+        }
+    )
+    _send_support_message(
+        f"✅ <b>Заявка авто-подтверждена</b>\n\n"
+        f"№{ticket_number}\n"
+        f"Инициатор не ответил за {USER_FEEDBACK_TIMEOUT_SECONDS // 60} мин.\n"
+        f"Статус: Решено",
+        thread_id=SOLVED_TICKETS_THREAD_ID or IN_PROGRESS_THREAD_ID,
+        parse_mode='HTML'
+    )
+    return True
+
+
+def _auto_confirm_expired_feedback_tickets():
+    states = _load_ticket_states()
+    for state in states.values():
+        try:
+            _auto_confirm_if_feedback_expired(state)
+        except Exception as e:
+            print(f"[ticket_auto_confirm] Ошибка обработки заявки {state.get('ticket_number')}: {e}")
+
+
+def _ticket_auto_confirm_worker():
+    print(f"[ticket_auto_confirm] Worker запущен, timeout={USER_FEEDBACK_TIMEOUT_SECONDS}s")
+    while True:
+        sleep(60)
+        try:
+            _auto_confirm_expired_feedback_tickets()
+        except Exception as e:
+            print(f"[ticket_auto_confirm] Ошибка фоновой проверки: {e}")
+
+
+def _start_ticket_auto_confirm_worker():
+    enabled = os.getenv('ENABLE_TICKET_AUTO_CONFIRM_WORKER', 'true').lower() not in ('0', 'false', 'no')
+    if APP_TEST_MODE or not enabled:
+        return
+    worker = threading.Thread(target=_ticket_auto_confirm_worker, name='ticket-auto-confirm', daemon=True)
+    worker.start()
+
+
+_start_ticket_auto_confirm_worker()
+
+
 @app.route('/api/ticket_status/<int:ticket_number>')
 @rate_limit(max_requests=30, window=60)
 def api_ticket_status(ticket_number: int):
@@ -2435,6 +2536,8 @@ def api_ticket_status(ticket_number: int):
         state = _get_ticket_state(ticket_number)
         if not state:
             return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        if _auto_confirm_if_feedback_expired(state):
+            state = _get_ticket_state(ticket_number) or state
         return jsonify({
             'success': True,
             'ticket_number': ticket_number,
@@ -2460,6 +2563,8 @@ def api_ticket_feedback(ticket_number: int):
         state = _get_ticket_state(ticket_number)
         if not state:
             return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        if _auto_confirm_if_feedback_expired(state):
+            return jsonify({'success': False, 'error': 'Заявка уже автоматически закрыта'}), 409
         if state.get('status') != 'ready_for_feedback':
             return jsonify({'success': False, 'error': 'Заявка пока не ожидает подтверждения'}), 409
 
@@ -2499,6 +2604,7 @@ def api_ticket_feedback(ticket_number: int):
             )
             duty_actor = _current_duty_actor()
             _assign_ticket_to_current_duty(ticket_number, problem)
+            _send_reopened_ticket_card(ticket_number, state, duty_actor)
             _send_support_message(
                 f"🔁 <b>Заявка переоткрыта инициатором</b>\n\n"
                 f"№{ticket_number}\n"

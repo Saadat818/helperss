@@ -298,7 +298,7 @@
                 statusText.textContent = `Текущий статус: ${data.status_label || '—'}`;
                 if (data.can_feedback) {
                     feedbackActions.classList.add('visible');
-                    setFeedbackMessage('Подтвердите, решена ли проблема.');
+                    setFeedbackMessage('Подтвердите, решена ли проблема. Если не ответить в течение 5 минут, заявка закроется автоматически.');
                 } else {
                     feedbackActions.classList.remove('visible');
                 }

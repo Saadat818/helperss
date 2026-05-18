@@ -975,6 +975,7 @@ TICKET_STATUS_LABELS = {
     'closed_auto': 'Авто-закрыта',
     'unknown': 'Неизвестно',
 }
+HARD_FINAL_TICKET_STATUSES = {'rejected', 'mass_incident', 'closed_auto'}
 
 
 def _parse_event_details(value: Any) -> dict:
@@ -1083,22 +1084,30 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             if state['status'] not in ('ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'):
                 state['status'] = 'in_work'
         elif event_type == 'ticket_reopened_by_user':
+            if state['status'] in HARD_FINAL_TICKET_STATUSES:
+                continue
             state['status'] = 'in_work'
             state['ready_at'] = ''
             state['closed_at'] = ''
             state['resolved_by'] = ''
             state['details'] = details
         elif event_type == 'ticket_ready_for_feedback':
+            if state['status'] in HARD_FINAL_TICKET_STATUSES:
+                continue
             state['status'] = 'ready_for_feedback'
             state['ready_at'] = created_at
             state['resolved_by'] = row.get('actor_name') or state['resolved_by']
         elif event_type == 'ticket_resolved_by_staff':
+            if state['status'] in HARD_FINAL_TICKET_STATUSES:
+                continue
             # Legacy close marker and SLA endpoint. New flow also writes ticket_ready_for_feedback after it.
             state['status'] = 'closed'
             state['ready_at'] = created_at
             state['closed_at'] = created_at
             state['resolved_by'] = row.get('actor_name') or state['resolved_by']
         elif event_type == 'ticket_user_confirmed_resolved':
+            if state['status'] in HARD_FINAL_TICKET_STATUSES:
+                continue
             state['status'] = 'closed'
             state['closed_at'] = created_at
             state['details'] = details
@@ -1805,6 +1814,38 @@ def _mark_ticket_mass_incident(ticket_number: int | None, problem: str, actor: d
         actor_override=actor
     )
 
+
+LOCKED_TICKET_ACTION_STATUSES = {'ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'}
+
+
+def _ticket_action_lock_reason(ticket_number: int | None) -> str:
+    """Не даём повторно менять заявку после финального/полуфинального статуса."""
+    if ticket_number is None:
+        return ''
+    try:
+        state = _get_ticket_state(ticket_number)
+        if not state:
+            return ''
+        status = state.get('status')
+        if status in LOCKED_TICKET_ACTION_STATUSES:
+            label = state.get('status_label') or TICKET_STATUS_LABELS.get(status, status)
+            return f"Заявка №{ticket_number} уже обработана: {label}"
+    except Exception as e:
+        print(f"[ticket_action_lock] Ошибка проверки заявки {ticket_number}: {e}")
+    return ''
+
+
+def _remove_ticket_buttons(chat_id: int, message_id: int):
+    try:
+        bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=None
+        )
+    except Exception as e:
+        print(f"[ticket_buttons] Не удалось убрать кнопки message_id={message_id}: {e}")
+
+
 # обработчик кнопки
 # обработчик кнопки "Готово"
 @bot.callback_query_handler(func=lambda call: call.data == "ticket_done")
@@ -1821,6 +1862,13 @@ def handle_ticket_done(call):
 
         print(f"📋 [handle_ticket_done] ticket_number={ticket_number}, resolver={resolver_name}")
 
+        lock_reason = _ticket_action_lock_reason(ticket_number)
+        if lock_reason:
+            _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
+            bot.answer_callback_query(call.id, lock_reason)
+            print(f"⛔ [handle_ticket_done] {lock_reason}")
+            return
+
         actor_override = _staff_actor_from_call(call)
 
         # Отправляем одно объединенное сообщение в раздел "В работе"
@@ -1833,14 +1881,11 @@ def handle_ticket_done(call):
         )
 
         # Убираем кнопку с оригинального сообщения
-        bot.edit_message_reply_markup(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=None
-        )
+        _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
 
         problem = parsed.get('problem') or original_message
         _mark_ticket_ready_for_feedback(ticket_number, problem, original_message, actor_override)
+        bot.answer_callback_query(call.id, "✅ Заявка ждёт подтверждения инициатора")
 
         print(f"✅ Кнопка 'Готово' успешно обработана! ticket_number={ticket_number}")
 
@@ -1855,6 +1900,12 @@ def handle_ticket_reject_prompt(call):
     try:
         original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
         ticket_number = extract_ticket_number_from_text(original_message)
+        lock_reason = _ticket_action_lock_reason(ticket_number)
+        if lock_reason:
+            _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
+            bot.answer_callback_query(call.id, lock_reason)
+            print(f"⛔ [handle_ticket_reject_prompt] {lock_reason}")
+            return
         bot.answer_callback_query(call.id, "Укажите причину отклонения ответом на заявку")
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
@@ -1879,11 +1930,14 @@ def handle_ticket_mass_incident(call):
         parsed = _parse_ticket_text_fields(original_message)
         actor_override = _staff_actor_from_call(call)
 
-        bot.edit_message_reply_markup(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=None
-        )
+        lock_reason = _ticket_action_lock_reason(ticket_number)
+        if lock_reason:
+            _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
+            bot.answer_callback_query(call.id, lock_reason)
+            print(f"⛔ [handle_ticket_mass_incident] {lock_reason}")
+            return
+
+        _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
 
         bot.send_message(
             TECH_SUPPORT_CHAT_ID,
@@ -1894,6 +1948,7 @@ def handle_ticket_mass_incident(call):
         )
 
         _mark_ticket_mass_incident(ticket_number, parsed.get('problem') or original_message, actor_override)
+        bot.answer_callback_query(call.id, "⚠️ Массовый инцидент зафиксирован")
         print(f"✅ Массовый инцидент обработан ticket_number={ticket_number}")
     except Exception as e:
         print(f"❌ Ошибка при обработке массового инцидента: {e}")
@@ -3155,7 +3210,13 @@ def handle_channel_messages(message):
             rejection_reason = _parse_rejection_reason(message.text or '')
 
             if "массовый инцидент" in text:
+                lock_reason = _ticket_action_lock_reason(ticket_number)
+                if lock_reason:
+                    _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                    bot.reply_to(message, lock_reason)
+                    return
                 _mark_ticket_mass_incident(ticket_number, problem, actor_override)
+                _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
                 bot.send_message(
                     TECH_SUPPORT_CHAT_ID,
                     f"⚠️ Заявка №{ticket_number or '—'} отмечена как массовый инцидент.",
@@ -3168,7 +3229,13 @@ def handle_channel_messages(message):
                         "Для отклонения укажите причину в формате: Отклонён: причина"
                     )
                     return
+                lock_reason = _ticket_action_lock_reason(ticket_number)
+                if lock_reason:
+                    _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                    bot.reply_to(message, lock_reason)
+                    return
                 _mark_ticket_rejected(ticket_number, problem, actor_override, rejection_reason)
+                _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
                 bot.send_message(
                     TECH_SUPPORT_CHAT_ID,
                     f"❌ ЗАЯВКА ОТКЛОНЕНА ❌\n\n"
@@ -3180,7 +3247,13 @@ def handle_channel_messages(message):
                     reply_to_message_id=original_message_id
                 )
             elif "готово" in text or "решена" in text:
+                lock_reason = _ticket_action_lock_reason(ticket_number)
+                if lock_reason:
+                    _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
+                    bot.reply_to(message, lock_reason)
+                    return
                 _mark_ticket_ready_for_feedback(ticket_number, problem, original_ticket_text, actor_override)
+                _remove_ticket_buttons(message.reply_to_message.chat.id, original_message_id)
                 bot.send_message(
                     TECH_SUPPORT_CHAT_ID,
                     f"✅ Заявка №{ticket_number or '—'} готова и ожидает подтверждения инициатора.",

@@ -6354,13 +6354,63 @@ RESOLUTION_PROBLEM_GROUPS = (
 )
 
 
+def _sql_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _resolution_problem_text_map() -> dict[str, set[str]]:
+    """Названия мануалов/подпроблем для классификации старых заявок без problem_id."""
+    result = {problem_id: set() for _, _, problem_id in RESOLUTION_PROBLEM_GROUPS}
+    try:
+        manuals = load_manuals()
+    except Exception:
+        manuals = {}
+
+    for _, _, problem_id in RESOLUTION_PROBLEM_GROUPS:
+        manual = manuals.get(problem_id, {}) if isinstance(manuals, dict) else {}
+        title = str(manual.get('title', '') or '').strip()
+        if title:
+            result[problem_id].add(title.lower())
+        for subproblem in (manual.get('subproblems') or {}).values():
+            subtitle = str((subproblem or {}).get('title', '') or '').strip()
+            if subtitle:
+                result[problem_id].add(subtitle.lower())
+    return result
+
+
+def _resolution_legacy_text_cases(alias: str, value_by_problem_id: dict[str, str]) -> str:
+    problem_text = f"LOWER(TRIM(COALESCE({alias}.problem, '')))"
+    cases = []
+    for problem_id, values in _resolution_problem_text_map().items():
+        if problem_id not in value_by_problem_id:
+            continue
+        literals = sorted({_sql_literal(value) for value in values if value})
+        if literals:
+            cases.append(
+                f"WHEN {problem_text} IN ({', '.join(literals)}) THEN {value_by_problem_id[problem_id]}"
+            )
+    return "\n            ".join(cases)
+
+
 def _resolution_group_case(alias: str = 'c') -> str:
     """Группировка SLA по верхним категориям с главного экрана проблем."""
     problem_id = f"NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '')"
+    subproblem_id = f"NULLIF(TRIM(COALESCE({alias}.subproblem_id, '')), '')"
+    legacy_cases = _resolution_legacy_text_cases(
+        alias,
+        {problem_id_value: _sql_literal(f'pid:{problem_id_value}')
+         for _, _, problem_id_value in RESOLUTION_PROBLEM_GROUPS}
+    )
     return f"""
         CASE
             WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN 'pid:6'
             WHEN {problem_id} IN ('1', '2', '3', '4', '5', '6', '7') THEN 'pid:' || {problem_id}
+            WHEN {subproblem_id} LIKE '1.%' THEN 'pid:1'
+            WHEN {subproblem_id} LIKE '2.%' THEN 'pid:2'
+            WHEN {subproblem_id} LIKE '3.%' THEN 'pid:3'
+            WHEN {subproblem_id} LIKE '4.%' THEN 'pid:4'
+            WHEN {subproblem_id} LIKE '5.%' THEN 'pid:5'
+            {legacy_cases}
             ELSE 'pid:7'
         END
     """
@@ -6368,6 +6418,12 @@ def _resolution_group_case(alias: str = 'c') -> str:
 
 def _resolution_label_case(alias: str = 'c') -> str:
     problem_id = f"NULLIF(TRIM(COALESCE({alias}.problem_id, '')), '')"
+    subproblem_id = f"NULLIF(TRIM(COALESCE({alias}.subproblem_id, '')), '')"
+    legacy_cases = _resolution_legacy_text_cases(
+        alias,
+        {problem_id_value: _sql_literal(label)
+         for _, label, problem_id_value in RESOLUTION_PROBLEM_GROUPS}
+    )
     return f"""
         CASE
             WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN '6. Проблемы с CISCO'
@@ -6377,6 +6433,12 @@ def _resolution_label_case(alias: str = 'c') -> str:
             WHEN {problem_id} = '4' THEN '4. Настройка прокси Windows'
             WHEN {problem_id} = '5' THEN '5. Монитор не включается'
             WHEN {problem_id} = '6' THEN '6. Проблемы с CISCO'
+            WHEN {subproblem_id} LIKE '1.%' THEN '1. Проблемы с почтой'
+            WHEN {subproblem_id} LIKE '2.%' THEN '2. Настройка Тонкий VISA'
+            WHEN {subproblem_id} LIKE '3.%' THEN '3. Не работает наушник - звук/микрофон'
+            WHEN {subproblem_id} LIKE '4.%' THEN '4. Настройка прокси Windows'
+            WHEN {subproblem_id} LIKE '5.%' THEN '5. Монитор не включается'
+            {legacy_cases}
             ELSE '7. Другая проблема'
         END
     """

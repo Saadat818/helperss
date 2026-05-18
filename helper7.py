@@ -6405,11 +6405,11 @@ def _resolution_group_case(alias: str = 'c') -> str:
         CASE
             WHEN COALESCE({alias}.is_cisco, 0) = 1 THEN 'pid:6'
             WHEN {problem_id} IN ('1', '2', '3', '4', '5', '6', '7') THEN 'pid:' || {problem_id}
-            WHEN {subproblem_id} LIKE '1.%' THEN 'pid:1'
-            WHEN {subproblem_id} LIKE '2.%' THEN 'pid:2'
-            WHEN {subproblem_id} LIKE '3.%' THEN 'pid:3'
-            WHEN {subproblem_id} LIKE '4.%' THEN 'pid:4'
-            WHEN {subproblem_id} LIKE '5.%' THEN 'pid:5'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '1.' THEN 'pid:1'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '2.' THEN 'pid:2'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '3.' THEN 'pid:3'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '4.' THEN 'pid:4'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '5.' THEN 'pid:5'
             {legacy_cases}
             ELSE 'pid:7'
         END
@@ -6433,11 +6433,11 @@ def _resolution_label_case(alias: str = 'c') -> str:
             WHEN {problem_id} = '4' THEN '4. Настройка прокси Windows'
             WHEN {problem_id} = '5' THEN '5. Монитор не включается'
             WHEN {problem_id} = '6' THEN '6. Проблемы с CISCO'
-            WHEN {subproblem_id} LIKE '1.%' THEN '1. Проблемы с почтой'
-            WHEN {subproblem_id} LIKE '2.%' THEN '2. Настройка Тонкий VISA'
-            WHEN {subproblem_id} LIKE '3.%' THEN '3. Не работает наушник - звук/микрофон'
-            WHEN {subproblem_id} LIKE '4.%' THEN '4. Настройка прокси Windows'
-            WHEN {subproblem_id} LIKE '5.%' THEN '5. Монитор не включается'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '1.' THEN '1. Проблемы с почтой'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '2.' THEN '2. Настройка Тонкий VISA'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '3.' THEN '3. Не работает наушник - звук/микрофон'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '4.' THEN '4. Настройка прокси Windows'
+            WHEN SUBSTR({subproblem_id}, 1, 2) = '5.' THEN '5. Монитор не включается'
             {legacy_cases}
             ELSE '7. Другая проблема'
         END

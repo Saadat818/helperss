@@ -5921,6 +5921,13 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', manuals=manuals)
 
 
+@app.route('/admin/dashboard-new')
+@AdminAuth.manuals_required
+def admin_dashboard_new():
+    """Новый прототип главной админ-панели Helper."""
+    return render_template('admin_dashboard_new.html')
+
+
 @app.route('/admin/manual/create', methods=['GET', 'POST'])
 @AdminAuth.manuals_required
 def admin_create_manual():

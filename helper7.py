@@ -155,7 +155,8 @@ csrf = CSRFProtect(app)
 # Security configurations for production
 # Security Fix: Always use secure cookies in production
 IS_DEVELOPMENT = os.getenv('FLASK_ENV', 'production') == 'development'
-default_secure_cookie = 'false' if IS_DEVELOPMENT else 'true'
+IS_LOCAL_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
+default_secure_cookie = 'false' if (IS_DEVELOPMENT or IS_LOCAL_TEST_MODE) else 'true'
 app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', default_secure_cookie).lower() == 'true'
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Lax for better compatibility
@@ -172,7 +173,7 @@ def add_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
     # Security Fix: Add HSTS header for HTTPS enforcement
-    if request.is_secure or not IS_DEVELOPMENT:
+    if request.is_secure or not (IS_DEVELOPMENT or IS_LOCAL_TEST_MODE):
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
 
     # Security Fix: Improved CSP - consider removing unsafe-inline in future iterations

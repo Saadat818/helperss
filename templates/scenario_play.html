@@ -6,385 +6,475 @@
     <title>{{ scenario.title }} — Helper</title>
     <style>
         :root {
-            --bg: #f0f4f8;
-            --card: #ffffff;
-            --text: #1a1e2e;
-            --muted: #6b7280;
-            --border: #e2e8f0;
-            --green: #059669;
-            --green-light: #d1fae5;
+            --bg: #f6f8fb;
+            --panel: #ffffff;
+            --panel-soft: #f9fbfd;
+            --text: #172033;
+            --muted: #667085;
+            --line: #e3e9f2;
+            --green: #12a66a;
+            --green-dark: #0b8756;
+            --green-soft: #e8f7ef;
             --blue: #2563eb;
-            --blue-light: #dbeafe;
-            --yellow: #d97706;
-            --yellow-light: #fef3c7;
-            --red: #dc2626;
-            --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
-            --shadow-lg: 0 4px 6px rgba(0,0,0,.07), 0 10px 40px rgba(0,0,0,.1);
-        }
-        body.dark {
-            --bg: #0f1117;
-            --card: #1a1d27;
-            --text: #e8e8f0;
-            --muted: #8888aa;
-            --border: #2a2d3e;
-            --green-light: rgba(5,150,105,.15);
-            --blue-light: rgba(37,99,235,.15);
-            --yellow-light: rgba(217,119,6,.15);
-            --shadow: 0 1px 3px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.2);
-            --shadow-lg: 0 4px 6px rgba(0,0,0,.3), 0 10px 40px rgba(0,0,0,.3);
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            transition: background .2s, color .2s;
+            --blue-soft: #eaf2ff;
+            --amber: #f59f00;
+            --amber-soft: #fff5dc;
+            --red: #e5485d;
+            --red-soft: #ffecef;
+            --shadow: 0 16px 40px rgba(28, 39, 60, .08);
+            --radius: 18px;
         }
 
-        /* ── Header ── */
-        .header {
-            background: var(--card);
-            border-bottom: 1px solid var(--border);
-            padding: 12px 20px;
-            display: flex;
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 15% 0%, rgba(18,166,106,.08), transparent 30%),
+                linear-gradient(180deg, #fbfdff 0%, var(--bg) 48%, #f2f5f9 100%);
+            color: var(--text);
+            font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        }
+        a { color: inherit; text-decoration: none; }
+        button { font-family: inherit; }
+
+        .page {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 24px 24px 38px;
+        }
+        .topbar {
+            display: grid;
+            grid-template-columns: 190px minmax(0, 1fr) 170px;
+            gap: 18px;
             align-items: center;
-            gap: 12px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            margin-bottom: 18px;
+        }
+        .back-link,
+        .restart-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            min-height: 38px;
+            padding: 0 12px;
+            border: 1px solid var(--line);
+            border-radius: 11px;
+            background: #fff;
+            color: var(--blue);
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .restart-btn {
+            justify-self: end;
+            color: var(--blue);
+        }
+        .scenario-title {
+            min-width: 0;
+            text-align: center;
+            font-size: 17px;
+            font-weight: 850;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .progress-wrap {
+            max-width: 360px;
+            margin: -6px auto 20px;
+            text-align: center;
+        }
+        .step-text {
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 750;
+        }
+        .progress {
+            height: 6px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: #dce5ef;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--green), #28c987);
+            transition: width .18s ease;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: 260px minmax(0, 1fr);
+            gap: 20px;
+            align-items: start;
+        }
+        .path-panel,
+        .content-card {
+            background: rgba(255,255,255,.96);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
             box-shadow: var(--shadow);
         }
-        .back-btn {
-            display: inline-flex; align-items: center; gap: 6px;
-            color: var(--muted); text-decoration: none;
-            font-size: 14px; padding: 6px 12px;
-            border-radius: 8px; border: 1px solid var(--border);
-            transition: all .15s; white-space: nowrap;
+        .path-panel {
+            position: sticky;
+            top: 18px;
+            padding: 16px;
+            min-height: 260px;
         }
-        .back-btn:hover { color: var(--text); border-color: var(--blue); }
-        .header-title {
-            font-size: 16px; font-weight: 700;
-            color: var(--text); flex: 1;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        .path-title {
+            margin: 0 0 14px;
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 850;
         }
-        .header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-        .step-badge {
-            font-size: 12px; font-weight: 600; color: var(--muted);
-            background: var(--bg); border: 1px solid var(--border);
-            border-radius: 20px; padding: 4px 12px; white-space: nowrap;
+        .path-list {
+            display: grid;
+            gap: 10px;
         }
-        .theme-btn {
-            width: 34px; height: 34px; border-radius: 50%;
-            background: var(--bg); border: 1px solid var(--border);
-            font-size: 16px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
+        .path-empty {
+            padding: 14px;
+            border: 1px dashed #cfd8e5;
+            border-radius: 12px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
         }
-        .theme-btn:hover { border-color: var(--blue); }
+        .path-item {
+            position: relative;
+            display: grid;
+            grid-template-columns: 18px minmax(0, 1fr);
+            gap: 9px;
+            align-items: start;
+        }
+        .path-item:not(:last-child)::after {
+            content: "";
+            position: absolute;
+            left: 8px;
+            top: 20px;
+            bottom: -10px;
+            width: 1px;
+            background: #d9e2ee;
+        }
+        .path-dot {
+            position: relative;
+            z-index: 1;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1px solid #aeb9c8;
+            background: #fff;
+        }
+        .path-question {
+            margin-bottom: 4px;
+            color: #344054;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .path-answer {
+            width: fit-content;
+            max-width: 100%;
+            padding: 5px 9px;
+            border-radius: 9px;
+            background: var(--green-soft);
+            color: var(--green-dark);
+            font-size: 12px;
+            font-weight: 850;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
 
-        /* ── Main layout ── */
-        .main {
-            max-width: 680px;
-            margin: 0 auto;
-            padding: 32px 16px 80px;
+        .content-card {
+            min-height: 470px;
+            overflow: hidden;
         }
-
-        /* ── Path chips ── */
-        .path-chips {
-            display: flex; flex-wrap: wrap; gap: 6px;
-            margin-bottom: 24px; min-height: 28px;
+        .card-inner {
+            padding: 26px 30px;
         }
-        .chip {
-            display: inline-flex; align-items: center; gap: 4px;
-            background: var(--card); border: 1px solid var(--border);
-            border-radius: 20px; padding: 4px 10px;
-            font-size: 12px; color: var(--muted);
-            cursor: pointer; transition: all .15s;
-            max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .chip:hover { border-color: var(--blue); color: var(--blue); }
-        .chip.answer {
-            background: var(--blue-light);
-            border-color: transparent;
-            color: var(--blue);
-            font-weight: 600;
-        }
-        .chip-sep { color: var(--muted); font-size: 12px; align-self: center; }
-
-        /* ── Question card ── */
-        .question-card {
-            background: var(--card);
-            border-radius: 16px;
-            padding: 32px;
-            box-shadow: var(--shadow-lg);
-            animation: slideUp .2s ease;
-        }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .node-label {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 11px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: .6px; margin-bottom: 14px;
-            padding: 4px 10px; border-radius: 20px;
-        }
-        .label-question { background: var(--blue-light); color: var(--blue); }
-        .label-info     { background: var(--yellow-light); color: var(--yellow); }
-        .label-start    { background: var(--green-light); color: var(--green); }
-
-        .question-title {
-            font-size: 22px; font-weight: 700;
-            line-height: 1.35; color: var(--text);
-            margin-bottom: 10px;
-        }
-        .question-hint {
-            font-size: 14px; color: var(--muted);
-            line-height: 1.6; margin-bottom: 28px;
-            padding: 12px 14px;
-            background: var(--bg);
+        .node-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 0 10px;
             border-radius: 8px;
-            border-left: 3px solid var(--border);
+            margin-bottom: 16px;
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .03em;
         }
+        .badge-question { background: var(--blue-soft); color: var(--blue); }
+        .badge-info { background: var(--amber-soft); color: #a15d00; }
+        .badge-final { background: var(--green-soft); color: var(--green-dark); }
+        .badge-start { background: var(--green-soft); color: var(--green-dark); }
 
-        /* ── Answer buttons ── */
+        .node-title {
+            margin: 0 0 10px;
+            font-size: 28px;
+            line-height: 1.18;
+            letter-spacing: -.04em;
+        }
+        .node-hint {
+            margin: 0 0 24px;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.6;
+        }
         .answers {
-            display: flex; flex-direction: column; gap: 10px;
+            display: grid;
+            gap: 12px;
+            margin-top: 22px;
+        }
+        .answer-btn,
+        .primary-btn,
+        .secondary-btn,
+        .copy-btn {
+            min-height: 50px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all .15s ease;
         }
         .answer-btn {
-            width: 100%; padding: 16px 20px;
-            background: var(--bg); border: 2px solid var(--border);
-            border-radius: 12px; font-size: 15px; font-weight: 600;
-            color: var(--text); cursor: pointer; text-align: left;
-            display: flex; align-items: center; justify-content: space-between;
-            transition: all .15s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            padding: 0 18px;
+            border: 1px solid #cfd8e5;
+            background: #fff;
+            color: var(--text);
+            text-align: left;
         }
         .answer-btn:hover {
             border-color: var(--blue);
-            background: var(--blue-light);
+            background: var(--blue-soft);
             color: var(--blue);
-            transform: translateX(3px);
+            transform: translateX(2px);
         }
-        .answer-btn:active { transform: translateX(1px); }
-        .answer-arrow { font-size: 18px; opacity: .5; flex-shrink: 0; }
-        .answer-btn:hover .answer-arrow { opacity: 1; }
+        .instruction-list {
+            margin: 18px 0 0;
+            padding-left: 18px;
+            color: #344054;
+            font-size: 15px;
+            line-height: 1.75;
+        }
+        .hint-box {
+            margin-top: 24px;
+            padding: 16px;
+            border: 1px solid #ffd58a;
+            border-radius: 14px;
+            background: var(--amber-soft);
+            color: #5d4200;
+            font-size: 14px;
+            line-height: 1.55;
+        }
 
-        /* ── Info node (без кнопок, просто «Далее») ── */
-        .continue-btn {
-            width: 100%; padding: 16px;
-            background: var(--blue); color: #fff;
-            border: none; border-radius: 12px;
-            font-size: 15px; font-weight: 700;
-            cursor: pointer; margin-top: 8px;
-            transition: opacity .15s;
-        }
-        .continue-btn:hover { opacity: .88; }
-
-        /* ── Final card ── */
-        .final-card {
-            background: var(--card);
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: var(--shadow-lg);
-            animation: slideUp .2s ease;
-        }
         .final-header {
-            background: linear-gradient(135deg, #059669, #047857);
-            padding: 24px 28px;
-            color: #fff;
+            padding: 24px 30px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, #fbfffd, #f3fbf7);
         }
-        .final-header-label {
-            font-size: 11px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: .8px; opacity: .8; margin-bottom: 8px;
+        .final-title {
+            margin: 10px 0 0;
+            font-size: 26px;
+            letter-spacing: -.04em;
         }
-        .final-header-title {
-            font-size: 20px; font-weight: 700; line-height: 1.3;
+        .final-body {
+            display: grid;
+            gap: 16px;
+            padding: 22px 30px 26px;
         }
-
-        .final-body { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
-
-        .final-block {}
-        .final-block-label {
-            font-size: 11px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: .5px; color: var(--muted); margin-bottom: 8px;
-            display: flex; align-items: center; gap: 6px;
+        .final-block {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
+            padding: 16px;
         }
-        .final-block-content {
-            font-size: 15px; line-height: 1.65; color: var(--text);
-        }
-
-        /* Блок «Что сказать клиенту» */
         .answer-block {
-            background: var(--green-light);
-            border-radius: 12px;
-            padding: 16px 18px;
-            position: relative;
+            border-color: #bdebd2;
+            background: linear-gradient(180deg, #f0fbf5, #e9f8f0);
         }
-        .answer-block .final-block-label { color: var(--green); }
-        .answer-block .final-block-content {
-            font-size: 15px; line-height: 1.7; color: var(--text);
+        .block-label {
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+        .block-content {
+            color: var(--text);
+            font-size: 15px;
+            line-height: 1.65;
             white-space: pre-wrap;
         }
-        .copy-inline-btn {
-            position: absolute; top: 12px; right: 12px;
-            padding: 5px 10px; font-size: 12px; font-weight: 600;
-            background: var(--card); border: 1px solid var(--border);
-            border-radius: 6px; cursor: pointer; color: var(--muted);
-            transition: all .15s;
-        }
-        .copy-inline-btn:hover { border-color: var(--green); color: var(--green); }
-        .copy-inline-btn.copied { border-color: var(--green); color: var(--green); background: var(--green-light); }
-
-        /* Документы */
-        .doc-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
-        .doc-item {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 14px; color: var(--text);
-        }
-        .doc-item::before { content: '📎'; font-size: 14px; }
-
-        /* Ссылки */
-        .link-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
-        .link-item a {
-            color: var(--blue); text-decoration: none; font-size: 14px;
-            display: flex; align-items: center; gap: 6px;
-        }
-        .link-item a:hover { text-decoration: underline; }
-        .link-item a::before { content: '🔗'; font-size: 13px; }
-
-        /* Внутренняя заметка */
         .note-block {
-            background: var(--yellow-light);
-            border-radius: 10px;
-            padding: 14px 16px;
+            background: #fcfdff;
         }
-        .note-block .final-block-label { color: var(--yellow); }
-        .note-block .final-block-content { font-size: 14px; color: var(--text); }
+        .note-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .lock {
+            color: var(--muted);
+            font-size: 13px;
+        }
+        .materials {
+            display: grid;
+            gap: 8px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .materials a,
+        .materials span {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            color: var(--blue);
+            font-size: 14px;
+            font-weight: 750;
+        }
+        .materials span {
+            color: var(--text);
+        }
 
-        /* Разделитель */
-        .final-divider { height: 1px; background: var(--border); margin: 4px 0; }
+        .footer-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 30px;
+            border-top: 1px solid var(--line);
+            background: #fbfdff;
+        }
+        .primary-btn,
+        .copy-btn {
+            border: none;
+            background: var(--blue);
+            color: #fff;
+            padding: 0 20px;
+        }
+        .primary-btn.green {
+            background: var(--green);
+        }
+        .secondary-btn {
+            border: 1px solid var(--line);
+            background: #fff;
+            color: var(--blue);
+            padding: 0 16px;
+        }
+        .copy-btn {
+            min-height: 42px;
+            background: #fff;
+            color: var(--blue);
+            border: 1px solid #bcd0f8;
+            margin-top: 14px;
+        }
+        .copy-btn.copied {
+            border-color: var(--green);
+            color: var(--green-dark);
+            background: var(--green-soft);
+        }
 
-        /* ── Bottom actions ── */
-        .bottom-actions {
-            display: flex; gap: 10px; flex-wrap: wrap;
-            margin-top: 24px; align-items: center;
-        }
-        .btn {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 10px 18px; border-radius: 10px;
-            font-size: 14px; font-weight: 600; cursor: pointer;
-            border: none; transition: all .15s; text-decoration: none;
-        }
-        .btn:hover { opacity: .85; }
-        .btn-back {
-            background: var(--card); color: var(--text);
-            border: 1px solid var(--border);
-        }
-        .btn-back:hover { border-color: var(--blue); color: var(--blue); }
-        .btn-restart {
-            background: var(--card); color: var(--muted);
-            border: 1px solid var(--border);
-        }
-        .btn-restart:hover { border-color: var(--red); color: var(--red); }
-        .btn-list {
-            background: var(--card); color: var(--muted);
-            border: 1px solid var(--border);
-            text-decoration: none;
-        }
-        .btn-list:hover { border-color: var(--blue); color: var(--blue); }
-        .btn-copy {
-            background: var(--green); color: #fff;
-        }
-        .btn-copy.copied { background: #047857; }
-        .btn-ml { margin-left: auto; }
-
-        /* ── Empty / error state ── */
-        .empty-state {
-            text-align: center; padding: 60px 20px; color: var(--muted);
-        }
-        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
-        .empty-state h2 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
-        .empty-state p { font-size: 14px; line-height: 1.6; }
-
-        /* ── Loading ── */
-        .loading {
-            display: flex; align-items: center; justify-content: center;
-            padding: 60px; color: var(--muted); gap: 10px; font-size: 14px;
+        .loading,
+        .empty {
+            display: grid;
+            place-items: center;
+            min-height: 430px;
+            padding: 30px;
+            color: var(--muted);
+            text-align: center;
         }
         .spinner {
-            width: 20px; height: 20px; border-radius: 50%;
-            border: 2px solid var(--border);
-            border-top-color: var(--blue);
-            animation: spin .7s linear infinite;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 3px solid #dce5ef;
+            border-top-color: var(--green);
+            animation: spin .75s linear infinite;
+            margin-bottom: 10px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── Restart modal ── */
         .modal-overlay {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,.5); z-index: 1000;
-            align-items: center; justify-content: center;
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(15,23,42,.42);
         }
         .modal-overlay.show { display: flex; }
         .modal {
-            background: var(--card); border-radius: 14px;
-            padding: 28px; max-width: 340px; width: 90%;
-            box-shadow: var(--shadow-lg);
+            width: min(380px, 100%);
+            padding: 24px;
+            border-radius: 18px;
+            background: #fff;
+            box-shadow: var(--shadow);
         }
-        .modal h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
-        .modal p { font-size: 14px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
-        .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+        .modal h3 { margin: 0 0 8px; }
+        .modal p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
-        /* ── Responsive ── */
-        @media (max-width: 600px) {
-            .main { padding: 20px 12px 60px; }
-            .question-card, .final-body { padding: 20px 16px; }
-            .final-header { padding: 18px 20px; }
-            .question-title { font-size: 18px; }
-            .header-title { font-size: 14px; }
-            .step-badge { display: none; }
-            .bottom-actions { flex-direction: column; }
-            .bottom-actions .btn { width: 100%; justify-content: center; }
-            .btn-ml { margin-left: 0; }
+        @media (max-width: 860px) {
+            .page { padding: 18px 14px 30px; }
+            .topbar { grid-template-columns: 1fr; }
+            .scenario-title { text-align: left; }
+            .restart-btn { justify-self: start; }
+            .workspace { grid-template-columns: 1fr; }
+            .path-panel { position: static; }
+            .node-title { font-size: 23px; }
+            .card-inner,
+            .final-header,
+            .final-body,
+            .footer-actions { padding-left: 18px; padding-right: 18px; }
+            .footer-actions { flex-direction: column; }
+            .footer-actions > * { width: 100%; justify-content: center; }
         }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
+<div class="page">
+    <header class="topbar">
+        <a href="{{ url_for('scenarios_list') }}" class="back-link">← К списку сценариев</a>
+        <div class="scenario-title">{{ scenario.title }}</div>
+        <button class="restart-btn" type="button" onclick="showRestartModal()">↻ Начать заново</button>
+    </header>
 
-<!-- Header -->
-<div class="header">
-    <a href="{{ url_for('scenarios_list') }}" class="back-btn">← Сценарии</a>
-    <div class="header-title">{{ scenario.title }}</div>
-    <div class="header-right">
-        <div class="step-badge" id="stepBadge">Шаг 1</div>
-        <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">🌙</button>
-    </div>
-</div>
-
-<!-- Main -->
-<div class="main">
-    <!-- Путь (chips) -->
-    <div class="path-chips" id="pathChips"></div>
-
-    <!-- Контент (вопрос / финал / загрузка) -->
-    <div id="content">
-        <div class="loading"><div class="spinner"></div> Загрузка...</div>
+    <div class="progress-wrap">
+        <div class="step-text" id="stepText">Шаг 1 из {{ total_nodes or 1 }}</div>
+        <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
     </div>
 
-    <!-- Нижние кнопки -->
-    <div class="bottom-actions" id="bottomActions" style="display:none;"></div>
+    <main class="workspace">
+        <aside class="path-panel">
+            <h2 class="path-title">История пути</h2>
+            <div class="path-list" id="pathList">
+                <div class="path-empty">Ответы появятся здесь после выбора вариантов в сценарии.</div>
+            </div>
+        </aside>
+
+        <section class="content-card" id="content">
+            <div class="loading"><div><div class="spinner"></div>Загрузка сценария...</div></div>
+        </section>
+    </main>
 </div>
 
-<!-- Restart modal -->
 <div class="modal-overlay" id="restartModal">
     <div class="modal">
-        <h3>Начать заново?</h3>
-        <p>Текущий прогресс будет сброшен и вы начнёте сценарий с начала.</p>
-        <div class="modal-btns">
-            <button class="btn btn-back" onclick="closeRestartModal()">Отмена</button>
-            <button class="btn btn-restart" onclick="confirmRestart()">Начать заново</button>
+        <h3>Начать сценарий заново?</h3>
+        <p>История выбранных ответов очистится, и вы вернётесь к первому шагу.</p>
+        <div class="modal-actions">
+            <button class="secondary-btn" type="button" onclick="closeRestartModal()">Отмена</button>
+            <button class="primary-btn green" type="button" onclick="confirmRestart()">Начать заново</button>
         </div>
     </div>
 </div>
@@ -392,282 +482,245 @@
 <script>
 const SCENARIO_ID = {{ scenario.id }};
 const ROOT_NODE_ID = {{ root_node.id if root_node else 'null' }};
-const SCENARIO_TITLE = {{ scenario.title | tojson }};
+const TOTAL_NODES = Math.max(1, {{ total_nodes or 1 }});
 
-// История: [{nodeId, title, answerLabel}]
 let history = [];
-let currentNodeId = null;
-let stepCount = 0;
+let currentNode = null;
+let currentChoices = [];
 
-// ── Загрузка узла ─────────────────────────────────────────────────
-async function loadNode(nodeId, pushToHistory = true, answerLabel = '') {
+function esc(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+async function loadNode(nodeId) {
     showLoading();
     try {
         const resp = await fetch(`/api/scenarios/${SCENARIO_ID}/node/${nodeId}`);
         const data = await resp.json();
-        if (!data.success) { showError(data.error || 'Ошибка загрузки'); return; }
-
-        const node = data.node;
-        const choices = data.choices || [];
-
-        if (pushToHistory && currentNodeId !== null) {
-            history.push({ nodeId: currentNodeId, title: node.title, answerLabel });
+        if (!data.success) {
+            showError(data.error || 'Не удалось загрузить шаг');
+            return;
         }
-
-        currentNodeId = nodeId;
-        stepCount = history.length + 1;
-
-        updateBadge();
-        updatePath();
-        renderNode(node, choices);
-        renderBottomActions(node);
-
-    } catch(e) {
+        currentNode = data.node;
+        currentChoices = data.choices || [];
+        renderCurrent();
+    } catch (e) {
         showError('Не удалось загрузить шаг. Проверьте соединение.');
     }
 }
 
-// ── Рендер узла ───────────────────────────────────────────────────
-function renderNode(node, choices) {
-    const content = document.getElementById('content');
-    const type = node.node_type;
+function renderCurrent() {
+    updateProgress();
+    updatePath();
+    if (!currentNode) return;
 
-    if (type === 'final') {
-        content.innerHTML = renderFinal(node);
+    if (currentNode.node_type === 'final') {
+        renderFinal(currentNode);
     } else {
-        content.innerHTML = renderQuestion(node, choices);
+        renderStep(currentNode, currentChoices);
     }
-
-    // Анимация появления
-    content.firstElementChild?.classList.add('animate');
 }
 
-function renderQuestion(node, choices) {
-    const labelMap = {
-        start: ['🚀', 'Начало', 'label-start'],
-        question: ['❓', 'Вопрос', 'label-question'],
-        info: ['ℹ️', 'Действие', 'label-info'],
-    };
-    const [icon, labelText, labelClass] = labelMap[node.node_type] || ['❓', 'Вопрос', 'label-question'];
+function nodeKind(node) {
+    if (node.node_type === 'final') return ['Финальный ответ', 'badge-final'];
+    if (node.node_type === 'info') return ['Инструкция', 'badge-info'];
+    if (node.node_type === 'start') return ['Начало', 'badge-start'];
+    return ['Вопрос', 'badge-question'];
+}
 
-    const hintHtml = node.content
-        ? `<div class="question-hint">${esc(node.content)}</div>`
-        : '';
+function renderStep(node, choices) {
+    const [label, cls] = nodeKind(node);
+    const isInstruction = node.node_type === 'info' || node.node_type === 'start';
+    const hasSingleNext = isInstruction && choices.length === 1;
+    const hint = node.content ? `<p class="node-hint">${esc(node.content)}</p>` : '';
+    let body = '';
 
-    let answersHtml = '';
-    if (node.node_type === 'info' && choices.length === 1) {
-        // Info-узел с одним переходом — просто кнопка Далее
-        answersHtml = `
-            <button class="continue-btn"
-                data-nid="${choices[0].to_node_id}"
-                data-lbl="">
-                Далее →
-            </button>`;
-    } else if (choices.length > 0) {
-        answersHtml = `<div class="answers">` +
-            choices.map(c => `
-                <button class="answer-btn"
-                    data-nid="${c.to_node_id}"
-                    data-lbl="${esc(c.label || '')}">
-                    <span>${esc(c.label || 'Далее')}</span>
-                    <span class="answer-arrow">›</span>
-                </button>
-            `).join('') +
-        `</div>`;
+    if (isInstruction) {
+        body = `
+            ${hint || '<p class="node-hint">Выполните действие и переходите дальше.</p>'}
+            ${node.content ? renderInstructionList(node.content) : ''}
+            ${choices.length > 1 ? renderAnswers(choices) : ''}
+        `;
     } else {
-        answersHtml = `<div style="color:var(--muted);font-size:14px;text-align:center;padding:20px 0;">
-            Дальнейших шагов нет
-        </div>`;
+        body = `
+            ${hint}
+            ${choices.length ? renderAnswers(choices) : '<div class="hint-box">Для этого вопроса ещё не настроены варианты ответа.</div>'}
+        `;
     }
 
-    return `
-    <div class="question-card">
-        <div class="node-label ${labelClass}">${icon} ${labelText}</div>
-        <div class="question-title">${esc(node.title || '')}</div>
-        ${hintHtml}
-        ${answersHtml}
-    </div>`;
+    document.getElementById('content').innerHTML = `
+        <div class="card-inner">
+            <div class="node-badge ${cls}">${label}</div>
+            <h1 class="node-title">${esc(node.title || 'Шаг сценария')}</h1>
+            ${body}
+        </div>
+        <div class="footer-actions">
+            <button class="secondary-btn" type="button" onclick="goBack()" ${history.length ? '' : 'disabled'}>← Назад</button>
+            ${hasSingleNext ? `<button class="primary-btn scenario-next" type="button" data-nid="${choices[0].to_node_id}" data-label="${esc(choices[0].label || 'Далее')}">Далее</button>` : ''}
+            ${!hasSingleNext ? `<a class="secondary-btn" href="{{ url_for('scenarios_list') }}">К списку сценариев</a>` : ''}
+        </div>
+    `;
+}
+
+function renderInstructionList(text) {
+    const lines = String(text || '').split('\n').map(x => x.trim()).filter(Boolean);
+    if (lines.length < 2) return '';
+    return `<ol class="instruction-list">${lines.map(line => `<li>${esc(line)}</li>`).join('')}</ol>`;
+}
+
+function renderAnswers(choices) {
+    return `<div class="answers">` + choices.map(choice => `
+        <button class="answer-btn scenario-next" type="button" data-nid="${choice.to_node_id}" data-label="${esc(choice.label || 'Далее')}">
+            <span>${esc(choice.label || 'Далее')}</span>
+            <span>›</span>
+        </button>
+    `).join('') + `</div>`;
 }
 
 function renderFinal(node) {
-    let blocks = '';
+    const finalAnswer = node.final_answer || '';
+    const blocks = [];
 
-    // Блок: готовый ответ клиенту
-    if (node.final_answer) {
-        blocks += `
-        <div class="final-block answer-block">
-            <div class="final-block-label">💬 Что сказать клиенту</div>
-            <div class="final-block-content" id="finalAnswerText">${esc(node.final_answer)}</div>
-            <button class="copy-inline-btn" id="copyInlineBtn" onclick="copyAnswer()">📋 Копировать</button>
-        </div>`;
+    if (finalAnswer) {
+        blocks.push(`
+            <div class="final-block answer-block">
+                <div class="block-label">Что сказать клиенту</div>
+                <div class="block-content" id="finalAnswerText">${esc(finalAnswer)}</div>
+                <button class="copy-btn" id="copyBtn" type="button" onclick="copyAnswer()">Скопировать ответ</button>
+            </div>
+        `);
     }
 
-    // Блок: контент / что нужно сделать
     if (node.content) {
-        blocks += `
-        <div class="final-block">
-            <div class="final-block-label">📋 Что нужно сделать</div>
-            <div class="final-block-content">${esc(node.content)}</div>
-        </div>`;
-    }
-
-    // Документы
-    if (node.documents) {
-        const docs = node.documents.split('\n').map(d => d.trim()).filter(Boolean);
-        if (docs.length) {
-            blocks += `
+        blocks.push(`
             <div class="final-block">
-                <div class="final-block-label">📎 Документы / условия</div>
-                <ul class="doc-list">
-                    ${docs.map(d => `<li class="doc-item">${esc(d)}</li>`).join('')}
-                </ul>
-            </div>`;
-        }
+                <div class="block-label">Что нужно сделать</div>
+                <div class="block-content">${esc(node.content)}</div>
+            </div>
+        `);
     }
 
-    // Ссылки
-    if (node.links) {
-        const links = node.links.split('\n').map(l => l.trim()).filter(Boolean);
-        if (links.length) {
-            blocks += `
-            <div class="final-block">
-                <div class="final-block-label">🔗 Ссылки</div>
-                <ul class="link-list">
-                    ${links.map(l => {
-                        const isUrl = l.startsWith('http');
-                        return `<li class="link-item">${isUrl
-                            ? `<a href="${esc(l)}" target="_blank">${esc(l)}</a>`
-                            : `<span style="font-size:14px;color:var(--text);">${esc(l)}</span>`
-                        }</li>`;
-                    }).join('')}
-                </ul>
-            </div>`;
-        }
-    }
-
-    // Внутренняя заметка
     if (node.internal_note) {
-        blocks += `
-        <div class="final-block note-block">
-            <div class="final-block-label">🔒 Внутренняя заметка</div>
-            <div class="final-block-content">${esc(node.internal_note)}</div>
-        </div>`;
+        blocks.push(`
+            <div class="final-block note-block">
+                <div class="note-head">
+                    <div class="block-label">Внутренняя заметка</div>
+                    <div class="lock">только для оператора</div>
+                </div>
+                <div class="block-content">${esc(node.internal_note)}</div>
+            </div>
+        `);
     }
 
-    if (!blocks) {
-        blocks = `<div style="color:var(--muted);font-size:14px;text-align:center;padding:20px 0;">
-            Информация по данному шагу не заполнена
-        </div>`;
-    }
+    const materials = renderMaterials(node);
+    if (materials) blocks.push(materials);
 
-    return `
-    <div class="final-card">
+    document.getElementById('content').innerHTML = `
         <div class="final-header">
-            <div class="final-header-label">✅ Финальный ответ</div>
-            <div class="final-header-title">${esc(node.title || 'Результат')}</div>
+            <div class="node-badge badge-final">Финальный ответ</div>
+            <h1 class="final-title">${esc(node.title || 'Сообщите клиенту')}</h1>
         </div>
-        <div class="final-body">${blocks}</div>
-    </div>`;
+        <div class="final-body">
+            ${blocks.length ? blocks.join('') : '<div class="final-block"><div class="block-content">Финальный шаг пока не заполнен.</div></div>'}
+        </div>
+        <div class="footer-actions">
+            <button class="secondary-btn" type="button" onclick="goBack()" ${history.length ? '' : 'disabled'}>← Назад</button>
+            <a class="secondary-btn" href="{{ url_for('scenarios_list') }}">К списку сценариев</a>
+            <a class="primary-btn green" href="{{ url_for('scenarios_list') }}">Завершить</a>
+        </div>
+    `;
 }
 
-// ── Нижние кнопки ─────────────────────────────────────────────────
-function renderBottomActions(node) {
-    const ba = document.getElementById('bottomActions');
-    ba.style.display = 'flex';
-    const isFinal = node.node_type === 'final';
-    const canGoBack = history.length > 0;
-
-    let html = '';
-
-    if (canGoBack) {
-        html += `<button class="btn btn-back" onclick="goBack()">← Назад</button>`;
+function renderMaterials(node) {
+    const rows = [];
+    if (node.documents) {
+        String(node.documents).split('\n').map(x => x.trim()).filter(Boolean).forEach(doc => {
+            rows.push(`<li><span>${esc(doc)}</span></li>`);
+        });
     }
-
-    html += `<button class="btn btn-restart" onclick="showRestartModal()">↺ Начать заново</button>`;
-
-    if (isFinal) {
-        if (node.final_answer) {
-            html += `<button class="btn btn-copy btn-ml" id="copyMainBtn" onclick="copyAnswer()">📋 Скопировать ответ</button>`;
-        }
-        html += `<a href="{{ url_for('scenarios_list') }}" class="btn btn-list ${node.final_answer ? '' : 'btn-ml'}">К списку</a>`;
+    if (node.links) {
+        String(node.links).split('\n').map(x => x.trim()).filter(Boolean).forEach(link => {
+            const safe = esc(link);
+            if (link.startsWith('http')) rows.push(`<li><a href="${safe}" target="_blank" rel="noopener">${safe}<span>↗</span></a></li>`);
+            else rows.push(`<li><span>${safe}</span></li>`);
+        });
     }
-
-    ba.innerHTML = html;
+    if (!rows.length) return '';
+    return `
+        <div class="final-block">
+            <div class="block-label">Полезные материалы</div>
+            <ul class="materials">${rows.join('')}</ul>
+        </div>
+    `;
 }
 
-// ── Навигация ─────────────────────────────────────────────────────
 function selectAnswer(toNodeId, label) {
-    loadNode(toNodeId, true, label);
+    if (currentNode) {
+        history.push({
+            nodeId: currentNode.id,
+            title: currentNode.title || 'Шаг',
+            answer: label || 'Далее'
+        });
+    }
+    loadNode(toNodeId);
 }
 
-// Делегирование кликов по кнопкам ответов (data-nid / data-lbl)
-// Вешаем на document чтобы работало после innerHTML перезаписи
-document.addEventListener('click', function(e) {
-    const btn = e.target.closest('[data-nid]');
+document.addEventListener('click', (event) => {
+    const btn = event.target.closest('.scenario-next');
     if (!btn) return;
-    const nid = parseInt(btn.dataset.nid);
-    const lbl = btn.dataset.lbl || '';
-    if (nid) loadNode(nid, true, lbl);
+    const nodeId = Number(btn.dataset.nid);
+    if (!nodeId) return;
+    selectAnswer(nodeId, btn.dataset.label || 'Далее');
 });
 
 function goBack() {
     if (!history.length) return;
     const prev = history.pop();
-    loadNode(prev.nodeId, false);
+    loadNode(prev.nodeId);
 }
 
-function showRestartModal() {
-    document.getElementById('restartModal').classList.add('show');
-}
-function closeRestartModal() {
-    document.getElementById('restartModal').classList.remove('show');
-}
-function confirmRestart() {
-    closeRestartModal();
-    history = [];
-    stepCount = 0;
-    loadNode(ROOT_NODE_ID, false);
-}
-
-// ── Path chips ────────────────────────────────────────────────────
 function updatePath() {
-    const chips = document.getElementById('pathChips');
-    if (!history.length) { chips.innerHTML = ''; return; }
-
-    // Показываем только ответы (answerLabel) — то что выбрал оператор
-    const answers = history.filter(h => h.answerLabel).slice(-5); // последние 5
-    if (!answers.length) { chips.innerHTML = ''; return; }
-
-    chips.innerHTML = answers.map((h, i) => `
-        ${i > 0 ? '<span class="chip-sep">›</span>' : ''}
-        <span class="chip answer">${esc(h.answerLabel)}</span>
+    const root = document.getElementById('pathList');
+    if (!history.length) {
+        root.innerHTML = '<div class="path-empty">Ответы появятся здесь после выбора вариантов в сценарии.</div>';
+        return;
+    }
+    root.innerHTML = history.map(item => `
+        <div class="path-item">
+            <div class="path-dot"></div>
+            <div>
+                <div class="path-question">${esc(item.title)}</div>
+                <div class="path-answer">${esc(item.answer)}</div>
+            </div>
+        </div>
     `).join('');
 }
 
-// ── Step badge ────────────────────────────────────────────────────
-function updateBadge() {
-    const badge = document.getElementById('stepBadge');
-    badge.textContent = `Шаг ${stepCount}`;
+function updateProgress() {
+    const step = Math.max(1, history.length + 1);
+    const pct = Math.min(100, Math.round((step / TOTAL_NODES) * 100));
+    document.getElementById('stepText').textContent = `Шаг ${step} из ${TOTAL_NODES}`;
+    document.getElementById('progressBar').style.width = pct + '%';
 }
 
-// ── Копирование ───────────────────────────────────────────────────
 function copyAnswer() {
     const el = document.getElementById('finalAnswerText');
+    const btn = document.getElementById('copyBtn');
     if (!el) return;
-    const text = el.innerText;
-    navigator.clipboard.writeText(text).then(() => {
-        // Inline btn
-        const inlineBtn = document.getElementById('copyInlineBtn');
-        if (inlineBtn) { inlineBtn.textContent = '✓ Скопировано'; inlineBtn.classList.add('copied'); }
-        // Main btn
-        const mainBtn = document.getElementById('copyMainBtn');
-        if (mainBtn) { mainBtn.textContent = '✓ Скопировано'; mainBtn.classList.add('copied'); }
+    navigator.clipboard.writeText(el.innerText).then(() => {
+        if (!btn) return;
+        btn.textContent = 'Скопировано';
+        btn.classList.add('copied');
         setTimeout(() => {
-            if (inlineBtn) { inlineBtn.textContent = '📋 Копировать'; inlineBtn.classList.remove('copied'); }
-            if (mainBtn) { mainBtn.textContent = '📋 Скопировать ответ'; mainBtn.classList.remove('copied'); }
-        }, 2500);
+            btn.textContent = 'Скопировать ответ';
+            btn.classList.remove('copied');
+        }, 2200);
     }).catch(() => {
-        // Fallback
         const range = document.createRange();
         range.selectNode(el);
         window.getSelection().removeAllRanges();
@@ -677,47 +730,41 @@ function copyAnswer() {
     });
 }
 
-// ── Утилиты ───────────────────────────────────────────────────────
-function esc(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
 function showLoading() {
-    document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка...</div>';
-    document.getElementById('bottomActions').style.display = 'none';
-    document.getElementById('pathChips').innerHTML = '';
+    document.getElementById('content').innerHTML = '<div class="loading"><div><div class="spinner"></div>Загрузка сценария...</div></div>';
 }
-function showError(msg) {
+
+function showError(message) {
     document.getElementById('content').innerHTML = `
-    <div class="empty-state">
-        <div class="icon">⚠️</div>
-        <h2>Что-то пошло не так</h2>
-        <p>${esc(msg)}</p>
-        <a href="{{ url_for('scenarios_list') }}" class="btn btn-list" style="display:inline-flex;margin-top:16px;">← К списку сценариев</a>
-    </div>`;
-    document.getElementById('bottomActions').style.display = 'none';
+        <div class="empty">
+            <div>
+                <h2>Не удалось открыть сценарий</h2>
+                <p>${esc(message)}</p>
+                <a class="secondary-btn" href="{{ url_for('scenarios_list') }}">← К списку сценариев</a>
+            </div>
+        </div>
+    `;
 }
 
-// ── Тема ──────────────────────────────────────────────────────────
-function toggleTheme() {
-    const isDark = document.body.classList.toggle('dark');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
+function showRestartModal() {
+    document.getElementById('restartModal').classList.add('show');
+}
+function closeRestartModal() {
+    document.getElementById('restartModal').classList.remove('show');
+}
+function confirmRestart() {
+    history = [];
+    currentNode = null;
+    closeRestartModal();
+    loadNode(ROOT_NODE_ID);
 }
 
-// ── Инициализация ─────────────────────────────────────────────────
 (function init() {
-    // Тема
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark') {
-        document.body.classList.add('dark');
-        document.getElementById('themeBtn').textContent = '☀️';
-    }
-
     if (!ROOT_NODE_ID) {
-        showError('Сценарий не настроен — стартовый узел не найден.');
+        showError('Сценарий не настроен: стартовый шаг не найден.');
         return;
     }
-    loadNode(ROOT_NODE_ID, false);
+    loadNode(ROOT_NODE_ID);
 })();
 </script>
 </body>

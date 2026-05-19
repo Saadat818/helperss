@@ -134,9 +134,14 @@ class ScenarioManager:
 
     def get_categories(self) -> List[Dict]:
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM cs_categories ORDER BY sort_order, name"
-            ).fetchall()
+            rows = conn.execute("""
+                SELECT c.*,
+                    (SELECT COUNT(*)
+                     FROM cs_scenarios s
+                     WHERE s.category_id = c.id AND s.status = 'active') as active_count
+                FROM cs_categories c
+                ORDER BY c.sort_order, c.name
+            """).fetchall()
             return [dict(r) for r in rows]
 
     def create_category(self, name: str, icon: str = '📁') -> int:
@@ -168,7 +173,9 @@ class ScenarioManager:
                 SELECT s.*, c.name as category_name, c.icon as category_icon,
                     (SELECT COUNT(*) FROM cs_views v
                      WHERE v.scenario_id = s.id
-                     AND v.viewed_at >= datetime('now', '-30 days')) as views_30d
+                     AND v.viewed_at >= datetime('now', '-30 days')) as views_30d,
+                    (SELECT COUNT(*) FROM cs_nodes n
+                     WHERE n.scenario_id = s.id) as node_count
                 FROM cs_scenarios s
                 LEFT JOIN cs_categories c ON s.category_id = c.id
                 WHERE 1=1
@@ -457,9 +464,10 @@ class ScenarioManager:
     def get_top_scenarios(self, limit: int = 10) -> List[Dict]:
         with self._connect() as conn:
             rows = conn.execute("""
-                SELECT s.id, s.title, s.category_id,
+                SELECT s.id, s.title, s.description, s.tags, s.category_id,
                     c.name as category_name, c.icon as category_icon,
-                    COUNT(v.id) as views_30d
+                    COUNT(v.id) as views_30d,
+                    (SELECT COUNT(*) FROM cs_nodes n WHERE n.scenario_id = s.id) as node_count
                 FROM cs_scenarios s
                 LEFT JOIN cs_categories c ON s.category_id = c.id
                 LEFT JOIN cs_views v ON v.scenario_id = s.id

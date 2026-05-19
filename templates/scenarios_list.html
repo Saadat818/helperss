@@ -6,336 +6,642 @@
     <title>Сценарии консультаций — Helper</title>
     <style>
         :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
-            --greenLight: #00d4aa;
-            --blue: #2196F3;
-            --blueLight: #42a5f5;
-        }
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 0 0 60px;
+            --bg: #f6f8fb;
+            --panel: #ffffff;
+            --panel-soft: #f9fbfd;
+            --text: #172033;
+            --muted: #667085;
+            --line: #e3e9f2;
+            --green: #12a66a;
+            --green-dark: #0b8756;
+            --green-soft: #e8f7ef;
+            --blue: #2563eb;
+            --blue-soft: #eaf2ff;
+            --amber: #f59f00;
+            --amber-soft: #fff5dc;
+            --red: #e5485d;
+            --red-soft: #ffecef;
+            --shadow: 0 16px 40px rgba(28, 39, 60, .08);
+            --radius: 18px;
         }
 
-        /* Хедер */
-        .header {
-            background: var(--card);
-            border-bottom: 1px solid var(--border);
-            padding: 14px 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 20% 0%, rgba(18, 166, 106, .08), transparent 34%),
+                linear-gradient(180deg, #fbfdff 0%, var(--bg) 42%, #f2f5f9 100%);
+            color: var(--text);
+            font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        }
+        a { color: inherit; text-decoration: none; }
+        button, input { font-family: inherit; }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 230px minmax(0, 1fr);
+            min-height: 100vh;
+        }
+
+        .sidebar {
             position: sticky;
             top: 0;
-            z-index: 100;
+            height: 100vh;
+            padding: 24px 18px;
+            background: rgba(255,255,255,.88);
+            border-right: 1px solid var(--line);
+            backdrop-filter: blur(18px);
         }
-        .back-btn {
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 28px;
+            color: var(--green-dark);
+            font-size: 24px;
+            font-weight: 850;
+            letter-spacing: -.04em;
+        }
+        .brand-mark {
+            width: 34px;
+            height: 34px;
+            border-radius: 11px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, var(--green), #0fcf82);
+            color: #fff;
+            font-size: 18px;
+            font-weight: 900;
+        }
+        .nav {
+            display: grid;
+            gap: 6px;
+        }
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 44px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            color: #475467;
+            font-size: 14px;
+            font-weight: 650;
+        }
+        .nav-link.active {
+            background: var(--green-soft);
+            color: var(--green-dark);
+        }
+        .nav-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 7px;
+            display: grid;
+            place-items: center;
+            background: rgba(23, 32, 51, .06);
+            font-size: 11px;
+            font-weight: 900;
+        }
+        .nav-link.active .nav-dot {
+            background: #d4f2e3;
+        }
+        .sidebar-bottom {
+            position: absolute;
+            left: 18px;
+            right: 18px;
+            bottom: 24px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+        .user-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 14px;
+            padding: 10px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
+        }
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            display: grid;
+            place-items: center;
+            background: var(--green);
+            color: #fff;
+            font-weight: 850;
+        }
+        .user-name {
+            max-width: 130px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .main {
+            min-width: 0;
+            padding: 28px 32px 40px;
+        }
+        .shell {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .top-link {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            color: var(--muted);
-            text-decoration: none;
+            gap: 8px;
+            margin-bottom: 14px;
+            color: var(--blue);
             font-size: 14px;
-            padding: 6px 10px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            transition: all .15s;
+            font-weight: 650;
         }
-        .back-btn:hover { color: var(--text); border-color: var(--green); }
-        .header-title {
-            font-size: 17px;
-            font-weight: 700;
-            color: var(--text);
-        }
-        .header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-        .theme-toggle {
-            background: var(--card2);
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            font-size: 18px;
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-        }
-
-        .container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
-
-        /* Поиск и фильтры */
-        .search-bar {
+        .hero {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            justify-content: space-between;
+            gap: 24px;
+            align-items: flex-start;
+            margin-bottom: 18px;
         }
-        .search-input {
-            flex: 1;
-            background: var(--card);
-            border: 1px solid var(--border);
+        h1 {
+            margin: 0 0 8px;
+            font-size: 30px;
+            line-height: 1.15;
+            letter-spacing: -.04em;
+        }
+        .subtitle {
+            color: var(--muted);
+            font-size: 15px;
+        }
+        .hero-stat {
+            min-width: 170px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: #fff;
+            border: 1px solid var(--line);
+            box-shadow: 0 8px 20px rgba(28,39,60,.05);
+        }
+        .hero-stat strong {
+            display: block;
+            margin-bottom: 3px;
+            color: var(--green-dark);
+            font-size: 26px;
+        }
+        .hero-stat span {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .search-form {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            max-width: 620px;
+            margin: 18px 0;
+        }
+        .search-box {
+            position: relative;
+        }
+        .search-box input {
+            width: 100%;
+            min-height: 48px;
+            padding: 0 46px 0 16px;
+            border: 1px solid #ccd6e3;
+            border-radius: 12px;
+            background: #fff;
             color: var(--text);
-            border-radius: 10px;
-            padding: 10px 16px;
             font-size: 15px;
             outline: none;
-            transition: border .15s;
+            box-shadow: 0 6px 16px rgba(28,39,60,.04);
         }
-        .search-input:focus { border-color: var(--blue); }
-        .search-input::placeholder { color: var(--muted); }
-        .search-btn {
-            background: var(--blue);
-            color: #fff;
+        .search-box input:focus {
+            border-color: var(--green);
+            box-shadow: 0 0 0 4px rgba(18,166,106,.12);
+        }
+        .search-icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--muted);
+            font-size: 18px;
+        }
+        .search-submit {
+            min-height: 48px;
+            padding: 0 18px;
             border: none;
-            border-radius: 10px;
-            padding: 10px 18px;
-            font-size: 15px;
-            font-weight: 600;
+            border-radius: 12px;
+            background: var(--green);
+            color: #fff;
+            font-weight: 800;
             cursor: pointer;
-            transition: background .15s;
-        }
-        .search-btn:hover { background: var(--blueLight); }
-
-        /* Категории */
-        .categories {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 24px;
-        }
-        .cat-btn {
-            background: var(--card);
-            border: 1px solid var(--border);
-            color: var(--muted);
-            border-radius: 20px;
-            padding: 6px 14px;
-            font-size: 13px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: all .15s;
-        }
-        .cat-btn:hover, .cat-btn.active {
-            border-color: var(--blue);
-            color: var(--blue);
-            background: rgba(33,150,243,.08);
+            box-shadow: 0 12px 24px rgba(18,166,106,.2);
         }
 
-        /* Топ обращений */
-        .section-title {
-            font-size: 15px;
-            font-weight: 700;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            margin-bottom: 12px;
-        }
-        .top-list {
+        .chips {
             display: flex;
-            flex-wrap: wrap;
             gap: 8px;
-            margin-bottom: 28px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
         }
-        .top-badge {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 6px 14px;
-            font-size: 13px;
-            text-decoration: none;
-            color: var(--text);
-            display: flex;
+        .chip {
+            display: inline-flex;
             align-items: center;
-            gap: 6px;
-            transition: all .15s;
+            gap: 8px;
+            min-height: 34px;
+            padding: 0 13px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: #fff;
+            color: #344054;
+            font-size: 13px;
+            font-weight: 750;
         }
-        .top-badge:hover { border-color: var(--blue); color: var(--blue); }
-        .top-badge .views { color: var(--muted); font-size: 11px; }
+        .chip.active {
+            border-color: var(--green);
+            background: var(--green-soft);
+            color: var(--green-dark);
+        }
+        .chip-count {
+            min-width: 22px;
+            height: 22px;
+            display: inline-grid;
+            place-items: center;
+            border-radius: 999px;
+            background: rgba(23,32,51,.06);
+            font-size: 12px;
+        }
+        .chip.active .chip-count {
+            background: #d2efdf;
+        }
 
-        /* Список сценариев */
-        .scenarios-grid {
+        .content-grid {
+            display: grid;
+            grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+        .card {
+            background: rgba(255,255,255,.94);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--line);
+        }
+        .card-title {
+            margin: 0;
+            font-size: 17px;
+            letter-spacing: -.02em;
+        }
+        .card-hint {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .popular-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            padding: 12px;
+        }
+        .popular-card {
+            min-height: 148px;
             display: flex;
             flex-direction: column;
             gap: 10px;
+            padding: 13px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
         }
-        .scenario-card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px 18px;
-            text-decoration: none;
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            transition: all .15s;
+        .popular-card:hover {
+            border-color: var(--green);
+            box-shadow: 0 12px 24px rgba(18,166,106,.12);
         }
-        .scenario-card:hover {
-            border-color: var(--blue);
-            transform: translateX(2px);
-            box-shadow: 0 4px 16px rgba(33,150,243,.1);
+        .scenario-name {
+            min-height: 36px;
+            font-size: 14px;
+            line-height: 1.3;
+            font-weight: 850;
         }
-        .scenario-icon {
-            font-size: 28px;
-            flex-shrink: 0;
-            width: 48px;
-            height: 48px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(33,150,243,.1);
-            border-radius: 10px;
-        }
-        .scenario-info { flex: 1; min-width: 0; }
-        .scenario-title {
-            font-size: 15px;
-            font-weight: 600;
-            margin-bottom: 4px;
-            white-space: nowrap;
+        .category-pill {
+            width: fit-content;
+            max-width: 100%;
+            padding: 4px 8px;
+            border-radius: 8px;
+            background: var(--green-soft);
+            color: var(--green-dark);
+            font-size: 12px;
+            font-weight: 800;
             overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        .scenario-meta {
-            font-size: 12px;
-            color: var(--muted);
+        .popular-meta {
             display: flex;
-            gap: 12px;
             flex-wrap: wrap;
-        }
-        .scenario-arrow {
+            gap: 8px;
+            margin-top: auto;
             color: var(--muted);
-            font-size: 18px;
-            flex-shrink: 0;
+            font-size: 12px;
+            font-weight: 650;
+        }
+        .open-btn {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 34px;
+            border: 1px solid var(--green);
+            border-radius: 10px;
+            color: var(--green-dark);
+            background: #fff;
+            font-size: 13px;
+            font-weight: 850;
+        }
+        .open-btn:hover {
+            background: var(--green);
+            color: #fff;
+        }
+
+        .scenario-list {
+            overflow: hidden;
+        }
+        .scenario-row {
+            display: grid;
+            grid-template-columns: minmax(230px, 1.6fr) minmax(130px, .7fr) minmax(160px, .9fr) 86px 82px 92px 140px;
+            gap: 12px;
+            align-items: center;
+            padding: 13px 16px;
+            border-bottom: 1px solid var(--line);
+        }
+        .scenario-row:last-child {
+            border-bottom: none;
+        }
+        .scenario-row:hover {
+            background: #fbfdff;
+        }
+        .scenario-head {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+        .scenario-title {
+            font-size: 14px;
+            font-weight: 850;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .scenario-desc {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.35;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
         }
         .tag {
-            background: rgba(33,150,243,.1);
-            color: var(--blue);
-            border-radius: 4px;
-            padding: 2px 7px;
+            padding: 4px 7px;
+            border-radius: 7px;
+            background: #eef2f6;
+            color: #475467;
             font-size: 11px;
+            font-weight: 750;
         }
-        .empty-state {
+        .metric {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 750;
+            white-space: nowrap;
+        }
+        .status {
+            width: fit-content;
+            padding: 5px 9px;
+            border-radius: 8px;
+            background: var(--green-soft);
+            color: var(--green-dark);
+            font-size: 12px;
+            font-weight: 850;
+        }
+        .start-btn {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 36px;
+            padding: 0 12px;
+            border: 1px solid var(--green);
+            border-radius: 10px;
+            color: var(--green-dark);
+            background: #fff;
+            font-size: 13px;
+            font-weight: 850;
+            white-space: nowrap;
+        }
+        .start-btn:hover {
+            background: var(--green);
+            color: #fff;
+        }
+
+        .empty {
+            padding: 48px 18px;
             text-align: center;
-            padding: 60px 20px;
             color: var(--muted);
         }
-        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .empty strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--text);
+            font-size: 18px;
+        }
+
+        @media (max-width: 1180px) {
+            .layout { grid-template-columns: 1fr; }
+            .sidebar { position: static; height: auto; display: none; }
+            .content-grid { grid-template-columns: 1fr; }
+            .scenario-row {
+                grid-template-columns: minmax(220px, 1fr) 120px 140px;
+            }
+            .scenario-row .metric:nth-of-type(n+2),
+            .scenario-row .status {
+                display: none;
+            }
+        }
+        @media (max-width: 720px) {
+            .main { padding: 18px 14px 30px; }
+            .hero { flex-direction: column; }
+            h1 { font-size: 25px; }
+            .search-form { grid-template-columns: 1fr; }
+            .popular-grid { grid-template-columns: 1fr; }
+            .scenario-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            .start-btn {
+                width: 100%;
+            }
+        }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    <div class="header">
-        <a href="{{ url_for('choose_help_type') }}" class="back-btn">← Назад</a>
-        <div class="header-title">🗂️ Сценарии консультаций</div>
-        <div class="header-right">
-            <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
+<div class="layout">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-mark">H</div>
+            <div>Helper</div>
         </div>
-    </div>
-
-    <div class="container">
-        <!-- Поиск -->
-        <form class="search-bar" method="get" action="{{ url_for('scenarios_list') }}">
-            {% if selected_category %}
-            <input type="hidden" name="category_id" value="{{ selected_category }}">
-            {% endif %}
-            <input type="text" name="q" class="search-input"
-                   placeholder="Поиск по названию или ключевым словам..."
-                   value="{{ search or '' }}">
-            <button type="submit" class="search-btn">🔍 Найти</button>
-        </form>
-
-        <!-- Категории -->
-        {% if categories %}
-        <div class="categories">
-            <a href="{{ url_for('scenarios_list', q=search) }}"
-               class="cat-btn {% if not selected_category %}active{% endif %}">Все</a>
-            {% for cat in categories %}
-            <a href="{{ url_for('scenarios_list', category_id=cat.id, q=search) }}"
-               class="cat-btn {% if selected_category == cat.id %}active{% endif %}">
-                {{ cat.icon }} {{ cat.name }}
-            </a>
-            {% endfor %}
+        <nav class="nav" aria-label="Разделы Helper">
+            <a class="nav-link active" href="{{ url_for('scenarios_list') }}"><span class="nav-dot">S</span>Сценарии консультаций</a>
+            <a class="nav-link" href="{{ url_for('choose_help_type') }}"><span class="nav-dot">H</span>Главная Helper</a>
+            <a class="nav-link" href="{{ url_for('show_problems') }}"><span class="nav-dot">M</span>Мануалы</a>
+            <a class="nav-link" href="{{ url_for('search_topics') }}"><span class="nav-dot">T</span>Тематики</a>
+            <a class="nav-link" href="{{ url_for('trainer_menu') }}"><span class="nav-dot">R</span>Тренажёр</a>
+        </nav>
+        <div class="sidebar-bottom">
+            <div>Нужна помощь?</div>
+            <a href="{{ url_for('choose_help_type') }}" style="color:var(--blue);font-weight:800;">Вернуться в Helper</a>
+            <div class="user-card">
+                <div class="avatar">{{ (user.name or user.username or 'U')[:1].upper() }}</div>
+                <div>
+                    <div class="user-name">{{ user.name or user.username or 'Оператор' }}</div>
+                    <div>Оператор</div>
+                </div>
+            </div>
         </div>
-        {% endif %}
+    </aside>
 
-        <!-- Топ обращений -->
-        {% if top_scenarios and not search and not selected_category %}
-        <div class="section-title">🔥 Топ обращений за 30 дней</div>
-        <div class="top-list">
-            {% for s in top_scenarios %}
-            <a href="{{ url_for('scenario_play', scenario_id=s.id) }}" class="top-badge">
-                {{ s.category_icon or '🗂️' }} {{ s.title }}
-                {% if s.views_30d > 0 %}<span class="views">{{ s.views_30d }}</span>{% endif %}
-            </a>
-            {% endfor %}
-        </div>
-        {% endif %}
+    <main class="main">
+        <div class="shell">
+            <a href="{{ url_for('choose_help_type') }}" class="top-link">← В Helper</a>
+            <section class="hero">
+                <div>
+                    <h1>Сценарии консультаций</h1>
+                    <div class="subtitle">Выберите сценарий, который подходит под текущую ситуацию клиента</div>
+                    <form class="search-form" method="get" action="{{ url_for('scenarios_list') }}">
+                        {% if selected_category %}
+                        <input type="hidden" name="category_id" value="{{ selected_category }}">
+                        {% endif %}
+                        <label class="search-box">
+                            <input type="text" name="q" value="{{ search or '' }}" placeholder="Найти сценарий: карта, Cisco, доступ, заявка...">
+                            <span class="search-icon">⌕</span>
+                        </label>
+                        <button class="search-submit" type="submit">Найти</button>
+                    </form>
+                </div>
+                <div class="hero-stat">
+                    <strong>{{ total_scenarios or scenarios|length }}</strong>
+                    <span>активных сценариев</span>
+                </div>
+            </section>
 
-        <!-- Список сценариев -->
-        <div class="section-title">
-            {% if search %}Результаты поиска: "{{ search }}"
-            {% elif selected_category %}Сценарии категории
-            {% else %}Все сценарии{% endif %}
-        </div>
+            <nav class="chips" aria-label="Фильтр по категориям">
+                <a href="{{ url_for('scenarios_list', q=search) }}" class="chip {% if not selected_category %}active{% endif %}">
+                    Все <span class="chip-count">{{ total_scenarios or scenarios|length }}</span>
+                </a>
+                {% for cat in categories %}
+                <a href="{{ url_for('scenarios_list', category_id=cat.id, q=search) }}" class="chip {% if selected_category == cat.id %}active{% endif %}">
+                    {{ cat.name }} <span class="chip-count">{{ cat.active_count or 0 }}</span>
+                </a>
+                {% endfor %}
+            </nav>
 
-        {% if scenarios %}
-        <div class="scenarios-grid">
-            {% for s in scenarios %}
-            <a href="{{ url_for('scenario_play', scenario_id=s.id) }}" class="scenario-card">
-                <div class="scenario-icon">{{ s.category_icon or '🗂️' }}</div>
-                <div class="scenario-info">
-                    <div class="scenario-title">{{ s.title }}</div>
-                    <div class="scenario-meta">
-                        {% if s.category_name %}<span>{{ s.category_name }}</span>{% endif %}
-                        {% if s.description %}<span>{{ s.description[:60] }}{% if s.description|length > 60 %}...{% endif %}</span>{% endif %}
-                        {% if s.views_30d > 0 %}<span>👁 {{ s.views_30d }} за 30 дней</span>{% endif %}
+            <div class="content-grid">
+                <section class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Часто используют</h2>
+                        <span class="card-hint">быстрый запуск</span>
                     </div>
-                    {% if s.tags %}
-                    <div style="margin-top:6px; display:flex; gap:4px; flex-wrap:wrap;">
-                        {% for tag in s.tags.split(',')[:3] %}
-                        {% if tag.strip() %}<span class="tag">{{ tag.strip() }}</span>{% endif %}
+                    {% if top_scenarios %}
+                    <div class="popular-grid">
+                        {% for s in top_scenarios[:4] %}
+                        {% set steps = s.node_count or 1 %}
+                        {% set minutes = 4 if steps < 4 else steps %}
+                        <a class="popular-card" href="{{ url_for('scenario_play', scenario_id=s.id) }}">
+                            <div class="scenario-name">{{ s.title }}</div>
+                            <div class="category-pill">{{ s.category_name or 'Без категории' }}</div>
+                            <div class="popular-meta">
+                                <span>~ {{ minutes }} мин</span>
+                                <span>{{ s.views_30d or 0 }} раз</span>
+                            </div>
+                            <span class="open-btn">Открыть</span>
+                        </a>
                         {% endfor %}
                     </div>
+                    {% else %}
+                    <div class="empty">
+                        <strong>Пока нет популярных</strong>
+                        Популярные сценарии появятся после первых запусков.
+                    </div>
                     {% endif %}
-                </div>
-                <div class="scenario-arrow">›</div>
-            </a>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-            <div class="icon">🗂️</div>
-            <div>Сценарии не найдены</div>
-            {% if search %}<div style="margin-top:8px; font-size:13px;">Попробуйте другой запрос</div>{% endif %}
-        </div>
-        {% endif %}
-    </div>
+                </section>
 
-    <script>
-        (function() {
-            if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
-            document.getElementById('themeToggle').textContent =
-                document.body.classList.contains('light') ? '🌙' : '☀️';
-        })();
-        function toggleTheme() {
-            const isLight = document.body.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            document.getElementById('themeToggle').textContent = isLight ? '🌙' : '☀️';
-        }
-    </script>
+                <section class="card scenario-list">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            {% if search %}Результаты поиска{% elif selected_category %}Сценарии категории{% else %}Все сценарии{% endif %}
+                        </h2>
+                        <span class="card-hint">{{ scenarios|length }} найдено</span>
+                    </div>
+
+                    {% if scenarios %}
+                    {% for s in scenarios %}
+                    {% set steps = s.node_count or 1 %}
+                    {% set minutes = 4 if steps < 4 else steps %}
+                    <div class="scenario-row">
+                        <div class="scenario-head">
+                            <div class="scenario-title">{{ s.title }}</div>
+                            <div class="scenario-desc">{{ s.description or 'Пошаговая подсказка для оператора во время консультации клиента' }}</div>
+                        </div>
+                        <div class="category-pill">{{ s.category_name or 'Без категории' }}</div>
+                        <div class="tags">
+                            {% if s.tags %}
+                                {% for tag in s.tags.split(',')[:3] %}
+                                    {% if tag.strip() %}<span class="tag">{{ tag.strip() }}</span>{% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <span class="tag">сценарий</span>
+                            {% endif %}
+                        </div>
+                        <div class="metric">~ {{ minutes }} мин</div>
+                        <div class="metric">{{ steps }} шагов</div>
+                        <div class="status">Активен</div>
+                        <a class="start-btn" href="{{ url_for('scenario_play', scenario_id=s.id) }}">Начать сценарий</a>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty">
+                        <strong>Сценарии пока не найдены</strong>
+                        {% if search %}
+                        Попробуйте изменить запрос или выбрать другой фильтр.
+                        {% else %}
+                        Обратитесь к администратору или выберите другой раздел Helper.
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
 </body>
 </html>

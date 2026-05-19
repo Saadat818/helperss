@@ -9278,11 +9278,13 @@ def scenarios_list():
     scenarios = scenario_mgr.get_scenarios(status='active', category_id=category_id, search=search)
     categories = scenario_mgr.get_categories()
     top_scenarios = scenario_mgr.get_top_scenarios(limit=10)
+    total_scenarios = len(scenario_mgr.get_scenarios(status='active'))
 
     return render_template('scenarios_list.html',
                            scenarios=scenarios,
                            categories=categories,
                            top_scenarios=top_scenarios,
+                           total_scenarios=total_scenarios,
                            selected_category=category_id,
                            search=search,
                            user=user)
@@ -9301,6 +9303,7 @@ def scenario_play(scenario_id):
         return redirect(url_for('scenarios_list'))
 
     root_node = scenario_mgr.get_root_node(scenario_id)
+    total_nodes = len(scenario_mgr.get_nodes(scenario_id))
 
     # Логируем просмотр
     scenario_mgr.log_view(scenario_id, user.get('username', ''))
@@ -9308,6 +9311,7 @@ def scenario_play(scenario_id):
     return render_template('scenario_play.html',
                            scenario=scenario,
                            root_node=root_node,
+                           total_nodes=total_nodes,
                            user=user)
 
 

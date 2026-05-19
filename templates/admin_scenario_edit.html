@@ -6,22 +6,26 @@
     <title>Редактор сценария — {{ scenario.title }}</title>
     <style>
         :root {
-            --bg: #0f1117; --card: #1a1d27; --card2: #20242f;
-            --text: #e8e8f0; --muted: #8888aa; --border: #2a2d3e;
-            --green: #00c06b; --blue: #4d9fff; --red: #ff5555;
-            --yellow: #ffb800; --purple: #9d71ff; --orange: #ff8c42;
-            --node-q: #1e3a5f; --node-q-border: #4d9fff;
-            --node-f: #1a3d2b; --node-f-border: #00c06b;
-            --node-i: #3a2d1a; --node-i-border: #ffb800;
-            --node-s: #2d1a3d; --node-s-border: #9d71ff;
+            --bg: #f6f8fb; --card: #ffffff; --card2: #f8fafc;
+            --text: #172033; --muted: #667085; --border: #d8e0ea;
+            --green: #12a66a; --blue: #2563eb; --red: #dc3545;
+            --yellow: #d18b00; --purple: #7557d8; --orange: #f97316;
+            --node-q: #fff2f5; --node-q-border: #c84a63;
+            --node-f: #e8f8ef; --node-f-border: #16a34a;
+            --node-i: #fff6cc; --node-i-border: #c98900;
+            --node-s: #dceafe; --node-s-border: #2563eb;
+            --edge: #8a97aa;
+            --grid: #d9e1ec;
         }
-        body.light {
-            --bg: #e8ecf2; --card: #fff; --card2: #f0f3f8;
-            --text: #1a1a2e; --muted: #606080; --border: #c0c8d8;
-            --node-q: #dbeafe; --node-q-border: #2563eb;
-            --node-f: #dcfce7; --node-f-border: #16a34a;
-            --node-i: #fef9c3; --node-i-border: #ca8a04;
-            --node-s: #f3e8ff; --node-s-border: #9333ea;
+        body.dark {
+            --bg: #0f1117; --card: #1a1d27; --card2: #20242f;
+            --text: #e8e8f0; --muted: #9aa4b8; --border: #2a2d3e;
+            --node-q: #3a1720; --node-q-border: #ef6f86;
+            --node-f: #123821; --node-f-border: #22c55e;
+            --node-i: #3d300e; --node-i-border: #fbbf24;
+            --node-s: #15305e; --node-s-border: #60a5fa;
+            --edge: #64748b;
+            --grid: #293246;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Segoe UI", system-ui, Arial; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -29,10 +33,11 @@
         /* Топбар */
         .topbar {
             background: var(--card); border-bottom: 1px solid var(--border);
+            box-shadow: 0 8px 24px rgba(16, 24, 40, .06);
             padding: 10px 16px; display: flex; align-items: center; gap: 10px;
             flex-shrink: 0; z-index: 200; flex-wrap: wrap;
         }
-        .back-btn { color: var(--muted); text-decoration: none; font-size: 13px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); }
+        .back-btn { color: var(--muted); text-decoration: none; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card2); }
         .back-btn:hover { color: var(--text); border-color: var(--blue); }
         .scenario-name { font-size: 15px; font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 80px; }
         .status-pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
@@ -40,8 +45,8 @@
         .status-active { background: rgba(0,192,107,.15); color: var(--green); }
         .status-archived { background: rgba(136,136,170,.15); color: var(--muted); }
         .sep { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
-        .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: opacity .15s; text-decoration: none; white-space: nowrap; }
-        .btn:hover { opacity: .82; }
+        .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 650; cursor: pointer; border: none; transition: all .15s ease; text-decoration: none; white-space: nowrap; }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(16,24,40,.08); }
         .btn-green { background: var(--green); color: #fff; }
         .btn-blue { background: var(--blue); color: #fff; }
         .btn-red { background: var(--red); color: #fff; }
@@ -73,8 +78,10 @@
         /* Canvas */
         .canvas-wrap {
             flex: 1; position: relative; overflow: hidden;
-            background-color: var(--bg);
-            background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+            background-color: #fbfdff;
+            background-image:
+                linear-gradient(var(--grid) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid) 1px, transparent 1px);
             background-size: 28px 28px;
             cursor: grab;
         }
@@ -83,41 +90,53 @@
 
         /* SVG рёбра */
         .edges-svg { position: absolute; top: 0; left: 0; width: 5000px; height: 4000px; pointer-events: none; overflow: visible; }
-        .edge-path { fill: none; stroke: #3a4060; stroke-width: 2; pointer-events: stroke; cursor: pointer; }
+        .edge-path { fill: none; stroke: var(--edge); stroke-width: 2; pointer-events: stroke; cursor: pointer; }
         .edge-path:hover, .edge-path.selected { stroke: var(--blue); stroke-width: 2.5; }
         .edge-path.temp { stroke: var(--green); stroke-width: 2; stroke-dasharray: 6 3; pointer-events: none; }
 
         /* Узлы */
-        .flow-node { position: absolute; min-width: 180px; max-width: 240px; border-radius: 10px; border: 2px solid; user-select: none; }
-        .flow-node:hover { box-shadow: 0 4px 20px rgba(0,0,0,.35); }
+        .flow-node { position: absolute; width: 210px; min-height: 78px; border-radius: 10px; border: 1.5px solid; user-select: none; background: var(--card); box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+        .flow-node:hover { box-shadow: 0 10px 22px rgba(16,24,40,.12); }
         .flow-node.selected { box-shadow: 0 0 0 3px rgba(77,159,255,.45); }
         .flow-node.dragging { opacity: .85; z-index: 100; cursor: grabbing; }
-        .flow-node.type-start   { background: var(--node-s); border-color: var(--node-s-border); }
-        .flow-node.type-question{ background: var(--node-q); border-color: var(--node-q-border); }
-        .flow-node.type-final   { background: var(--node-f); border-color: var(--node-f-border); }
+        .flow-node.type-start   { background: var(--node-s); border-color: var(--node-s-border); border-radius: 16px; }
+        .flow-node.type-question{ width: 178px; min-height: 126px; background: transparent; border-color: transparent; box-shadow: none; }
+        .flow-node.type-question::before {
+            content: ""; position: absolute; inset: 14px 23px;
+            background: var(--node-q); border: 1.6px solid var(--node-q-border);
+            transform: rotate(45deg); border-radius: 5px; z-index: 0;
+            box-shadow: 0 1px 2px rgba(16,24,40,.04);
+        }
+        .flow-node.type-question:hover::before { box-shadow: 0 10px 22px rgba(16,24,40,.12); }
+        .flow-node.type-question > * { position: relative; z-index: 1; }
+        .flow-node.type-final   { background: var(--node-f); border-color: var(--node-f-border); box-shadow: inset 0 0 0 4px rgba(22,163,74,.12); }
         .flow-node.type-info    { background: var(--node-i); border-color: var(--node-i-border); }
 
-        .node-header { padding: 7px 10px 5px; display: flex; align-items: center; gap: 5px; border-bottom: 1px solid rgba(255,255,255,.06); }
-        .node-type-badge { font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; }
-        .type-start .node-type-badge    { background: rgba(157,113,255,.3); color: var(--purple); }
-        .type-question .node-type-badge { background: rgba(77,159,255,.3); color: var(--blue); }
-        .type-final .node-type-badge    { background: rgba(0,192,107,.3); color: var(--green); }
-        .type-info .node-type-badge     { background: rgba(255,184,0,.3); color: var(--yellow); }
+        .node-header { padding: 7px 10px 4px; display: flex; align-items: center; gap: 5px; }
+        .node-type-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; background: rgba(255,255,255,.65); border: 1px solid rgba(16,24,40,.08); }
+        .type-start .node-type-badge    { color: var(--node-s-border); }
+        .type-question .node-type-badge { color: var(--node-q-border); }
+        .type-final .node-type-badge    { color: var(--node-f-border); }
+        .type-info .node-type-badge     { color: var(--node-i-border); }
+        .type-question .node-header { justify-content: center; padding: 22px 22px 0; }
         .node-root-badge { font-size: 9px; background: rgba(157,113,255,.2); color: var(--purple); padding: 1px 4px; border-radius: 3px; font-weight: 700; }
         .node-hdr-actions { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
         .flow-node:hover .node-hdr-actions { opacity: 1; }
         .node-del-btn { width: 20px; height: 20px; border-radius: 4px; background: rgba(255,85,85,.15); color: var(--red); border: none; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; }
         .node-del-btn:hover { background: var(--red); color: #fff; }
-        .node-body { padding: 8px 10px 10px; position: relative; }
-        .node-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; word-break: break-word; line-height: 1.3; }
-        .node-content { font-size: 11px; color: var(--muted); line-height: 1.4; word-break: break-word; max-height: 44px; overflow: hidden; }
+        .node-body { padding: 4px 12px 12px; position: relative; }
+        .type-question .node-body { padding: 2px 30px 18px; text-align: center; }
+        .node-title { font-size: 13px; font-weight: 750; color: var(--text); margin-bottom: 3px; overflow-wrap: anywhere; line-height: 1.28; }
+        .node-content { font-size: 11px; color: var(--muted); line-height: 1.35; overflow-wrap: anywhere; max-height: 48px; overflow: hidden; }
+        .type-question .node-title { font-size: 12px; }
+        .type-question .node-content { font-size: 10px; max-height: 34px; }
         .node-final-label { font-size: 10px; color: var(--green); margin-top: 4px; font-style: italic; }
 
         /* Порты */
         .port { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid; z-index: 10; transition: transform .1s; }
-        .port-out { bottom: -7px; left: 50%; transform: translateX(-50%); background: var(--card); border-color: var(--blue); cursor: crosshair; }
+        .port-out { bottom: -7px; left: 50%; transform: translateX(-50%); background: #fff; border-color: var(--blue); cursor: crosshair; }
         .port-out:hover { background: var(--blue); transform: translateX(-50%) scale(1.5); }
-        .port-in  { top: -7px; left: 50%; transform: translateX(-50%); background: var(--card); border-color: var(--green); pointer-events: none; }
+        .port-in  { top: -7px; left: 50%; transform: translateX(-50%); background: #fff; border-color: var(--green); pointer-events: none; }
 
         /* Зум */
         .zoom-controls { position: absolute; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 4px; z-index: 50; }
@@ -131,7 +150,7 @@
         .minimap-vp { position: absolute; border: 1px solid var(--blue); background: rgba(77,159,255,.08); pointer-events: none; }
 
         /* Боковая панель */
-        .side-panel { width: 0; overflow: hidden; transition: width .2s ease; background: var(--card); border-left: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+        .side-panel { width: 0; overflow: hidden; transition: width .2s ease; background: var(--card); border-left: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; box-shadow: -12px 0 24px rgba(16,24,40,.05); }
         .side-panel.open { width: 310px; }
         .sp-inner { width: 310px; padding: 14px; overflow-y: auto; flex: 1; }
         .panel-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
@@ -183,7 +202,7 @@
         .ctx-item.danger { color: var(--red); }
         .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
 
-        .hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.45); border-radius: 6px; padding: 4px 12px; font-size: 11px; color: var(--muted); pointer-events: none; z-index: 10; backdrop-filter: blur(4px); white-space: nowrap; }
+        .hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.86); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; font-size: 11px; color: var(--muted); pointer-events: none; z-index: 10; backdrop-filter: blur(4px); white-space: nowrap; box-shadow: 0 8px 18px rgba(16,24,40,.08); }
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
@@ -241,7 +260,7 @@
             <svg class="edges-svg" id="edgesSvg">
                 <defs>
                     <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                        <polygon points="0 0,8 3,0 6" fill="#3a4060"/>
+                        <polygon points="0 0,8 3,0 6" fill="#8a97aa"/>
                     </marker>
                     <marker id="arr-blue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
                         <polygon points="0 0,8 3,0 6" fill="#4d9fff"/>
@@ -254,9 +273,9 @@
         </div>
         <div class="hint" id="hint">Тяните из нижней точки блока → для связи &nbsp;|&nbsp; ПКМ — меню &nbsp;|&nbsp; Ctrl+S — сохранить</div>
         <div class="zoom-controls">
-            <button class="zoom-btn" onclick="setZoom(zoom+.05)">+</button>
+            <button class="zoom-btn" onclick="setZoom(zoom+.01)">+</button>
             <div class="zoom-level" id="zoomLbl">100%</div>
-            <button class="zoom-btn" onclick="setZoom(zoom-.05)">−</button>
+            <button class="zoom-btn" onclick="setZoom(zoom-.01)">−</button>
             <button class="zoom-btn" onclick="setZoom(1)" title="Сброс">⊙</button>
         </div>
         <div class="minimap" id="minimap">
@@ -406,7 +425,7 @@ function applyT(){
     document.getElementById('zoomLbl').textContent=Math.round(zoom*100)+'%';
     updateMM();
 }
-function setZoom(z){zoom=Math.max(.2,Math.min(3,z));applyT();}
+function setZoom(z){zoom=Math.max(.05,Math.min(3,z));applyT();}
 function fitView(){
     const nl=Object.values(nodes);
     if(!nl.length)return;
@@ -414,7 +433,7 @@ function fitView(){
     nl.forEach(n=>{x0=Math.min(x0,n.pos_x);y0=Math.min(y0,n.pos_y);x1=Math.max(x1,n.pos_x+220);y1=Math.max(y1,n.pos_y+100);});
     const ww=wrap.clientWidth,wh=wrap.clientHeight;
     const gw=x1-x0+100,gh=y1-y0+100;
-    zoom=Math.min(ww/gw,wh/gh,1.5);zoom=Math.max(.2,zoom);
+    zoom=Math.min(ww/gw,wh/gh,1.5);zoom=Math.max(.05,zoom);
     panX=(ww-gw*zoom)/2-x0*zoom+50;panY=(wh-gh*zoom)/2-y0*zoom+50;
     applyT();
 }
@@ -496,11 +515,22 @@ function nodeCenter(n,port){
         return {x: cx, y: n.pos_y};
     }
 }
-function bezier(x1,y1,x2,y2){
-    // Вертикальный безье — контрольные точки строго вертикально
-    const dist = Math.abs(y2-y1);
-    const cp = Math.max(dist * 0.5, 60);
-    return `M${x1},${y1} C${x1},${y1+cp} ${x2},${y2-cp} ${x2},${y2}`;
+function orthogonalPath(x1,y1,x2,y2){
+    const dy = y2 - y1;
+    if(Math.abs(x2-x1) < 4 && dy > 0) return `M${x1},${y1} L${x2},${y2}`;
+
+    if(dy >= 42){
+        const midY = Math.round((y1 + y2) / 2);
+        return `M${x1},${y1} L${x1},${midY} L${x2},${midY} L${x2},${y2}`;
+    }
+
+    const routeY = Math.max(y1, y2) + 58;
+    return `M${x1},${y1} L${x1},${routeY} L${x2},${routeY} L${x2},${y2}`;
+}
+function edgeLabelPoint(fr,to){
+    const dy = to.y - fr.y;
+    if(dy >= 42) return {x:(fr.x+to.x)/2, y:Math.round((fr.y+to.y)/2)};
+    return {x:(fr.x+to.x)/2, y:Math.max(fr.y,to.y)+58};
 }
 function renderEdges(){
     svg.querySelectorAll('.eg').forEach(g=>g.remove());
@@ -508,7 +538,7 @@ function renderEdges(){
         const fn=nodes[e.from_node_id],tn=nodes[e.to_node_id];
         if(!fn||!tn)return;
         const fr=nodeCenter(fn,'out'),to=nodeCenter(tn,'in');
-        const d=bezier(fr.x,fr.y,to.x,to.y);
+        const d=orthogonalPath(fr.x,fr.y,to.x,to.y);
         const g=document.createElementNS('http://www.w3.org/2000/svg','g');
         g.classList.add('eg');g.dataset.eid=e.id;
         const path=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -520,7 +550,8 @@ function renderEdges(){
         path.addEventListener('click',()=>selectEdge(e.id));
         g.appendChild(path);
         if(e.label){
-            const mx=(fr.x+to.x)/2,my=(fr.y+to.y)/2,tw=e.label.length*7+14;
+            const lp=edgeLabelPoint(fr,to);
+            const mx=lp.x,my=lp.y,tw=e.label.length*7+14;
             const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
             r.setAttribute('x',mx-tw/2);r.setAttribute('y',my-10);r.setAttribute('width',tw);r.setAttribute('height',18);
             r.setAttribute('rx',4);r.setAttribute('fill','var(--card)');r.setAttribute('stroke','var(--border)');r.setAttribute('stroke-width','1');
@@ -601,7 +632,7 @@ document.addEventListener('mousemove',ev=>{
         const wr=wrap.getBoundingClientRect();
         const tx=(ev.clientX-wr.left-panX)/zoom;
         const ty=(ev.clientY-wr.top-panY)/zoom;
-        tempEdge.setAttribute('d',bezier(fr.x,fr.y,tx,ty));
+        tempEdge.setAttribute('d',orthogonalPath(fr.x,fr.y,tx,ty));
     }
 });
 
@@ -634,7 +665,7 @@ wrap.addEventListener('wheel',ev=>{
     ev.preventDefault();
     const r=wrap.getBoundingClientRect();
     const mx=ev.clientX-r.left,my=ev.clientY-r.top;
-    const d=ev.deltaY>0?-.05:.05,nz=Math.max(.2,Math.min(3,zoom+d));
+    const d=ev.deltaY>0?-.01:.01,nz=Math.max(.05,Math.min(3,zoom+d));
     panX=mx-(mx-panX)*(nz/zoom);panY=my-(my-panY)*(nz/zoom);zoom=nz;applyT();
 },{passive:false});
 
@@ -883,25 +914,63 @@ window.onbeforeunload=()=>{if(dirty)return 'Есть несохранённые 
 // ── Авторасстановка ──────────────────────────────────────────────
 function autoLayout(){
     const nl=Object.values(nodes);if(!nl.length)return;
+    const edgeRank = (label='') => {
+        const s = String(label).toLowerCase();
+        if(s.includes('нет')) return -20;
+        if(s.includes('да')) return 20;
+        return 0;
+    };
+    const out={};
+    Object.values(edges)
+        .filter(e=>nodes[e.from_node_id]&&nodes[e.to_node_id])
+        .sort((a,b)=>edgeRank(a.label)-edgeRank(b.label)||(a.sort_order||0)-(b.sort_order||0)||a.id-b.id)
+        .forEach(e=>{(out[e.from_node_id]=out[e.from_node_id]||[]).push(e);});
+
     const inDeg={};nl.forEach(n=>inDeg[n.id]=0);
     Object.values(edges).forEach(e=>{if(inDeg[e.to_node_id]!==undefined)inDeg[e.to_node_id]++;});
-    let queue=nl.filter(n=>n.is_root||inDeg[n.id]===0).map(n=>n.id);
-    if(!queue.length&&nl.length)queue=[nl[0].id];
-    const levels={};const visited=new Set();let lvl=0;let cur=[...queue];
-    while(cur.length){
-        const next=[];
-        cur.forEach(id=>{
-            if(visited.has(id))return;visited.add(id);
-            if(!levels[lvl])levels[lvl]=[];levels[lvl].push(id);
-            Object.values(edges).filter(e=>e.from_node_id===id).forEach(e=>{if(!visited.has(e.to_node_id))next.push(e.to_node_id);});
-        });
-        cur=next;lvl++;
+    const roots=[
+        ...nl.filter(n=>n.is_root).map(n=>n.id),
+        ...nl.filter(n=>!n.is_root&&inDeg[n.id]===0).map(n=>n.id)
+    ];
+    if(!roots.length)roots.push(nl[0].id);
+
+    const visited=new Set();
+    const depth={};
+    const slot={};
+    let leaf=0;
+
+    function walk(id,d,stack=new Set()){
+        if(slot[id]!==undefined){
+            depth[id]=Math.max(depth[id]||0,d);
+            return slot[id];
+        }
+        if(stack.has(id)){
+            depth[id]=Math.max(depth[id]||0,d);
+            slot[id]=leaf++;
+            return slot[id];
+        }
+        visited.add(id);
+        depth[id]=Math.max(depth[id]||0,d);
+        stack.add(id);
+        const kids=(out[id]||[]).filter(e=>nodes[e.to_node_id]);
+        if(!kids.length){
+            slot[id]=leaf++;
+        }else{
+            const xs=kids.map(e=>walk(e.to_node_id,d+1,stack));
+            slot[id]=(Math.min(...xs)+Math.max(...xs))/2;
+        }
+        stack.delete(id);
+        return slot[id];
     }
-    nl.forEach(n=>{if(!visited.has(n.id)){levels[lvl]=levels[lvl]||[];levels[lvl].push(n.id);}});
-    const HGAP=260,VGAP=160;
-    Object.entries(levels).forEach(([l,ids])=>{
-        const tw=ids.length*HGAP;
-        ids.forEach((id,i)=>{nodes[id].pos_x=i*HGAP-tw/2+800;nodes[id].pos_y=parseInt(l)*VGAP+100;});
+
+    roots.forEach(id=>walk(id,0));
+    nl.forEach(n=>{if(!visited.has(n.id))walk(n.id,0);});
+
+    const HGAP=280,VGAP=170;
+    const centerOffset=900-Math.max(0,leaf-1)*HGAP/2;
+    nl.forEach(n=>{
+        nodes[n.id].pos_x=Math.round(centerOffset+slot[n.id]*HGAP);
+        nodes[n.id].pos_y=Math.round(110+(depth[n.id]||0)*VGAP);
     });
     renderAll();saveLayout();fitView();toast('Авторасстановка применена');
 }

@@ -1764,6 +1764,27 @@ def _parse_rejection_reason(text: str) -> str:
     return (match.group(1).strip() if match else '')[:500]
 
 
+def _plain_rejection_reason(text: str) -> str:
+    reason = (text or '').strip()
+    if not reason:
+        return ''
+    lowered = reason.lower()
+    non_rejection_keywords = (
+        'массовый инцидент',
+        'отклон',
+        'готов',
+        'решен',
+        'решён',
+        'решена',
+        'решено',
+        'в работе',
+        'в процессе',
+    )
+    if any(keyword in lowered for keyword in non_rejection_keywords):
+        return ''
+    return reason[:500]
+
+
 def _mark_ticket_ready_for_feedback(ticket_number: int | None, problem: str, original_message: str, actor: dict):
     if ticket_number is None:
         return
@@ -1985,8 +2006,8 @@ def handle_ticket_reject_prompt(call):
         bot.answer_callback_query(call.id, "Укажите причину отклонения ответом на заявку")
         prompt_msg = bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"❌ Для отклонения заявки №{ticket_number or '—'} ответьте на исходную заявку текстом:\n"
-            f"<code>Отклонён: причина отклонения</code>",
+            f"❌ Для отклонения заявки №{ticket_number or '—'} ответьте на исходную заявку причиной:\n"
+            f"<code>причина отклонения</code>",
             message_thread_id=NEW_TICKETS_THREAD_ID,
             parse_mode='HTML',
             reply_to_message_id=call.message.message_id
@@ -3305,9 +3326,24 @@ def handle_channel_messages(message):
             actor_override = _staff_actor_from_message(message)
             problem = parsed.get('problem') or original_ticket_text
             rejection_reason = _parse_rejection_reason(message.text or '')
+            is_ticket_message = bool(re.search(
+                r'заявк[аеиу]\s*№\s*\d+',
+                original_ticket_text or '',
+                flags=re.IGNORECASE
+            ))
+            is_ticket_reply = (
+                ticket_number is not None and (prompt_context is not None or is_ticket_message)
+            )
+            plain_rejection_reason = _plain_rejection_reason(message.text or '') if is_ticket_reply else ''
+            if not rejection_reason:
+                rejection_reason = plain_rejection_reason
+            is_rejection_reply = bool(rejection_reason) and (
+                'отклон' in text or bool(plain_rejection_reason)
+            )
             is_ticket_action = (
                 "массовый инцидент" in text or
                 "отклон" in text or
+                is_rejection_reply or
                 "готово" in text or
                 "решена" in text
             )
@@ -3328,11 +3364,11 @@ def handle_channel_messages(message):
                     f"⚠️ Заявка №{ticket_number or '—'} отмечена как массовый инцидент.",
                     message_thread_id=IN_PROGRESS_THREAD_ID
                 )
-            elif "отклон" in text:
+            elif "отклон" in text or is_rejection_reply:
                 if not rejection_reason:
                     bot.reply_to(
                         message,
-                        "Для отклонения укажите причину в формате: Отклонён: причина"
+                        "Для отклонения ответьте на заявку текстом причины."
                     )
                     return
                 lock_reason = _ticket_action_lock_reason(ticket_number)

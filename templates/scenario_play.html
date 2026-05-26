@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ scenario.title }} — Helper</title>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('theme') === 'dark') {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <style>
         :root {
             --bg: #f6f8fb;
@@ -23,6 +32,65 @@
             --red-soft: #ffecef;
             --shadow: 0 16px 40px rgba(28, 39, 60, .08);
             --radius: 18px;
+            --body-accent: rgba(18,166,106,.08);
+            --body-start: #fbfdff;
+            --body-end: #f2f5f9;
+            --panel-elevated: rgba(255,255,255,.96);
+            --control-bg: #fff;
+            --progress-track: #dce5ef;
+            --path-line: #d9e2ee;
+            --path-border: #aeb9c8;
+            --strong-muted: #344054;
+            --answer-border: #cfd8e5;
+            --hint-border: #ffd58a;
+            --hint-text: #5d4200;
+            --info-text: #a15d00;
+            --final-header-bg: linear-gradient(180deg, #fbfffd, #f3fbf7);
+            --answer-block-border: #bdebd2;
+            --answer-block-bg: linear-gradient(180deg, #f0fbf5, #e9f8f0);
+            --note-bg: #fcfdff;
+            --footer-bg: #fbfdff;
+            --copy-border: #bcd0f8;
+            --modal-backdrop: rgba(15,23,42,.42);
+        }
+
+        html.dark {
+            --bg: #111827;
+            --panel: #172033;
+            --panel-soft: #1c2638;
+            --text: #eef4fb;
+            --muted: #9aa8bb;
+            --line: #2b3748;
+            --green: #22c779;
+            --green-dark: #6ee7a8;
+            --green-soft: rgba(34,199,121,.16);
+            --blue: #86adff;
+            --blue-soft: rgba(134,173,255,.16);
+            --amber: #f6b844;
+            --amber-soft: rgba(246,184,68,.14);
+            --red: #ff6b7d;
+            --red-soft: rgba(255,107,125,.14);
+            --shadow: 0 20px 46px rgba(0, 0, 0, .34);
+            --body-accent: rgba(34,199,121,.14);
+            --body-start: #0b111b;
+            --body-end: #131d2d;
+            --panel-elevated: rgba(23,32,51,.96);
+            --control-bg: #172033;
+            --progress-track: #2b3748;
+            --path-line: #354258;
+            --path-border: #58677c;
+            --strong-muted: #c7d1df;
+            --answer-border: #354258;
+            --hint-border: rgba(246,184,68,.38);
+            --hint-text: #f5d58d;
+            --info-text: #f5c466;
+            --final-header-bg: linear-gradient(180deg, rgba(34,199,121,.13), rgba(23,32,51,.96));
+            --answer-block-border: rgba(34,199,121,.34);
+            --answer-block-bg: linear-gradient(180deg, rgba(34,199,121,.14), rgba(34,199,121,.08));
+            --note-bg: #151e2e;
+            --footer-bg: #131c2b;
+            --copy-border: rgba(134,173,255,.46);
+            --modal-backdrop: rgba(0,0,0,.62);
         }
 
         * { box-sizing: border-box; }
@@ -30,8 +98,8 @@
             margin: 0;
             min-height: 100vh;
             background:
-                radial-gradient(circle at 15% 0%, rgba(18,166,106,.08), transparent 30%),
-                linear-gradient(180deg, #fbfdff 0%, var(--bg) 48%, #f2f5f9 100%);
+                radial-gradient(circle at 15% 0%, var(--body-accent), transparent 30%),
+                linear-gradient(180deg, var(--body-start) 0%, var(--bg) 48%, var(--body-end) 100%);
             color: var(--text);
             font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
         }
@@ -60,7 +128,7 @@
             padding: 0 12px;
             border: 1px solid var(--line);
             border-radius: 11px;
-            background: #fff;
+            background: var(--control-bg);
             color: var(--blue);
             font-size: 13px;
             font-weight: 800;
@@ -94,7 +162,7 @@
             height: 6px;
             overflow: hidden;
             border-radius: 999px;
-            background: #dce5ef;
+            background: var(--progress-track);
         }
         .progress-bar {
             width: 0%;
@@ -112,7 +180,7 @@
         }
         .path-panel,
         .content-card {
-            background: rgba(255,255,255,.96);
+            background: var(--panel-elevated);
             border: 1px solid var(--line);
             border-radius: var(--radius);
             box-shadow: var(--shadow);
@@ -135,7 +203,7 @@
         }
         .path-empty {
             padding: 14px;
-            border: 1px dashed #cfd8e5;
+            border: 1px dashed var(--answer-border);
             border-radius: 12px;
             color: var(--muted);
             font-size: 13px;
@@ -155,20 +223,37 @@
             top: 20px;
             bottom: -10px;
             width: 1px;
-            background: #d9e2ee;
+            background: var(--path-line);
         }
         .path-dot {
             position: relative;
+            display: block;
             z-index: 1;
             width: 18px;
             height: 18px;
+            padding: 0;
             border-radius: 50%;
-            border: 1px solid #aeb9c8;
-            background: #fff;
+            border: 1px solid var(--path-border);
+            background: var(--control-bg);
+            appearance: none;
+            cursor: pointer;
+            transition: border-color .15s ease, background .15s ease, transform .15s ease;
+        }
+        .path-dot:hover {
+            border-color: var(--green);
+            background: var(--green-soft);
+            transform: scale(1.08);
+        }
+        .path-dot:focus-visible {
+            border-color: var(--green);
+            background: var(--green-soft);
+            transform: scale(1.08);
+            outline: 2px solid var(--green);
+            outline-offset: 2px;
         }
         .path-question {
             margin-bottom: 4px;
-            color: #344054;
+            color: var(--strong-muted);
             font-size: 12px;
             line-height: 1.35;
         }
@@ -206,7 +291,7 @@
             letter-spacing: .03em;
         }
         .badge-question { background: var(--blue-soft); color: var(--blue); }
-        .badge-info { background: var(--amber-soft); color: #a15d00; }
+        .badge-info { background: var(--amber-soft); color: var(--info-text); }
         .badge-final { background: var(--green-soft); color: var(--green-dark); }
         .badge-start { background: var(--green-soft); color: var(--green-dark); }
 
@@ -244,8 +329,8 @@
             align-items: center;
             width: 100%;
             padding: 0 18px;
-            border: 1px solid #cfd8e5;
-            background: #fff;
+            border: 1px solid var(--answer-border);
+            background: var(--control-bg);
             color: var(--text);
             text-align: left;
         }
@@ -258,17 +343,17 @@
         .instruction-list {
             margin: 18px 0 0;
             padding-left: 18px;
-            color: #344054;
+            color: var(--strong-muted);
             font-size: 15px;
             line-height: 1.75;
         }
         .hint-box {
             margin-top: 24px;
             padding: 16px;
-            border: 1px solid #ffd58a;
+            border: 1px solid var(--hint-border);
             border-radius: 14px;
             background: var(--amber-soft);
-            color: #5d4200;
+            color: var(--hint-text);
             font-size: 14px;
             line-height: 1.55;
         }
@@ -276,7 +361,7 @@
         .final-header {
             padding: 24px 30px;
             border-bottom: 1px solid var(--line);
-            background: linear-gradient(180deg, #fbfffd, #f3fbf7);
+            background: var(--final-header-bg);
         }
         .final-title {
             margin: 10px 0 0;
@@ -291,12 +376,12 @@
         .final-block {
             border: 1px solid var(--line);
             border-radius: 14px;
-            background: #fff;
+            background: var(--control-bg);
             padding: 16px;
         }
         .answer-block {
-            border-color: #bdebd2;
-            background: linear-gradient(180deg, #f0fbf5, #e9f8f0);
+            border-color: var(--answer-block-border);
+            background: var(--answer-block-bg);
         }
         .block-label {
             margin-bottom: 8px;
@@ -313,7 +398,7 @@
             white-space: pre-wrap;
         }
         .note-block {
-            background: #fcfdff;
+            background: var(--note-bg);
         }
         .note-head {
             display: flex;
@@ -351,7 +436,7 @@
             gap: 12px;
             padding: 16px 30px;
             border-top: 1px solid var(--line);
-            background: #fbfdff;
+            background: var(--footer-bg);
         }
         .primary-btn,
         .copy-btn {
@@ -365,15 +450,15 @@
         }
         .secondary-btn {
             border: 1px solid var(--line);
-            background: #fff;
+            background: var(--control-bg);
             color: var(--blue);
             padding: 0 16px;
         }
         .copy-btn {
             min-height: 42px;
-            background: #fff;
+            background: var(--control-bg);
             color: var(--blue);
-            border: 1px solid #bcd0f8;
+            border: 1px solid var(--copy-border);
             margin-top: 14px;
         }
         .copy-btn.copied {
@@ -410,14 +495,14 @@
             align-items: center;
             justify-content: center;
             padding: 18px;
-            background: rgba(15,23,42,.42);
+            background: var(--modal-backdrop);
         }
         .modal-overlay.show { display: flex; }
         .modal {
             width: min(380px, 100%);
             padding: 24px;
             border-radius: 18px;
-            background: #fff;
+            background: var(--panel);
             box-shadow: var(--shadow);
         }
         .modal h3 { margin: 0 0 8px; }
@@ -672,10 +757,16 @@ function selectAnswer(toNodeId, label) {
 
 document.addEventListener('click', (event) => {
     const btn = event.target.closest('.scenario-next');
-    if (!btn) return;
-    const nodeId = Number(btn.dataset.nid);
-    if (!nodeId) return;
-    selectAnswer(nodeId, btn.dataset.label || 'Далее');
+    if (btn) {
+        const nodeId = Number(btn.dataset.nid);
+        if (!nodeId) return;
+        selectAnswer(nodeId, btn.dataset.label || 'Далее');
+        return;
+    }
+
+    const pathBtn = event.target.closest('.path-jump');
+    if (!pathBtn) return;
+    jumpToHistory(Number(pathBtn.dataset.index));
 });
 
 function goBack() {
@@ -684,15 +775,22 @@ function goBack() {
     loadNode(prev.nodeId);
 }
 
+function jumpToHistory(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= history.length) return;
+    const target = history[index];
+    history = history.slice(0, index);
+    loadNode(target.nodeId);
+}
+
 function updatePath() {
     const root = document.getElementById('pathList');
     if (!history.length) {
         root.innerHTML = '<div class="path-empty">Ответы появятся здесь после выбора вариантов в сценарии.</div>';
         return;
     }
-    root.innerHTML = history.map(item => `
+    root.innerHTML = history.map((item, index) => `
         <div class="path-item">
-            <div class="path-dot"></div>
+            <button class="path-dot path-jump" type="button" data-index="${index}" title="Вернуться к этому шагу" aria-label="Вернуться к шагу: ${esc(item.title)}"></button>
             <div>
                 <div class="path-question">${esc(item.title)}</div>
                 <div class="path-answer">${esc(item.answer)}</div>

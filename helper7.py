@@ -4,22 +4,41 @@ import sqlite3
 import threading
 import json
 import logging
+import ipaddress
 from logging.handlers import RotatingFileHandler
 from typing import Any
 from datetime import datetime, timedelta
 from markupsafe import escape as m_escape
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
-from flask import Flask, render_template, request, session, redirect, url_for, flash, abort, jsonify, g, has_request_context
+from flask import Flask, render_template, request, session, redirect, url_for, flash, abort, jsonify, g, has_request_context, Response
 from dotenv import load_dotenv
 import telebot
 import werkzeug.routing
 import traceback
 import re
+import uuid
 from html import escape as html_escape
 from functools import wraps
-from time import time, sleep
+from time import time, sleep, process_time
 from collections import defaultdict
 from urllib.parse import urlparse
+from werkzeug.utils import secure_filename
+try:
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Gauge,
+        Histogram,
+        REGISTRY,
+        generate_latest,
+    )
+    PROMETHEUS_CLIENT_AVAILABLE = True
+except Exception:
+    CONTENT_TYPE_LATEST = 'text/plain; version=0.0.4; charset=utf-8'
+    Counter = Gauge = Histogram = None
+    REGISTRY = None
+    generate_latest = None
+    PROMETHEUS_CLIENT_AVAILABLE = False
 
 # Загружаем переменные окружения ПЕРЕД импортом admin_manager
 load_dotenv()
@@ -59,6 +78,7 @@ from topics_manager import TopicsManager
 from stats_manager import StatsManager
 from trainer_manager import TrainerManager
 from scenario_manager import ScenarioManager
+from contacts_manager import ContactsManager
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -109,6 +129,245 @@ class RateLimiter:
 rate_limiter = RateLimiter()
 ticket_counter_lock = threading.Lock()
 audit_log_lock = threading.Lock()
+
+PROMETHEUS_METRICS_ENABLED = os.getenv('PROMETHEUS_METRICS_ENABLED', 'true').lower() not in ('0', 'false', 'no', 'off')
+PROMETHEUS_SERVICE_NAME = os.getenv('PROMETHEUS_SERVICE_NAME', 'helper').strip() or 'helper'
+PROMETHEUS_ENV = os.getenv('PROMETHEUS_ENV', os.getenv('FLASK_ENV', 'prod')).strip() or 'prod'
+PROMETHEUS_METRICS_TOKEN = os.getenv('PROMETHEUS_METRICS_TOKEN', '').strip()
+PROMETHEUS_METRICS_ALLOWED_IPS = os.getenv(
+    'PROMETHEUS_METRICS_ALLOWED_IPS',
+    '127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+)
+
+
+class _NoopMetric:
+    def labels(self, *args, **kwargs):
+        return self
+
+    def inc(self, *args, **kwargs):
+        return None
+
+    def dec(self, *args, **kwargs):
+        return None
+
+    def set(self, *args, **kwargs):
+        return None
+
+    def observe(self, *args, **kwargs):
+        return None
+
+
+def _metric_name_exists(name: str) -> bool:
+    if not (PROMETHEUS_CLIENT_AVAILABLE and REGISTRY):
+        return False
+    names = getattr(REGISTRY, '_names_to_collectors', {})
+    if name in names:
+        return True
+    if name.endswith('_total') and name[:-6] in names:
+        return True
+    return False
+
+
+def _new_metric(metric_cls, name: str, *args, **kwargs):
+    if not (PROMETHEUS_METRICS_ENABLED and PROMETHEUS_CLIENT_AVAILABLE and metric_cls):
+        return _NoopMetric()
+    if _metric_name_exists(name):
+        return _NoopMetric()
+    return metric_cls(name, *args, **kwargs)
+
+
+HTTP_REQUESTS_TOTAL = _new_metric(
+    Counter,
+    'http_requests_total',
+    'Total HTTP requests handled by Helper.',
+    ['service', 'env', 'method', 'route', 'status']
+)
+HTTP_REQUEST_DURATION_SECONDS = _new_metric(
+    Histogram,
+    'http_request_duration_seconds',
+    'HTTP request duration in seconds.',
+    ['service', 'env', 'method', 'route', 'status'],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30)
+)
+HTTP_REQUESTS_IN_PROGRESS = _new_metric(
+    Gauge,
+    'http_requests_in_progress',
+    'HTTP requests currently being processed.',
+    ['service', 'env', 'method', 'route']
+)
+HTTP_ERRORS_TOTAL = _new_metric(
+    Counter,
+    'http_errors_total',
+    'HTTP 5xx errors returned by Helper.',
+    ['service', 'env', 'method', 'route', 'status']
+)
+BOT_UPDATES_TOTAL = _new_metric(
+    Counter,
+    'bot_updates_total',
+    'Telegram bot updates received.',
+    ['service', 'env', 'update_type']
+)
+BOT_MESSAGES_TOTAL = _new_metric(
+    Counter,
+    'bot_messages_total',
+    'Telegram bot messages by direction and kind.',
+    ['service', 'env', 'direction', 'kind']
+)
+BOT_ERRORS_TOTAL = _new_metric(
+    Counter,
+    'bot_errors_total',
+    'Telegram bot processing errors.',
+    ['service', 'env', 'handler', 'error_type']
+)
+BOT_HANDLER_DURATION_SECONDS = _new_metric(
+    Histogram,
+    'bot_handler_duration_seconds',
+    'Telegram bot update processing duration in seconds.',
+    ['service', 'env', 'handler'],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30)
+)
+BOT_EXTERNAL_API_ERRORS_TOTAL = _new_metric(
+    Counter,
+    'bot_external_api_errors_total',
+    'Telegram API errors raised by bot methods.',
+    ['service', 'env', 'method', 'error_type']
+)
+BOT_LAST_UPDATE_TIMESTAMP = _new_metric(
+    Gauge,
+    'bot_last_update_timestamp',
+    'Unix timestamp of the last Telegram update processed.',
+    ['service', 'env']
+)
+BOT_POLLING_UP = _new_metric(
+    Gauge,
+    'bot_polling_up',
+    'Whether Telegram polling loop is running.',
+    ['service', 'env']
+)
+BOT_POLLING_ERRORS_TOTAL = _new_metric(
+    Counter,
+    'bot_polling_errors_total',
+    'Telegram polling loop errors.',
+    ['service', 'env', 'error_type']
+)
+PROCESS_CPU_SECONDS_TOTAL = _new_metric(
+    Gauge,
+    'process_cpu_seconds_total',
+    'Total user and system CPU time spent by the Helper process.',
+)
+PROCESS_RESIDENT_MEMORY_BYTES = _new_metric(
+    Gauge,
+    'process_resident_memory_bytes',
+    'Resident memory size in bytes for the Helper process.',
+)
+
+
+def _metric_base_labels() -> tuple[str, str]:
+    return PROMETHEUS_SERVICE_NAME, PROMETHEUS_ENV
+
+
+def _request_metric_route() -> str:
+    if request.url_rule and request.url_rule.rule:
+        return request.url_rule.rule
+    if request.path.startswith('/static/'):
+        return '/static/<path>'
+    return 'unmatched'
+
+
+def _skip_request_metrics() -> bool:
+    return (
+        not PROMETHEUS_METRICS_ENABLED
+        or request.path == '/metrics'
+        or request.path.startswith('/static/')
+    )
+
+
+def _metrics_allowed_networks():
+    networks = []
+    for item in PROMETHEUS_METRICS_ALLOWED_IPS.split(','):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(item, strict=False))
+        except ValueError:
+            pass
+    return networks
+
+
+def _metrics_request_allowed() -> bool:
+    if not PROMETHEUS_METRICS_ENABLED:
+        return False
+
+    if PROMETHEUS_METRICS_TOKEN:
+        auth_header = request.headers.get('Authorization', '')
+        bearer = f'Bearer {PROMETHEUS_METRICS_TOKEN}'
+        if auth_header == bearer or request.args.get('token') == PROMETHEUS_METRICS_TOKEN:
+            return True
+
+    remote_addr = request.remote_addr or ''
+    try:
+        remote_ip = ipaddress.ip_address(remote_addr)
+    except ValueError:
+        return False
+    return any(remote_ip in network for network in _metrics_allowed_networks())
+
+
+def _current_process_rss_bytes() -> int:
+    if os.name == 'nt':
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class ProcessMemoryCounters(ctypes.Structure):
+                _fields_ = [
+                    ('cb', wintypes.DWORD),
+                    ('PageFaultCount', wintypes.DWORD),
+                    ('PeakWorkingSetSize', ctypes.c_size_t),
+                    ('WorkingSetSize', ctypes.c_size_t),
+                    ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                    ('PagefileUsage', ctypes.c_size_t),
+                    ('PeakPagefileUsage', ctypes.c_size_t),
+                ]
+
+            counters = ProcessMemoryCounters()
+            counters.cb = ctypes.sizeof(ProcessMemoryCounters)
+            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+            psapi = ctypes.WinDLL('psapi', use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(ProcessMemoryCounters),
+                wintypes.DWORD,
+            ]
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+            handle = kernel32.GetCurrentProcess()
+            ok = psapi.GetProcessMemoryInfo(
+                handle,
+                ctypes.byref(counters),
+                counters.cb
+            )
+            return int(counters.WorkingSetSize) if ok else 0
+        except Exception:
+            return 0
+
+    try:
+        with open('/proc/self/statm', 'r', encoding='utf-8') as statm:
+            parts = statm.read().split()
+        resident_pages = int(parts[1])
+        return resident_pages * os.sysconf('SC_PAGE_SIZE')
+    except Exception:
+        return 0
+
+
+def _refresh_process_metrics():
+    PROCESS_CPU_SECONDS_TOTAL.set(process_time())
+    rss_bytes = _current_process_rss_bytes()
+    if rss_bytes:
+        PROCESS_RESIDENT_MEMORY_BYTES.set(rss_bytes)
 
 def rate_limit(max_requests: int = 60, window: int = 60):
     """Rate limiting decorator"""
@@ -234,29 +493,45 @@ def validated_redirect(url, fallback_endpoint='admin_dashboard'):
     return redirect(url)
 
 
-def is_working_hours():
-    """Проверяет, рабочее ли сейчас время (Пн-Пт, 8:30-17:30).
+def is_working_hours(now: datetime | None = None):
+    """Проверяет, можно ли сейчас отправлять заявки в техподдержку.
     Возвращает (True, '') если рабочее время, иначе (False, сообщение).
     """
-    now = datetime.now()
+    now = now or datetime.now()
+    settings = _get_ticket_schedule_settings()
+    today = now.strftime('%Y-%m-%d')
+    current_time = now.time()
 
-    # Майские праздники 2026: 1 мая 00:00 — 11 мая 08:30
-    may_holiday_start = datetime(2026, 5, 1, 0, 0, 0)
-    may_holiday_end   = datetime(2026, 5, 11, 8, 30, 0)
-    if may_holiday_start <= now < may_holiday_end:
+    holiday = next((item for item in settings['holidays'] if item.get('date') == today), None)
+    if holiday:
+        name = holiday.get('name') or 'праздничный день'
         return False, (
-            'В период с 1 по 11 мая техническая поддержка не работает в связи с праздничными днями. '
-            'Просьба обратиться к вашему руководителю или главному специалисту. '
+            f'Сегодня нерабочий день: {name}. '
+            'Заявки в техподдержку не принимаются. '
             'Вы по-прежнему можете пользоваться инструкциями, видео и тренажёром.'
         )
 
-    # 0=Пн, 1=Вт, ..., 5=Сб, 6=Вс
-    if now.weekday() >= 5:  # Суббота или Воскресенье
-        return False, 'Сегодня выходной день. Сотрудники ОПО не на рабочем месте. Просьба постараться решить проблему самостоятельно с помощью инструкций.'
-    work_start = now.replace(hour=8, minute=30, second=0, microsecond=0)
-    work_end = now.replace(hour=17, minute=30, second=0, microsecond=0)
-    if now < work_start or now > work_end:
+    day_override = next((item for item in settings['workday_overrides'] if item.get('date') == today), None)
+    is_workday = bool(day_override) or now.weekday() in settings['workdays']
+    if not is_workday:
+        return False, 'Сегодня нерабочий день. Сотрудники ОПО не на рабочем месте. Просьба постараться решить проблему самостоятельно с помощью инструкций.'
+
+    work_start = _parse_schedule_time((day_override or {}).get('start') or settings['work_start'], '08:30')
+    work_end = _parse_schedule_time((day_override or {}).get('end') or settings['work_end'], '17:30')
+    if current_time < work_start or current_time > work_end:
         return False, 'Сейчас нерабочее время. Просьба постараться решить проблему самостоятельно с помощью инструкций.'
+
+    lunch_enabled = settings['lunch_enabled']
+    if day_override and 'lunch_enabled' in day_override:
+        lunch_enabled = bool(day_override.get('lunch_enabled'))
+    if lunch_enabled:
+        lunch_start = _parse_schedule_time((day_override or {}).get('lunch_start') or settings['lunch_start'], '12:00')
+        lunch_end = _parse_schedule_time((day_override or {}).get('lunch_end') or settings['lunch_end'], '13:00')
+        if lunch_start <= current_time < lunch_end:
+            return False, (
+                f'Сейчас обеденный перерыв ОПО ({lunch_start.strftime("%H:%M")}–{lunch_end.strftime("%H:%M")}). '
+                'Просьба воспользоваться инструкциями или отправить заявку после перерыва.'
+            )
     return True, ''
 
 
@@ -273,7 +548,7 @@ _ONLINE_TIMEOUT = 300  # 5 минут — считаем пользовател�
 def _track_user_activity():
     """Обновляет информацию об активности текущего пользователя."""
     try:
-        if request.path.startswith('/static/'):
+        if request.path.startswith('/static/') or request.path == '/metrics':
             return
 
         ip = get_client_ip()
@@ -357,6 +632,15 @@ def get_online_stats():
 def mark_request_start():
     """Отмечает старт запроса и трекает активность пользователя."""
     g.request_started_at = time()
+    g.prometheus_skip = _skip_request_metrics()
+    if not g.prometheus_skip:
+        route = _request_metric_route()
+        g.prometheus_route = route
+        HTTP_REQUESTS_IN_PROGRESS.labels(
+            *_metric_base_labels(),
+            request.method,
+            route
+        ).inc()
     _track_user_activity()
 
 
@@ -377,7 +661,7 @@ def no_cache_protected(response):
     """Запрет кэширования админских и пользовательских страниц — защита от Alt+← после logout."""
     no_cache_paths = ('/admin', '/trainer', '/send_final_ticket', '/finish_solved',
                       '/finish_unsolved', '/success', '/select_problem', '/manual/',
-                      '/choose_help_type', '/show_problems', '/login')
+                      '/choose_help_type', '/show_problems', '/login', '/enter_telegram_username')
     if any(request.path.startswith(p) for p in no_cache_paths):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
@@ -389,7 +673,7 @@ def no_cache_protected(response):
 def audit_request(response):
     """Аудит всех действий пользователей/администраторов с IP и временем."""
     try:
-        if request.path.startswith('/static/'):
+        if request.path.startswith('/static/') or request.path == '/metrics':
             return response
 
         request_duration_ms = int((time() - getattr(g, 'request_started_at', time())) * 1000)
@@ -420,9 +704,54 @@ def audit_request(response):
 
     return response
 
+
+@app.after_request
+def record_prometheus_metrics(response):
+    """Записывает Prometheus HTTP-метрики после обработки запроса."""
+    if getattr(g, 'prometheus_skip', True):
+        return response
+
+    route = getattr(g, 'prometheus_route', _request_metric_route())
+    method = request.method
+    status = str(response.status_code)
+    duration = max(0.0, time() - getattr(g, 'request_started_at', time()))
+    base_labels = _metric_base_labels()
+    HTTP_REQUESTS_TOTAL.labels(*base_labels, method, route, status).inc()
+    HTTP_REQUEST_DURATION_SECONDS.labels(*base_labels, method, route, status).observe(duration)
+    if response.status_code >= 500:
+        HTTP_ERRORS_TOTAL.labels(*base_labels, method, route, status).inc()
+    HTTP_REQUESTS_IN_PROGRESS.labels(*base_labels, method, route).dec()
+    return response
+
+
+@app.route('/metrics')
+def prometheus_metrics():
+    """Prometheus scrape endpoint."""
+    if not _metrics_request_allowed():
+        abort(404)
+    if not PROMETHEUS_CLIENT_AVAILABLE:
+        return Response(
+            'prometheus_client is not installed. Install requirements.txt dependencies.\n',
+            status=503,
+            mimetype='text/plain'
+        )
+    _refresh_process_metrics()
+    return Response(generate_latest(), content_type=CONTENT_TYPE_LATEST)
+
 APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
-
+TELEGRAM_FILE_LOOKUP_ENABLED = os.getenv(
+    'TELEGRAM_FILE_LOOKUP_ENABLED',
+    'false' if APP_TEST_MODE else 'true'
+).lower() not in ('0', 'false', 'no', 'off')
+TELEGRAM_PROXY_URL = (
+    os.getenv('TELEGRAM_PROXY_URL')
+    or os.getenv('HTTPS_PROXY')
+    or os.getenv('https_proxy')
+    or os.getenv('HTTP_PROXY')
+    or os.getenv('http_proxy')
+    or ''
+).strip()
 TRUSTED_PROXY_IP = os.getenv("TRUSTED_PROXY_IP")
 TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', os.path.join(BASE_DIR, 'topics.db'))
 TICKET_NUMBER_START = int(os.getenv('TICKET_NUMBER_START', '125'))
@@ -476,7 +805,121 @@ if not BOT_TOKEN:
     print("Ошибка: BOT_TOKEN не найден в переменных окружения. Пожалуйста, проверьте ваш .env файл.")
     exit()
 
+if TELEGRAM_PROXY_URL:
+    telebot.apihelper.proxy = {
+        'http': TELEGRAM_PROXY_URL,
+        'https': TELEGRAM_PROXY_URL
+    }
+    print("[telegram] Прокси для Telegram API настроен")
+
 bot = telebot.TeleBot(BOT_TOKEN)
+
+
+def _telegram_update_type(update) -> str:
+    for attr in (
+        'message',
+        'edited_message',
+        'callback_query',
+        'channel_post',
+        'edited_channel_post',
+        'inline_query',
+        'chosen_inline_result',
+        'poll',
+        'poll_answer',
+        'my_chat_member',
+        'chat_member',
+    ):
+        if getattr(update, attr, None) is not None:
+            return attr
+    return type(update).__name__
+
+
+def _telegram_message_kind(update) -> str:
+    message = getattr(update, 'message', None) or getattr(update, 'edited_message', None)
+    if message is not None:
+        return getattr(message, 'content_type', None) or 'message'
+    if getattr(update, 'callback_query', None) is not None:
+        return 'callback_query'
+    return _telegram_update_type(update)
+
+
+def _instrument_telegram_bot(bot_instance):
+    """Добавляет базовые Prometheus-метрики вокруг pyTelegramBotAPI."""
+    if getattr(bot_instance, '_helper_prometheus_instrumented', False):
+        return
+    bot_instance._helper_prometheus_instrumented = True
+
+    original_process_updates = bot_instance.process_new_updates
+
+    @wraps(original_process_updates)
+    def monitored_process_new_updates(updates):
+        start = time()
+        base_labels = _metric_base_labels()
+        try:
+            for update in updates or []:
+                update_type = _telegram_update_type(update)
+                BOT_UPDATES_TOTAL.labels(*base_labels, update_type).inc()
+                BOT_MESSAGES_TOTAL.labels(*base_labels, 'in', _telegram_message_kind(update)).inc()
+                BOT_LAST_UPDATE_TIMESTAMP.labels(*base_labels).set(time())
+            return original_process_updates(updates)
+        except Exception as e:
+            BOT_ERRORS_TOTAL.labels(*base_labels, 'process_new_updates', type(e).__name__).inc()
+            raise
+        finally:
+            BOT_HANDLER_DURATION_SECONDS.labels(*base_labels, 'process_new_updates').observe(time() - start)
+
+    bot_instance.process_new_updates = monitored_process_new_updates
+
+    def wrap_api_method(method_name: str):
+        if not hasattr(bot_instance, method_name):
+            return
+        original = getattr(bot_instance, method_name)
+
+        @wraps(original)
+        def monitored_api_method(*args, **kwargs):
+            base_labels = _metric_base_labels()
+            try:
+                result = original(*args, **kwargs)
+                if method_name.startswith('send_'):
+                    BOT_MESSAGES_TOTAL.labels(*base_labels, 'out', method_name).inc()
+                return result
+            except Exception as e:
+                error_type = type(e).__name__
+                BOT_EXTERNAL_API_ERRORS_TOTAL.labels(*base_labels, method_name, error_type).inc()
+                BOT_ERRORS_TOTAL.labels(*base_labels, method_name, error_type).inc()
+                raise
+
+        setattr(bot_instance, method_name, monitored_api_method)
+
+    for api_method in (
+        'send_message',
+        'send_photo',
+        'send_video',
+        'send_media_group',
+        'answer_callback_query',
+        'edit_message_reply_markup',
+        'edit_message_text',
+    ):
+        wrap_api_method(api_method)
+
+
+_instrument_telegram_bot(bot)
+
+
+def _sanitize_exception_text(text: str) -> str:
+    safe = str(text or '')
+    if BOT_TOKEN:
+        safe = safe.replace(BOT_TOKEN, '<bot_token>')
+    safe = re.sub(r'/bot[^/\s]+/', '/bot<bot_token>/', safe)
+    safe = re.sub(r'bot\d+:[A-Za-z0-9_-]+', 'bot<bot_token>', safe)
+    return safe
+
+
+def _log_exception_safely(context: str, error: Exception | None = None):
+    text = traceback.format_exc()
+    if not text or text.strip() == 'NoneType: None':
+        text = str(error or '')
+    print(f"[{context}] {_sanitize_exception_text(text)[:2500]}")
 
 
 def _init_ticket_counter_table():
@@ -613,6 +1056,16 @@ def _init_analytics_tables():
                     """)
 
                     cur.execute("""
+                        CREATE TABLE IF NOT EXISTS user_profiles (
+                            username TEXT PRIMARY KEY,
+                            telegram_username TEXT,
+                            created_at TIMESTAMP,
+                            updated_at TIMESTAMP
+                        )
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profiles_telegram ON user_profiles(telegram_username)")
+
+                    cur.execute("""
                         CREATE TABLE IF NOT EXISTS topic_changes (
                             id BIGSERIAL PRIMARY KEY,
                             created_at TIMESTAMP NOT NULL,
@@ -689,6 +1142,16 @@ def _init_analytics_tables():
                         updated_by TEXT
                     )
                 """)
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS user_profiles (
+                        username TEXT PRIMARY KEY,
+                        telegram_username TEXT,
+                        created_at TEXT,
+                        updated_at TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_user_profiles_telegram ON user_profiles(telegram_username)")
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS topic_changes (
@@ -967,6 +1430,115 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
         print(f"[analytics] Ошибка логирования ticket_event: {e}")
 
 
+def _profile_username_key(username: str | None) -> str:
+    return str(username or '').strip().lower()
+
+
+def _normalize_telegram_username(value: str | None) -> str | None:
+    login = str(value or '').strip()
+    login = re.sub(r'^https?://t\.me/', '', login, flags=re.IGNORECASE).strip()
+    login = login.strip('/').split('?', 1)[0].strip()
+    login = login.lstrip('@').strip()
+    if not re.fullmatch(r'[A-Za-z0-9_]{5,32}', login):
+        return None
+    return login
+
+
+def _load_user_profile(username: str | None) -> dict:
+    key = _profile_username_key(username)
+    if not key:
+        return {}
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT username, telegram_username
+                        FROM user_profiles
+                        WHERE username = %s
+                    """, [key])
+                    row = cur.fetchone()
+                    return dict(row) if row else {}
+
+        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT username, telegram_username
+                FROM user_profiles
+                WHERE username = ?
+            """, [key])
+            row = cur.fetchone()
+            return dict(row) if row else {}
+    except Exception as e:
+        print(f"[user_profile] Ошибка чтения профиля: {e}")
+        return {}
+
+
+def _save_user_telegram_username(username: str | None, telegram_username: str) -> bool:
+    key = _profile_username_key(username)
+    normalized = _normalize_telegram_username(telegram_username)
+    if not key or not normalized:
+        return False
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO user_profiles (username, telegram_username, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (username) DO UPDATE SET
+                            telegram_username = EXCLUDED.telegram_username,
+                            updated_at = EXCLUDED.updated_at
+                    """, [key, normalized, now, now])
+                conn.commit()
+            return True
+
+        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            conn.execute("""
+                INSERT INTO user_profiles (username, telegram_username, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(username) DO UPDATE SET
+                    telegram_username = excluded.telegram_username,
+                    updated_at = excluded.updated_at
+            """, [key, normalized, now, now])
+            conn.commit()
+        return True
+    except Exception as e:
+        print(f"[user_profile] Ошибка сохранения Telegram username: {e}")
+        return False
+
+
+def _get_session_telegram_username() -> str:
+    if not has_request_context() or not session.get('authenticated') or not session.get('user_info'):
+        return ''
+
+    user_info = dict(session.get('user_info') or {})
+    current = _normalize_telegram_username(user_info.get('telegram_username'))
+    if current:
+        return current
+
+    profile = _load_user_profile(user_info.get('username'))
+    saved = _normalize_telegram_username(profile.get('telegram_username'))
+    if saved:
+        user_info['telegram_username'] = saved
+        session['user_info'] = user_info
+        session.modified = True
+        return saved
+
+    return ''
+
+
+def _require_telegram_username_for_ticket(next_endpoint: str, next_args: dict | None = None):
+    if _get_session_telegram_username():
+        return None
+    session['next_after_telegram_username'] = next_endpoint
+    session['next_after_telegram_username_args'] = next_args or {}
+    session.modified = True
+    return redirect(url_for('enter_telegram_username'))
+
+
 TICKET_STATUS_LABELS = {
     'in_work': 'В работе',
     'ready_for_feedback': 'Готово',
@@ -1005,7 +1577,7 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             params.append(ticket_numbers)
         query = f"""
             SELECT id, created_at::text AS created_at, event_type, ticket_number, problem,
-                   department, user_name, workplace, is_cisco,
+                   problem_id, subproblem_id, department, user_name, workplace, is_cisco,
                    actor_name, actor_username, actor_role, details_json
             FROM ticket_events
             {where}
@@ -1024,7 +1596,7 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             params.extend(ticket_numbers)
         query = f"""
             SELECT id, created_at, event_type, ticket_number, problem,
-                   department, user_name, workplace, is_cisco,
+                   problem_id, subproblem_id, department, user_name, workplace, is_cisco,
                    actor_name, actor_username, actor_role, details_json
             FROM ticket_events
             {where}
@@ -1048,6 +1620,8 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             'status': 'unknown',
             'status_label': TICKET_STATUS_LABELS['unknown'],
             'problem': '',
+            'problem_id': '',
+            'subproblem_id': '',
             'department': '',
             'user_name': '',
             'workplace': '',
@@ -1059,6 +1633,8 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             'resolved_by': '',
             'assigned_name': '',
             'assigned_username': '',
+            'creator_name': '',
+            'creator_username': '',
             'reject_reason': '',
             'details': {},
         })
@@ -1068,6 +1644,10 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
         state['updated_at'] = created_at or state['updated_at']
         if row.get('problem'):
             state['problem'] = row.get('problem') or state['problem']
+        if row.get('problem_id'):
+            state['problem_id'] = row.get('problem_id') or state['problem_id']
+        if row.get('subproblem_id'):
+            state['subproblem_id'] = row.get('subproblem_id') or state['subproblem_id']
         if row.get('department'):
             state['department'] = row.get('department') or state['department']
         if row.get('user_name'):
@@ -1079,6 +1659,8 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
         if event_type == 'ticket_created':
             state['created_at'] = state['created_at'] or created_at
             state['status'] = 'in_work'
+            state['creator_name'] = row.get('actor_name') or state['creator_name']
+            state['creator_username'] = row.get('actor_username') or state['creator_username']
         elif event_type in ('ticket_assigned_to_duty', 'ticket_assigned_to_staff'):
             state['assigned_name'] = row.get('actor_name') or state['assigned_name']
             state['assigned_username'] = row.get('actor_username') or state['assigned_username']
@@ -1126,6 +1708,10 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
 
         state['status_label'] = TICKET_STATUS_LABELS.get(state['status'], TICKET_STATUS_LABELS['unknown'])
 
+    legacy_text_map = _resolution_problem_text_map()
+    for state in states.values():
+        _attach_resolution_problem_fields(state, legacy_text_map)
+
     return states
 
 
@@ -1140,6 +1726,19 @@ def _default_duty_settings() -> dict:
         'current_duty_telegram_id': str(CURRENT_DUTY_TELEGRAM_ID or ''),
         'overload_ticket_limit': str(OVERLOAD_TICKET_LIMIT),
         'overload_alert_thread_id': str(OVERLOAD_ALERT_THREAD_ID or ''),
+    }
+
+
+def _default_ticket_schedule_settings() -> dict:
+    return {
+        'ticket_workdays': '0,1,2,3,4',
+        'ticket_work_start': '08:30',
+        'ticket_work_end': '17:30',
+        'ticket_lunch_enabled': 'true',
+        'ticket_lunch_start': '12:00',
+        'ticket_lunch_end': '13:00',
+        'ticket_holidays_json': '[]',
+        'ticket_workday_overrides_json': '[]',
     }
 
 
@@ -1171,7 +1770,7 @@ def _get_app_settings(keys: list[str] | None = None) -> dict:
 
 def _set_app_settings(values: dict, updated_by: str = ''):
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    clean_values = {str(k): str(v or '')[:300] for k, v in values.items()}
+    clean_values = {str(k): str(v or '')[:10000] for k, v in values.items()}
     if not clean_values:
         return
     if ANALYTICS_USE_POSTGRES:
@@ -1210,6 +1809,146 @@ def _get_duty_settings() -> dict:
     settings['overload_ticket_limit'] = str(max(1, _env_int_from_value(settings.get('overload_ticket_limit'), OVERLOAD_TICKET_LIMIT)))
     settings['overload_alert_thread_id'] = str(_env_int_from_value(settings.get('overload_alert_thread_id'), 0) or '')
     return settings
+
+
+def _bool_from_value(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in ('1', 'true', 'yes', 'on', 'да'):
+        return True
+    if normalized in ('0', 'false', 'no', 'off', 'нет'):
+        return False
+    return default
+
+
+def _parse_schedule_time(value: Any, fallback: str):
+    text = str(value or fallback).strip()
+    if not re.fullmatch(r'\d{2}:\d{2}', text):
+        text = fallback
+    try:
+        return datetime.strptime(text, '%H:%M').time()
+    except ValueError:
+        return datetime.strptime(fallback, '%H:%M').time()
+
+
+def _normalize_time_text(value: Any, fallback: str) -> str:
+    return _parse_schedule_time(value, fallback).strftime('%H:%M')
+
+
+def _valid_schedule_date(value: Any) -> str:
+    text = str(value or '').strip()[:10]
+    try:
+        return datetime.strptime(text, '%Y-%m-%d').strftime('%Y-%m-%d')
+    except ValueError:
+        return ''
+
+
+def _load_json_list(value: Any) -> list:
+    try:
+        parsed = json.loads(value or '[]')
+        return parsed if isinstance(parsed, list) else []
+    except Exception:
+        return []
+
+
+def _normalize_ticket_holidays(items: list) -> list[dict]:
+    result = {}
+    for item in items[:150]:
+        if not isinstance(item, dict):
+            continue
+        date_text = _valid_schedule_date(item.get('date'))
+        if not date_text:
+            continue
+        result[date_text] = {
+            'date': date_text,
+            'name': str(item.get('name') or 'Праздничный день').strip()[:120]
+        }
+    return [result[key] for key in sorted(result.keys())]
+
+
+def _normalize_ticket_workday_overrides(items: list) -> list[dict]:
+    result = {}
+    for item in items[:120]:
+        if not isinstance(item, dict):
+            continue
+        date_text = _valid_schedule_date(item.get('date'))
+        if not date_text:
+            continue
+        start = _normalize_time_text(item.get('start'), '08:30')
+        end = _normalize_time_text(item.get('end'), '17:30')
+        if start >= end:
+            start, end = '08:30', '17:30'
+        lunch_start = _normalize_time_text(item.get('lunch_start'), '12:00')
+        lunch_end = _normalize_time_text(item.get('lunch_end'), '13:00')
+        if lunch_start >= lunch_end:
+            lunch_start, lunch_end = '12:00', '13:00'
+        result[date_text] = {
+            'date': date_text,
+            'name': str(item.get('name') or 'Рабочий день').strip()[:120],
+            'start': start,
+            'end': end,
+            'lunch_enabled': _bool_from_value(item.get('lunch_enabled'), True),
+            'lunch_start': lunch_start,
+            'lunch_end': lunch_end,
+        }
+    return [result[key] for key in sorted(result.keys())]
+
+
+def _normalize_ticket_workdays(value: Any) -> list[int]:
+    if isinstance(value, list):
+        raw_items = value
+    else:
+        raw_items = str(value or '').split(',')
+    days = set()
+    for item in raw_items:
+        try:
+            day = int(str(item).strip())
+        except (TypeError, ValueError):
+            continue
+        if 0 <= day <= 6:
+            days.add(day)
+    return sorted(days) or [0, 1, 2, 3, 4]
+
+
+def _get_ticket_schedule_settings() -> dict:
+    settings = _default_ticket_schedule_settings()
+    settings.update(_get_app_settings(list(settings.keys())))
+
+    work_start = _normalize_time_text(settings.get('ticket_work_start'), '08:30')
+    work_end = _normalize_time_text(settings.get('ticket_work_end'), '17:30')
+    if work_start >= work_end:
+        work_start, work_end = '08:30', '17:30'
+
+    lunch_start = _normalize_time_text(settings.get('ticket_lunch_start'), '12:00')
+    lunch_end = _normalize_time_text(settings.get('ticket_lunch_end'), '13:00')
+    if lunch_start >= lunch_end:
+        lunch_start, lunch_end = '12:00', '13:00'
+
+    return {
+        'workdays': _normalize_ticket_workdays(settings.get('ticket_workdays')),
+        'work_start': work_start,
+        'work_end': work_end,
+        'lunch_enabled': _bool_from_value(settings.get('ticket_lunch_enabled'), True),
+        'lunch_start': lunch_start,
+        'lunch_end': lunch_end,
+        'holidays': _normalize_ticket_holidays(_load_json_list(settings.get('ticket_holidays_json'))),
+        'workday_overrides': _normalize_ticket_workday_overrides(_load_json_list(settings.get('ticket_workday_overrides_json'))),
+    }
+
+
+def _ticket_schedule_summary() -> str:
+    settings = _get_ticket_schedule_settings()
+    day_names = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+    days = ', '.join(day_names[day] for day in settings['workdays'])
+    summary = f"{days}: {settings['work_start']}–{settings['work_end']}"
+    if settings['lunch_enabled']:
+        summary += f"; обед {settings['lunch_start']}–{settings['lunch_end']}"
+    if settings['holidays']:
+        summary += f"; праздников: {len(settings['holidays'])}"
+    return summary
 
 
 def _env_int_from_value(value: Any, default: int = 0) -> int:
@@ -1470,6 +2209,7 @@ trainer_mgr = TrainerManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация ScenarioManager (сценарии консультаций КЦ)
 scenario_mgr = ScenarioManager(os.path.join(BASE_DIR, "topics.db"))
+contacts_mgr = ContactsManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация счётчика заявок
 _init_ticket_counter_table()
@@ -1557,6 +2297,9 @@ def get_file_url(file_id):
             # Return URL for static file
             return url_for('static', filename=f'videos/{file_id}')
 
+        if not TELEGRAM_FILE_LOOKUP_ENABLED:
+            return None
+
         # Otherwise, it's a Telegram file_id - get it from Telegram API
         file_info = bot.get_file(file_id)
         return f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
@@ -1577,11 +2320,54 @@ def escape_markdown(text):
     return text
 
 
+def _send_ticket_screenshots(screenshots, thread_id: int | None = None):
+    """Отправляет скриншоты к заявке: 2+ фото строго одним Telegram-альбомом."""
+    if not screenshots:
+        return None
+
+    if len(screenshots) == 1:
+        screenshot = screenshots[0]
+        stream = getattr(screenshot, 'stream', screenshot)
+        try:
+            if hasattr(stream, 'seek'):
+                stream.seek(0)
+        except Exception:
+            pass
+        msg = bot.send_photo(
+            TECH_SUPPORT_CHAT_ID,
+            stream,
+            caption="Скриншот 1",
+            message_thread_id=thread_id
+        )
+        print("[send_ticket] Отправлен скриншот 1")
+        return msg
+
+    media = []
+    for index, screenshot in enumerate(screenshots[:10], 1):
+        stream = getattr(screenshot, 'stream', screenshot)
+        try:
+            if hasattr(stream, 'seek'):
+                stream.seek(0)
+        except Exception:
+            pass
+        caption = "Скриншоты" if index == 1 else None
+        media.append(InputMediaPhoto(stream, caption=caption))
+
+    result = bot.send_media_group(
+        TECH_SUPPORT_CHAT_ID,
+        media,
+        message_thread_id=thread_id
+    )
+    print(f"[send_ticket] Отправлены скриншоты альбомом ({len(media)})")
+    return result
+
+
 def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_id=None):
     user_info = session.get('user_info', {})
     department = user_info.get('department', 'Неизвестно')
     name = user_info.get('name', 'Неизвестно')
     workplace = user_info.get('workplace', '')
+    telegram_username = _get_session_telegram_username()
     ticket_number = get_next_ticket_number()
     session['current_ticket_number'] = ticket_number
     session.modified = True
@@ -1592,6 +2378,9 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
         f"Отдел: {escape_markdown(department)}\n"
         f"Имя: {escape_markdown(name)}\n"
     )
+
+    if telegram_username:
+        support_message += f"Telegram: @{escape_markdown(telegram_username)}\n"
 
     # Добавляем рабочее место если оно указано
     if workplace:
@@ -1605,18 +2394,21 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
     topic_name = None
     if topic_info:
         topic_name = topic_info.get('topic')
+        topic_id = topic_info.get('id')
         try:
+            if topic_id:
+                topic_id = int(topic_id)
             if has_request_context() and request.method == 'POST':
-                topic_id = request.form.get('selected_topic_id')
-                if topic_id:
-                    topic_id = int(topic_id)
+                form_topic_id = request.form.get('selected_topic_id')
+                if form_topic_id:
+                    topic_id = int(form_topic_id)
         except Exception:
             topic_id = None
 
-    try:
-        target_thread_id = thread_id or NEW_TICKETS_THREAD_ID
-        is_cisco_ticket = (target_thread_id == CISCO_TICKETS_THREAD_ID and CISCO_TICKETS_THREAD_ID != 0)
+    target_thread_id = thread_id or NEW_TICKETS_THREAD_ID
+    is_cisco_ticket = (target_thread_id == CISCO_TICKETS_THREAD_ID and CISCO_TICKETS_THREAD_ID != 0)
 
+    try:
         if _is_reset_call_ticket(problem, topic_name or ''):
             print(f"[send_ticket] Авто-закрытие заявки №{ticket_number}: сброс звонка")
             msg = bot.send_message(
@@ -1643,7 +2435,8 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
                 problem=problem,
                 channel=topic_info.get('channel', '') if topic_info else '',
                 topic_name=topic_name or '',
-                is_cisco=is_cisco_ticket
+                is_cisco=is_cisco_ticket,
+                details={'telegram_username': telegram_username} if telegram_username else None
             )
             system_actor = {'name': 'Helper', 'username': 'helper-system', 'role': 'system'}
             log_ticket_event(
@@ -1675,29 +2468,10 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
         # Отправляем скриншоты, если они есть
         if screenshots:
             try:
-                if len(screenshots) > 1:
-                    media = []
-                    for i, screenshot in enumerate(screenshots, 1):
-                        if i == 1:
-                            media.append(InputMediaPhoto(screenshot, caption="Скриншоты"))
-                        else:
-                            media.append(InputMediaPhoto(screenshot))
-                    bot.send_media_group(
-                        TECH_SUPPORT_CHAT_ID,
-                        media,
-                        message_thread_id=target_thread_id
-                    )
-                    print(f"[send_ticket] Отправлены скриншоты альбомом ({len(screenshots)})")
-                else:
-                    bot.send_photo(
-                        TECH_SUPPORT_CHAT_ID,
-                        screenshots[0],
-                        caption="Скриншот 1",
-                        message_thread_id=target_thread_id
-                    )
-                    print("[send_ticket] Отправлен скриншот 1")
+                _send_ticket_screenshots(screenshots, target_thread_id)
             except Exception as e:
-                print(f"[send_ticket] Ошибка при отправке скриншотов: {e}")
+                print(f"[send_ticket] Ошибка при отправке скриншотов: {type(e).__name__}")
+                _log_exception_safely('send_ticket_screenshots', e)
 
         if video:
             try:
@@ -1730,14 +2504,28 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
             problem=problem,
             channel=topic_info.get('channel', '') if topic_info else '',
             topic_name=topic_name or '',
-            is_cisco=is_cisco_ticket
+            is_cisco=is_cisco_ticket,
+            details={'telegram_username': telegram_username} if telegram_username else None
         )
         _assign_ticket_to_current_duty(ticket_number, problem)
 
         return msg
     except Exception as e:
-        print("[send_ticket] Ошибка при отправке заявки:", e)
-        traceback.print_exc()
+        print(f"[send_ticket] Ошибка при отправке заявки №{ticket_number}: {type(e).__name__}")
+        _log_exception_safely('send_ticket', e)
+        log_ticket_event(
+            event_type='ticket_send_failed',
+            ticket_number=ticket_number,
+            problem=problem,
+            channel=topic_info.get('channel', '') if topic_info else '',
+            topic_name=topic_name or '',
+            is_cisco=is_cisco_ticket,
+            details={
+                'error_type': type(e).__name__,
+                'thread_id': target_thread_id,
+                'telegram_username': telegram_username
+            }
+        )
         return None
 
 
@@ -2259,6 +3047,291 @@ def choose_help_type():
         return redirect(url_for('user_login'))
     return render_template('choose_help_type.html', user_info=session['user_info'])
 
+
+@app.route('/my_tickets')
+def my_tickets():
+    """Страница заявок текущего пользователя."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+    return render_template('my_tickets.html', user_info=session['user_info'])
+
+
+@app.route('/contacts_kc')
+def contacts_kc():
+    """Страница контактов контакт-центра."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_info = session.get('user_info') or {}
+    q = request.args.get('q', '').strip()
+    department = request.args.get('department', '').strip()
+    departments = contacts_mgr.get_departments(include_inactive=False)
+    contacts = contacts_mgr.get_contacts(
+        q=q,
+        department=department,
+        status='active',
+        limit=800
+    )
+    actor_key = _contact_like_actor_key(user_info)
+    liked_ids = contacts_mgr.get_liked_contact_ids(actor_key, [c.get('id') for c in contacts])
+    for contact in contacts:
+        contact['liked_by_user'] = contact.get('id') in liked_ids
+    stats = contacts_mgr.get_stats()
+    return render_template(
+        'contacts_kc.html',
+        user_info=user_info,
+        departments=departments,
+        contacts=contacts,
+        stats=stats,
+        q=q,
+        selected_department=department
+    )
+
+
+def _contact_like_actor_key(user_info: dict | None = None) -> str:
+    user_info = user_info if user_info is not None else (session.get('user_info') or {})
+    return str(
+        user_info.get('username')
+        or user_info.get('email')
+        or user_info.get('name')
+        or ''
+    ).strip().lower()
+
+
+@app.route('/contacts_kc/<int:contact_id>/like', methods=['POST'])
+def contacts_kc_toggle_like(contact_id):
+    """Поставить или снять лайк с сотрудника."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    user_info = session.get('user_info') or {}
+    actor_key = _contact_like_actor_key(user_info)
+    actor_name = user_info.get('name') or user_info.get('username') or actor_key
+    result = contacts_mgr.toggle_like(contact_id, actor_key, actor_name)
+    status = 200 if result.get('success') else 400
+    return jsonify(result), status
+
+
+def _contact_form_data() -> dict:
+    return {
+        'full_name': request.form.get('full_name', '').strip(),
+        'position': request.form.get('position', '').strip(),
+        'department': request.form.get('department', '').strip(),
+        'phone': request.form.get('phone', '').strip(),
+        'extension': request.form.get('extension', '').strip(),
+        'mobile': request.form.get('mobile', '').strip(),
+        'email': request.form.get('email', '').strip(),
+        'telegram': request.form.get('telegram', '').strip(),
+        'workplace': request.form.get('workplace', '').strip(),
+        'schedule': request.form.get('schedule', '').strip(),
+        'responsibilities': request.form.get('responsibilities', '').strip(),
+        'notes': request.form.get('notes', '').strip(),
+        'tags': request.form.get('tags', '').strip(),
+        'sort_order': request.form.get('sort_order', '0').strip(),
+        'is_active': '1' if request.form.get('is_active') else '0',
+    }
+
+
+def _normalize_department_key(value: str) -> str:
+    return re.sub(r'\s+', ' ', str(value or '').strip()).casefold()
+
+
+def _contact_department_options() -> dict:
+    options = {}
+    for item in contacts_mgr.get_departments(include_inactive=True):
+        name = str(item.get('name') or '').strip()
+        key = _normalize_department_key(name)
+        if key and key not in options:
+            options[key] = name
+    return options
+
+
+def _validated_contact_form_data():
+    data = _contact_form_data()
+    departments = _contact_department_options()
+    department_key = _normalize_department_key(data.get('department'))
+    if not department_key or department_key not in departments:
+        return data, 'Выберите отдел из списка'
+    data['department'] = departments[department_key]
+    return data, None
+
+
+CONTACT_PHOTO_UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'uploads', 'contact_photos')
+CONTACT_PHOTO_URL_PREFIX = 'uploads/contact_photos'
+CONTACT_PHOTO_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'jfif', 'avif'}
+CONTACT_PHOTO_MIME_EXTENSIONS = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/avif': 'avif',
+}
+
+
+def _safe_remove_contact_photo(photo_path: str):
+    if not photo_path:
+        return
+    normalized = str(photo_path).replace('\\', '/').lstrip('/')
+    if not normalized.startswith(CONTACT_PHOTO_URL_PREFIX + '/'):
+        return
+    full_path = os.path.join(BASE_DIR, 'static', *normalized.split('/'))
+    try:
+        if os.path.isfile(full_path):
+            os.remove(full_path)
+    except OSError as e:
+        print(f"[contacts] Не удалось удалить фото {full_path}: {e}")
+
+
+def _save_contact_photo(contact_id: int) -> str:
+    file = request.files.get('photo')
+    if file is None:
+        return ''
+    if not file.filename and not (file.mimetype or '').lower().startswith('image/'):
+        return ''
+
+    original_name = secure_filename(file.filename or 'screenshot')
+    ext = original_name.rsplit('.', 1)[-1].lower() if '.' in original_name else ''
+    if not ext:
+        ext = CONTACT_PHOTO_MIME_EXTENSIONS.get((file.mimetype or '').lower(), '')
+    if ext not in CONTACT_PHOTO_EXTENSIONS:
+        raise ValueError('Фото должно быть в формате JPG, PNG, WEBP, GIF, BMP, JFIF или AVIF')
+
+    os.makedirs(CONTACT_PHOTO_UPLOAD_DIR, exist_ok=True)
+    filename = f"{contact_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.{ext}"
+    full_path = os.path.join(CONTACT_PHOTO_UPLOAD_DIR, filename)
+    file.save(full_path)
+    return f"{CONTACT_PHOTO_URL_PREFIX}/{filename}"
+
+
+def _apply_contact_photo(contact_id: int):
+    actor = session.get('admin_username', '')
+    current = contacts_mgr.get_contact(contact_id)
+    if not current:
+        return
+
+    if request.form.get('clear_photo') == 'on':
+        _safe_remove_contact_photo(current.get('photo_path') or '')
+        contacts_mgr.update_contact_photo(contact_id, '', actor=actor)
+        return
+
+    try:
+        photo_path = _save_contact_photo(contact_id)
+    except ValueError as e:
+        flash(str(e), 'error')
+        return
+
+    if photo_path:
+        _safe_remove_contact_photo(current.get('photo_path') or '')
+        contacts_mgr.update_contact_photo(contact_id, photo_path, actor=actor)
+
+
+def _admin_contacts_return():
+    args = {}
+    for key in ('q', 'department', 'status', 'page'):
+        value = request.form.get(f'return_{key}', '').strip()
+        if value:
+            args[key] = value
+    return redirect(url_for('admin_contacts_kc', **args))
+
+
+@app.route('/admin/contacts')
+@app.route('/admin/contacts_kc')
+@AdminAuth.manuals_required
+def admin_contacts_kc():
+    """Админка контактов КЦ."""
+    q = request.args.get('q', '').strip()
+    department = request.args.get('department', '').strip()
+    status = request.args.get('status', 'active').strip()
+    if status not in ('active', 'inactive', 'all'):
+        status = 'active'
+    page = max(1, request.args.get('page', 1, type=int))
+    per_page = 100
+    offset = (page - 1) * per_page
+
+    total = contacts_mgr.count_contacts(q=q, department=department, status=status)
+    contacts = contacts_mgr.get_contacts(
+        q=q,
+        department=department,
+        status=status,
+        limit=per_page,
+        offset=offset
+    )
+    departments = contacts_mgr.get_departments(include_inactive=True)
+    stats = contacts_mgr.get_stats()
+
+    return render_template(
+        'admin_contacts_kc.html',
+        contacts=contacts,
+        departments=departments,
+        stats=stats,
+        q=q,
+        selected_department=department,
+        status=status,
+        page=page,
+        per_page=per_page,
+        total=total
+    )
+
+
+@app.route('/admin/contacts_kc/contacts/create', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_create():
+    data, error = _validated_contact_form_data()
+    if error:
+        flash(error, 'error')
+        return _admin_contacts_return()
+
+    result = contacts_mgr.create_contact(data, actor=session.get('admin_username', ''))
+    if result.get('success'):
+        _apply_contact_photo(int(result.get('id')))
+        flash('Контакт добавлен', 'success')
+        write_audit_log('contact_created', 200, {'contact_id': result.get('id')})
+    else:
+        flash(result.get('error', 'Не удалось добавить контакт'), 'error')
+    return _admin_contacts_return()
+
+
+@app.route('/admin/contacts_kc/contacts/<int:contact_id>/update', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_update(contact_id):
+    data, error = _validated_contact_form_data()
+    if error:
+        flash(error, 'error')
+        return _admin_contacts_return()
+
+    result = contacts_mgr.update_contact(contact_id, data, actor=session.get('admin_username', ''))
+    if result.get('success'):
+        _apply_contact_photo(contact_id)
+        flash('Контакт обновлён', 'success')
+        write_audit_log('contact_updated', 200, {'contact_id': contact_id})
+    else:
+        flash(result.get('error', 'Не удалось обновить контакт'), 'error')
+    return _admin_contacts_return()
+
+
+@app.route('/admin/contacts_kc/contacts/<int:contact_id>/toggle', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_toggle(contact_id):
+    is_active = request.form.get('is_active') == '1'
+    contacts_mgr.set_contact_active(contact_id, is_active, actor=session.get('admin_username', ''))
+    flash('Статус контакта обновлён', 'success')
+    write_audit_log('contact_status_changed', 200, {'contact_id': contact_id, 'is_active': is_active})
+    return _admin_contacts_return()
+
+
+@app.route('/admin/contacts_kc/contacts/<int:contact_id>/delete', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_delete(contact_id):
+    contact = contacts_mgr.get_contact(contact_id)
+    if contact:
+        _safe_remove_contact_photo(contact.get('photo_path') or '')
+    contacts_mgr.delete_contact(contact_id)
+    flash('Контакт удалён', 'success')
+    write_audit_log('contact_deleted', 200, {'contact_id': contact_id})
+    return _admin_contacts_return()
+
+
 @app.route('/search_topics')
 def search_topics():
     """Страница поиска тематик обращений - workplace не требуется"""
@@ -2278,7 +3351,7 @@ def submit_selected_topic():
     # Проверка рабочего времени
     working, off_hours_msg = is_working_hours()
     if not working:
-        return render_template('off_hours.html', message=off_hours_msg)
+        return render_template('off_hours.html', message=off_hours_msg, schedule_info=_ticket_schedule_summary())
 
     try:
         selected_topic_id = request.form.get('selected_topic_id')
@@ -2289,24 +3362,67 @@ def submit_selected_topic():
             flash('Не выбрана тематика')
             return redirect(url_for('search_topics'))
 
-        # Формируем topic_info для отправки
-        topic_info = {
-            'topic': selected_topic_name,
+        session['pending_selected_topic_ticket'] = {
+            'id': selected_topic_id,
+            'name': selected_topic_name,
             'similarity': selected_topic_similarity
         }
+        session.modified = True
 
-        # Отправляем заявку с выбранной тематикой
-        send_ticket(f"Запрос по тематике: {selected_topic_name}", None, topic_info)
+        telegram_redirect = _require_telegram_username_for_ticket('submit_pending_selected_topic')
+        if telegram_redirect:
+            return telegram_redirect
 
-        # Очищаем сессию и показываем страницу успеха
-        session.clear()
-        return render_template('ticket_sent.html')
+        return _send_selected_topic_ticket(selected_topic_id, selected_topic_name, selected_topic_similarity)
 
     except Exception as e:
         print(f"[submit_selected_topic] Ошибка: {e}")
         traceback.print_exc()
         flash('Произошла ошибка при отправке заявки')
         return redirect(url_for('search_topics'))
+
+
+def _send_selected_topic_ticket(selected_topic_id, selected_topic_name, selected_topic_similarity):
+    topic_info = {
+        'id': selected_topic_id,
+        'topic': selected_topic_name,
+        'similarity': selected_topic_similarity
+    }
+
+    msg = send_ticket(f"Запрос по тематике: {selected_topic_name}", None, topic_info)
+    if msg is None:
+        return render_template(
+            'ticket_send_failed.html',
+            ticket_number=session.get('current_ticket_number')
+        ), 503
+
+    session.pop('pending_selected_topic_ticket', None)
+    # Очищаем сессию и показываем страницу успеха: сохраняем существующее поведение этого маршрута.
+    session.clear()
+    return render_template('ticket_sent.html')
+
+
+@app.route('/submit_pending_selected_topic')
+def submit_pending_selected_topic():
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    pending = session.get('pending_selected_topic_ticket') or {}
+    selected_topic_id = pending.get('id')
+    selected_topic_name = pending.get('name')
+    selected_topic_similarity = pending.get('similarity')
+    if not selected_topic_id or not selected_topic_name:
+        return redirect(url_for('search_topics'))
+
+    working, off_hours_msg = is_working_hours()
+    if not working:
+        return render_template('off_hours.html', message=off_hours_msg, schedule_info=_ticket_schedule_summary())
+
+    telegram_redirect = _require_telegram_username_for_ticket('submit_pending_selected_topic')
+    if telegram_redirect:
+        return telegram_redirect
+
+    return _send_selected_topic_ticket(selected_topic_id, selected_topic_name, selected_topic_similarity)
 
 @app.route('/problems')
 def show_problems():
@@ -2496,6 +3612,9 @@ def show_manual(subproblem_id):
 
     # Если это подпроблема с возможностью добавления скриншотов и нет фотографий
     if can_add_screenshots and not subproblem_data.get('photos'):
+        telegram_redirect = _require_telegram_username_for_ticket('show_manual', {'subproblem_id': subproblem_id})
+        if telegram_redirect:
+            return telegram_redirect
         session['other_problem_type'] = 'other'
         return render_template('other_problem.html', is_cisco=False)
 
@@ -2553,13 +3672,14 @@ def other_problem():
     session['other_problem_type'] = other_problem_type
     is_cisco = other_problem_type == 'cisco'
 
-    # Проверка рабочего времени (Cisco — 24/7, но майские праздники блокируют всех)
-    now = datetime.now()
-    may_holiday = datetime(2026, 5, 1, 0, 0, 0) <= now < datetime(2026, 5, 11, 8, 30, 0)
-    if not is_cisco or may_holiday:
-        working, off_hours_msg = is_working_hours()
-        if not working:
-            return render_template('off_hours.html', message=off_hours_msg)
+    telegram_redirect = _require_telegram_username_for_ticket('other_problem', {'type': other_problem_type})
+    if telegram_redirect:
+        return telegram_redirect
+
+    # Проверка графика приёма заявок.
+    working, off_hours_msg = is_working_hours()
+    if not working:
+        return render_template('off_hours.html', message=off_hours_msg, schedule_info=_ticket_schedule_summary())
 
     if request.method == 'POST':
         problem_description = request.form.get('problem')
@@ -2638,7 +3758,12 @@ def other_problem():
             target_thread_id = CISCO_TICKETS_THREAD_ID or NEW_TICKETS_THREAD_ID
         else:
             target_thread_id = NEW_TICKETS_THREAD_ID
-        send_ticket(problem_description, screenshots, topic_info, video=video_file, thread_id=target_thread_id)
+        msg = send_ticket(problem_description, screenshots, topic_info, video=video_file, thread_id=target_thread_id)
+        if msg is None:
+            return render_template(
+                'ticket_send_failed.html',
+                ticket_number=session.get('current_ticket_number')
+            ), 503
         # Не сбрасываем user_info/workplace — сохраняем авторизацию
         for key in [
             'problem_id',
@@ -2660,24 +3785,41 @@ def send_final_ticket():
         # Проверка рабочего времени (эскалация после мануала — не cisco)
         working, off_hours_msg = is_working_hours()
         if not working:
-            return render_template('off_hours.html', message=off_hours_msg)
+            return render_template('off_hours.html', message=off_hours_msg, schedule_info=_ticket_schedule_summary())
 
         # Проверяем флаг - была ли уже отправлена заявка
         if session.get('ticket_sent'):
             # Заявка уже отправлена, просто показываем страницу
             return render_template('ticket_sent.html')
 
+        telegram_redirect = _require_telegram_username_for_ticket('send_final_ticket')
+        if telegram_redirect:
+            return telegram_redirect
+
         # Отправляем заявку только если флаг не установлен
         problem_description = session.get('problem_title', 'Неизвестная проблема')
-        send_ticket(problem_description)
+        msg = send_ticket(problem_description)
 
         # Явно фиксируем, что текстовый мануал не помог (пользователь эскалировал в заявку)
         # Это нужно, чтобы "Не помогло / Заявки" корректно считалось даже без доп.статуса.
         log_ticket_event(
             event_type='manual_not_helped',
             ticket_number=session.get('current_ticket_number'),
-            problem=problem_description
+            problem=problem_description,
+            details={
+                'source': 'manual_feedback',
+                'feedback': 'manual_not_helped',
+                'next_step': 'ticket',
+                'ticket_delivery': 'sent' if msg is not None else 'failed'
+            }
         )
+
+        if msg is None:
+            return render_template(
+                'ticket_send_failed.html',
+                ticket_number=session.get('current_ticket_number'),
+                retry_url=url_for('send_final_ticket')
+            ), 503
 
         # Устанавливаем флаг что заявка отправлена
         session['ticket_sent'] = True
@@ -2721,9 +3863,41 @@ def show_success():
 
 def _session_owns_ticket(ticket_number: int) -> bool:
     try:
-        return int(session.get('current_ticket_number') or 0) == int(ticket_number)
+        ticket_number = int(ticket_number)
+        if int(session.get('current_ticket_number') or 0) == ticket_number:
+            return True
+        return _ticket_belongs_to_current_user(ticket_number)
     except (TypeError, ValueError):
         return False
+
+
+def _ticket_belongs_to_current_user(ticket_number: int, state: dict | None = None) -> bool:
+    if 'user_info' not in session or not session.get('authenticated'):
+        return False
+    user_info = session.get('user_info', {}) or {}
+    username = str(user_info.get('username') or '').strip().lower()
+    name = str(user_info.get('name') or '').strip().lower()
+    department = str(user_info.get('department') or '').strip().lower()
+    workplace = str(user_info.get('workplace') or '').strip().lower()
+
+    state = state or _get_ticket_state(ticket_number)
+    if not state:
+        return False
+
+    creator_username = str(state.get('creator_username') or '').strip().lower()
+    if username and creator_username and username == creator_username:
+        return True
+
+    state_name = str(state.get('user_name') or state.get('creator_name') or '').strip().lower()
+    state_department = str(state.get('department') or '').strip().lower()
+    state_workplace = str(state.get('workplace') or '').strip().lower()
+    if name and state_name and name == state_name:
+        if department and state_department and department != state_department:
+            return False
+        if workplace and state_workplace and workplace != state_workplace:
+            return False
+        return True
+    return False
 
 
 def _parse_datetime(value: str) -> datetime | None:
@@ -2827,6 +4001,44 @@ def api_ticket_status(ticket_number: int):
         return jsonify({'success': False, 'error': 'Ошибка получения статуса заявки'}), 500
 
 
+@app.route('/api/my_tickets')
+@rate_limit(max_requests=30, window=60)
+def api_my_tickets():
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Недоступно'}), 403
+    try:
+        rows = []
+        for state in _load_ticket_states().values():
+            if not _ticket_belongs_to_current_user(state.get('ticket_number'), state):
+                continue
+            if _auto_confirm_if_feedback_expired(state):
+                state = _get_ticket_state(state.get('ticket_number')) or state
+            rows.append({
+                'ticket_number': state.get('ticket_number'),
+                'status': state.get('status') or 'unknown',
+                'status_label': state.get('status_label') or TICKET_STATUS_LABELS['unknown'],
+                'problem': state.get('problem') or 'Без описания',
+                'department': state.get('department') or '',
+                'workplace': state.get('workplace') or '',
+                'created_at': state.get('created_at') or '',
+                'updated_at': state.get('updated_at') or '',
+                'ready_at': state.get('ready_at') or '',
+                'closed_at': state.get('closed_at') or '',
+                'assigned_name': state.get('assigned_name') or '',
+                'assigned_username': state.get('assigned_username') or '',
+                'resolved_by': state.get('resolved_by') or '',
+                'reject_reason': state.get('reject_reason') or '',
+                'is_cisco': bool(state.get('is_cisco')),
+                'can_feedback': state.get('status') == 'ready_for_feedback'
+            })
+        rows.sort(key=lambda item: item.get('created_at') or item.get('updated_at') or '', reverse=True)
+        return jsonify({'success': True, 'data': rows, 'total': len(rows)})
+    except Exception as e:
+        print(f"[api_my_tickets] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения заявок'}), 500
+
+
 @app.route('/api/ticket_feedback/<int:ticket_number>', methods=['POST'])
 @rate_limit(max_requests=10, window=60)
 def api_ticket_feedback(ticket_number: int):
@@ -2910,16 +4122,36 @@ def finish_unsolved():
         return redirect(url_for('index'))
 
     try:
+        working, off_hours_msg = is_working_hours()
+        if not working:
+            return render_template('off_hours.html', message=off_hours_msg, schedule_info=_ticket_schedule_summary())
+
+        telegram_redirect = _require_telegram_username_for_ticket('finish_unsolved')
+        if telegram_redirect:
+            return telegram_redirect
+
         # Security: only use session data, not query params (prevent injection)
         problem_description = session.get('problem_title', 'Неизвестная проблема')
         # Sanitize before sending
         problem_description = m_escape(str(problem_description)[:500])
-        send_ticket(problem_description)
+        msg = send_ticket(problem_description)
         log_ticket_event(
             event_type='manual_not_helped',
             ticket_number=session.get('current_ticket_number'),
-            problem=problem_description
+            problem=problem_description,
+            details={
+                'source': 'manual_feedback',
+                'feedback': 'manual_not_helped',
+                'next_step': 'ticket',
+                'ticket_delivery': 'sent' if msg is not None else 'failed'
+            }
         )
+        if msg is None:
+            return render_template(
+                'ticket_send_failed.html',
+                ticket_number=session.get('current_ticket_number'),
+                retry_url=url_for('finish_unsolved')
+            ), 503
         return render_template('ticket_sent.html')
     except Exception as e:
         print("[finish_unsolved] Error sending ticket")
@@ -3068,9 +4300,9 @@ def get_channel_topics_api():
 def api_admin_check_password():
     """API для быстрой проверки пароля админа из модального окна"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         password = data.get('password', '')
-        section = data.get('section', '')
+        section = str(data.get('section') or '').strip()
 
         # Берём username из сессии (пользователь уже залогинен)
         username = ''
@@ -3096,13 +4328,18 @@ def api_admin_check_password():
             if lower_user in ad_auth.trainer_viewers:
                 test_permissions.append('trainer_viewer')
 
+            test_permissions, admin_role, trainer_segments = _merge_admin_permissions(username, test_permissions)
+
             if not test_permissions:
                 return jsonify({'success': False, 'error': 'У вас нет прав администратора'})
+            if not _admin_section_allowed(section, test_permissions):
+                return jsonify({'success': False, 'error': 'Нет прав для этого раздела'})
 
             session['admin_logged_in'] = True
             session['admin_username'] = username
-            session['admin_role'] = 'super_admin' if 'super_admin' in test_permissions else test_permissions[0]
+            session['admin_role'] = admin_role
             session['admin_permissions'] = test_permissions
+            session['trainer_segments'] = trainer_segments
             session['admin_token'] = AdminAuth.generate_session_token()
             return jsonify({'success': True})
 
@@ -3111,12 +4348,18 @@ def api_admin_check_password():
         if ad_auth.is_configured() and username:
             ad_result = ad_auth.verify_credentials(username, password)
             if ad_result:
-                ad_permissions = ad_result.get('permissions', [])
+                ad_permissions, admin_role, trainer_segments = _merge_admin_permissions(
+                    ad_result.get('username', username),
+                    ad_result.get('permissions', [])
+                )
                 if ad_permissions:
+                    if not _admin_section_allowed(section, ad_permissions):
+                        return jsonify({'success': False, 'error': 'Нет прав для этого раздела'})
                     session['admin_logged_in'] = True
                     session['admin_username'] = ad_result.get('username', username)
-                    session['admin_role'] = ad_result.get('role', 'user')
+                    session['admin_role'] = admin_role
                     session['admin_permissions'] = ad_permissions
+                    session['trainer_segments'] = trainer_segments
                     session['admin_token'] = AdminAuth.generate_session_token()
                     return jsonify({'success': True})
                 else:
@@ -3128,8 +4371,18 @@ def api_admin_check_password():
         admin_data = AdminAuth.verify_admin(admin_username, password)
 
         if admin_data:
-            session['admin_user'] = admin_data
+            admin_permissions = admins_manager.normalize_permissions(
+                admin_data.get('permissions'),
+                admin_data.get('role', ROLE_EDITOR)
+            )
+            if not _admin_section_allowed(section, admin_permissions):
+                return jsonify({'success': False, 'error': 'Нет прав для этого раздела'})
             session['admin_logged_in'] = True
+            session['admin_username'] = admin_data.get('username', admin_username)
+            session['admin_role'] = admins_manager.role_from_permissions(admin_permissions)
+            session['admin_permissions'] = admin_permissions
+            session['trainer_segments'] = admin_data.get('trainer_segments', ['kc', 'branch'])
+            session['admin_token'] = AdminAuth.generate_session_token()
             return jsonify({'success': True})
 
         return jsonify({'success': False, 'error': 'Неверный пароль'})
@@ -5760,11 +7013,14 @@ def user_login():
                 if lower_user in ad_auth.trainer_viewers:
                     test_permissions.append('trainer_viewer')
 
+                test_permissions, admin_role, trainer_segments = _merge_admin_permissions(username, test_permissions)
+
                 if test_permissions:
                     session['admin_logged_in'] = True
                     session['admin_username'] = username
-                    session['admin_role'] = 'super_admin' if 'super_admin' in test_permissions else test_permissions[0]
+                    session['admin_role'] = admin_role
                     session['admin_permissions'] = test_permissions
+                    session['trainer_segments'] = trainer_segments
                     session['admin_token'] = AdminAuth.generate_session_token()
 
                 session.permanent = True
@@ -5788,12 +7044,16 @@ def user_login():
             }
             session['authenticated'] = True
             # Автоматический вход в админку если есть права
-            ad_permissions = ad_result.get('permissions', [])
+            ad_permissions, admin_role, trainer_segments = _merge_admin_permissions(
+                ad_result.get('username', username),
+                ad_result.get('permissions', [])
+            )
             if ad_permissions:
                 session['admin_logged_in'] = True
                 session['admin_username'] = ad_result.get('username', username)
-                session['admin_role'] = ad_result.get('role', 'user')
+                session['admin_role'] = admin_role
                 session['admin_permissions'] = ad_permissions
+                session['trainer_segments'] = trainer_segments
                 session['admin_token'] = AdminAuth.generate_session_token()
             session.permanent = True
 
@@ -5828,12 +7088,177 @@ def enter_workplace():
 
     return render_template('enter_workplace.html', user_info=session['user_info'])
 
+
+@app.route('/enter_telegram_username', methods=['GET', 'POST'])
+def enter_telegram_username():
+    """Однократный ввод Telegram username перед первой отправкой заявки."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_info = dict(session.get('user_info') or {})
+
+    if request.method == 'POST':
+        telegram_username = _normalize_telegram_username(request.form.get('telegram_username'))
+        if not telegram_username:
+            flash('Укажите Telegram username в формате @username, от 5 до 32 символов.')
+            return redirect(url_for('enter_telegram_username'))
+
+        user_info['telegram_username'] = telegram_username
+        session['user_info'] = user_info
+        session.modified = True
+        _save_user_telegram_username(user_info.get('username'), telegram_username)
+
+        next_endpoint = session.pop('next_after_telegram_username', 'choose_help_type')
+        next_args = session.pop('next_after_telegram_username_args', {}) or {}
+        try:
+            return redirect(url_for(next_endpoint, **next_args))
+        except werkzeug.routing.BuildError:
+            return redirect(url_for('choose_help_type'))
+
+    current_username = _get_session_telegram_username()
+    return render_template(
+        'enter_telegram_username.html',
+        user_info=user_info,
+        current_username=current_username
+    )
+
+
+def _merge_admin_permissions(username: str, permissions: list[str] | None = None):
+    """Дополняет права из .env правами AD-логина, назначенными через админку."""
+    base_permissions = admins_manager.normalize_permissions(permissions or [])
+    local_admin = admins_manager.get_admin_by_username(username)
+
+    if local_admin and local_admin.get('active', True) and admins_manager.is_ad_admin(local_admin):
+        local_permissions = admins_manager.normalize_permissions(
+            local_admin.get('permissions'),
+            local_admin.get('role', '')
+        )
+        base_permissions = admins_manager.normalize_permissions(base_permissions + local_permissions)
+
+    role = admins_manager.role_from_permissions(base_permissions)
+    trainer_segments = (local_admin or {}).get('trainer_segments', ['kc', 'branch'])
+    if role == ROLE_SUPER_ADMIN:
+        trainer_segments = ['kc', 'branch']
+
+    return base_permissions, role, trainer_segments
+
+
+def _admin_default_endpoint(permissions: list[str] | None = None) -> str:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    if ROLE_SUPER_ADMIN in permissions:
+        return 'admin_dashboard'
+    if ROLE_ADMIN_MANUALS in permissions:
+        return 'admin_manuals'
+    if ROLE_ADMIN_TOPICS in permissions:
+        return 'admin_topics'
+    if ROLE_ADMIN_TRAINER in permissions:
+        return 'admin_trainer'
+    if ROLE_TRAINER_VIEWER in permissions:
+        return 'admin_trainer_stats'
+    return 'admin_login'
+
+
+def _admin_env_permissions(username: str) -> list[str]:
+    """Права из env/AD-тестовых списков без повторного bind в AD."""
+    try:
+        from ad_auth import ad_auth
+        lower_user = str(username or '').strip().lower()
+        permissions = []
+        if lower_user in ad_auth.super_admin_logins:
+            permissions.append(ROLE_SUPER_ADMIN)
+        if lower_user in ad_auth.admins_manuals:
+            permissions.append(ROLE_ADMIN_MANUALS)
+        if lower_user in ad_auth.admins_topics:
+            permissions.append(ROLE_ADMIN_TOPICS)
+        if lower_user in ad_auth.admins_trainer:
+            permissions.append(ROLE_ADMIN_TRAINER)
+        if lower_user in ad_auth.trainer_viewers:
+            permissions.append(ROLE_TRAINER_VIEWER)
+        return admins_manager.normalize_permissions(permissions)
+    except Exception:
+        return []
+
+
+def _admin_section_allowed(section: str, permissions: list[str] | None) -> bool:
+    """Проверяет, можно ли подтверждать вход в конкретный админ-раздел."""
+    normalized = admins_manager.normalize_permissions(permissions or [])
+    if ROLE_SUPER_ADMIN in normalized:
+        return True
+
+    required_by_section = {
+        'manuals': [ROLE_ADMIN_MANUALS],
+        'topics': [ROLE_ADMIN_TOPICS],
+        'trainer': [ROLE_ADMIN_TRAINER],
+        'trainer_stats': [ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER],
+    }
+    required = required_by_section.get(str(section or '').strip())
+    if required:
+        return any(permission in normalized for permission in required)
+    return bool(normalized)
+
+
+@app.before_request
+def refresh_admin_session_permissions():
+    """Применяет изменённые права админа к активной сессии без повторного входа."""
+    if not session.get('admin_logged_in') or request.path.startswith('/static/'):
+        return None
+
+    admin_paths = ('/admin', '/api/admin', '/api/stats')
+    if not request.path.startswith(admin_paths):
+        return None
+
+    username = session.get('admin_username', '')
+    if not username:
+        return None
+
+    local_admin = admins_manager.get_admin_by_username(username)
+    env_permissions = _admin_env_permissions(username)
+    new_permissions = None
+    trainer_segments = session.get('trainer_segments', ['kc', 'branch'])
+
+    if local_admin:
+        if not local_admin.get('active', True):
+            new_permissions = env_permissions if admins_manager.is_ad_admin(local_admin) else []
+        else:
+            local_permissions = admins_manager.normalize_permissions(
+                local_admin.get('permissions'),
+                local_admin.get('role', '')
+            )
+            if admins_manager.is_ad_admin(local_admin):
+                new_permissions = admins_manager.normalize_permissions(env_permissions + local_permissions)
+            else:
+                new_permissions = local_permissions
+            trainer_segments = local_admin.get('trainer_segments', trainer_segments)
+    elif env_permissions:
+        new_permissions = env_permissions
+
+    if new_permissions is None:
+        return None
+
+    if not new_permissions:
+        for key in ('admin_logged_in', 'admin_username', 'admin_role', 'admin_permissions', 'admin_token', 'trainer_segments'):
+            session.pop(key, None)
+        session.modified = True
+        return redirect(url_for('admin_login'))
+
+    if ROLE_SUPER_ADMIN in new_permissions:
+        trainer_segments = ['kc', 'branch']
+
+    current_permissions = admins_manager.normalize_permissions(session.get('admin_permissions', []))
+    if current_permissions != new_permissions or session.get('trainer_segments') != trainer_segments:
+        session['admin_permissions'] = new_permissions
+        session['admin_role'] = admins_manager.role_from_permissions(new_permissions)
+        session['trainer_segments'] = trainer_segments
+        session.modified = True
+
+    return None
+
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     """Страница авторизации администратора"""
     # Если уже залогинен через AD с правами админа — сразу в дашборд
     if session.get('admin_logged_in') and session.get('admin_permissions'):
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for(_admin_default_endpoint()))
 
     if request.method == 'POST':
         # Security Fix: Stricter rate limiting for login attempts to prevent brute force
@@ -5869,31 +7294,38 @@ def admin_login():
             if lower_user in ad_auth.trainer_viewers:
                 test_permissions.append('trainer_viewer')
 
+            test_permissions, admin_role, trainer_segments = _merge_admin_permissions(username, test_permissions)
+
             if not test_permissions:
                 flash('У вас нет прав администратора')
                 return redirect(url_for('admin_login'))
 
             session['admin_logged_in'] = True
             session['admin_username'] = username
-            session['admin_role'] = 'super_admin' if 'super_admin' in test_permissions else test_permissions[0]
+            session['admin_role'] = admin_role
             session['admin_permissions'] = test_permissions
+            session['trainer_segments'] = trainer_segments
             session['admin_token'] = AdminAuth.generate_session_token()
             session.permanent = True
             role_names = ', '.join(test_permissions)
             flash(f'Успешная авторизация (тестовый режим). Права: {role_names}')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for(_admin_default_endpoint(test_permissions)))
 
         # Проверка через AD (основной способ)
         from ad_auth import ad_auth
         if ad_auth.is_configured():
             ad_result = ad_auth.verify_credentials(username, password)
             if ad_result:
-                ad_permissions = ad_result.get('permissions', [])
+                ad_permissions, admin_role, trainer_segments = _merge_admin_permissions(
+                    ad_result.get('username', username),
+                    ad_result.get('permissions', [])
+                )
                 if ad_permissions:
                     session['admin_logged_in'] = True
                     session['admin_username'] = ad_result.get('username', username)
-                    session['admin_role'] = ad_result.get('role', 'user')
+                    session['admin_role'] = admin_role
                     session['admin_permissions'] = ad_permissions
+                    session['trainer_segments'] = trainer_segments
                     session['admin_token'] = AdminAuth.generate_session_token()
                     session.permanent = True
                     # Также ставим user_info чтобы сессия была полной
@@ -5908,7 +7340,7 @@ def admin_login():
                         session['authenticated'] = True
                     role_names = ', '.join(ad_permissions)
                     flash(f'Успешная авторизация (AD). Права: {role_names}')
-                    return redirect(url_for('admin_dashboard'))
+                    return redirect(url_for(_admin_default_endpoint(ad_permissions)))
                 else:
                     flash('У вас нет прав администратора')
                     return redirect(url_for('admin_login'))
@@ -5919,19 +7351,23 @@ def admin_login():
         # Fallback: проверка через admins.json (если AD не настроен)
         admin_data = AdminAuth.verify_admin(username, password)
         if admin_data:
+            admin_permissions = admins_manager.normalize_permissions(
+                admin_data.get('permissions'),
+                admin_data.get('role', ROLE_EDITOR)
+            )
             session['admin_logged_in'] = True
             session['admin_username'] = username
-            session['admin_role'] = admin_data.get('role', ROLE_EDITOR)
-            session['admin_permissions'] = admin_data.get('permissions', [admin_data.get('role', ROLE_EDITOR)])
+            session['admin_role'] = admins_manager.role_from_permissions(admin_permissions)
+            session['admin_permissions'] = admin_permissions
             session['admin_token'] = AdminAuth.generate_session_token()
             # Сегменты тренажёра: супер-админ всегда видит все
-            if admin_data.get('role') == ROLE_SUPER_ADMIN:
+            if ROLE_SUPER_ADMIN in admin_permissions:
                 session['trainer_segments'] = ['kc', 'branch']
             else:
                 session['trainer_segments'] = admin_data.get('trainer_segments', ['kc', 'branch'])
             session.permanent = True
             flash(f'Успешная авторизация. Роль: {ROLE_NAMES.get(admin_data.get("role"), "Редактор")}')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for(_admin_default_endpoint(admin_permissions)))
         else:
             flash('Неверный логин или пароль')
 
@@ -5953,16 +7389,26 @@ def admin_logout():
 @app.route('/admin/dashboard')
 @AdminAuth.login_required
 def admin_dashboard():
-    """Главная страница админ-панели"""
-    manuals = admin_manager.load_manuals()
-    return render_template('admin_dashboard.html', manuals=manuals)
+    """Новая главная страница админ-панели."""
+    permissions = session.get('admin_permissions', [])
+    if ROLE_SUPER_ADMIN not in permissions:
+        return redirect(url_for(_admin_default_endpoint(permissions)))
+    return render_template('admin_dashboard_new.html')
 
 
 @app.route('/admin/dashboard-new')
-@AdminAuth.manuals_required
+@AdminAuth.login_required
 def admin_dashboard_new():
-    """Новый прототип главной админ-панели Helper."""
-    return render_template('admin_dashboard_new.html')
+    """Совместимость со старой ссылкой на новый dashboard."""
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/manuals')
+@AdminAuth.manuals_required
+def admin_manuals():
+    """Старая страница управления мануалами."""
+    manuals = admin_manager.load_manuals()
+    return render_template('admin_dashboard.html', manuals=manuals)
 
 
 @app.route('/admin/manual/create', methods=['GET', 'POST'])
@@ -6032,12 +7478,12 @@ def admin_edit_manual(manual_id):
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Если есть поле subproblems - показываем список подпроблем (даже если пустой)
     if 'subproblems' in manual:
@@ -6054,14 +7500,14 @@ def admin_create_subproblem(manual_id):
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     manuals = admin_manager.load_manuals()
     manual = manuals.get(manual_id)
 
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
@@ -6116,13 +7562,13 @@ def admin_delete_manual(manual_id):
     """Удаление мануала"""
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     manuals = admin_manager.load_manuals()
 
     if manual_id not in manuals:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     manual_title = manuals[manual_id].get('title', 'Неизвестный мануал')
 
@@ -6134,7 +7580,7 @@ def admin_delete_manual(manual_id):
     else:
         flash('Ошибка при удалении мануала')
 
-    return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('admin_manuals'))
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/delete', methods=['POST'])
@@ -6143,18 +7589,18 @@ def admin_delete_subproblem(manual_id, subproblem_id):
     """Удаление подпроблемы"""
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     if not admin_manager.validate_subproblem_id(subproblem_id):
         flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     manuals = admin_manager.load_manuals()
     manual = manuals.get(manual_id)
 
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
         flash('Подпроблема не найдена')
@@ -6180,11 +7626,11 @@ def admin_edit_simple_manual(manual_id):
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Проверяем что это простой мануал
     if 'subproblems' in manual:
@@ -6223,16 +7669,16 @@ def admin_edit_subproblem(manual_id, subproblem_id):
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     if not admin_manager.validate_subproblem_id(subproblem_id):
         flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Проверяем существование подпроблемы
     if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
@@ -6271,7 +7717,7 @@ def admin_update_manual(manual_id):
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     title = request.form.get('title', '').strip()
 
@@ -6284,7 +7730,7 @@ def admin_update_manual(manual_id):
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Обновляем только заголовок
     manual['title'] = title
@@ -6305,12 +7751,12 @@ def admin_update_subproblem(manual_id, subproblem_id):
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Определяем тип мануала и получаем нужный объект
     if 'subproblems' in manual:
@@ -6367,14 +7813,14 @@ def admin_delete_photo():
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
     manual_check = admin_manager.get_manual(manual_id)
     if manual_check and 'subproblems' in manual_check:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
 
     try:
         photo_index = int(photo_index_str)
@@ -6382,7 +7828,7 @@ def admin_delete_photo():
             raise ValueError
     except (ValueError, TypeError):
         flash('Некорректный индекс фото')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Удаляем фото
     if admin_manager.delete_photo(manual_id, subproblem_id, photo_index):
@@ -6404,12 +7850,12 @@ def admin_delete_step():
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
     # if not admin_manager.validate_subproblem_id(subproblem_id):
     #     flash('Некорректный ID подпроблемы')
-    #     return redirect(url_for('admin_dashboard'))
+    #     return redirect(url_for('admin_manuals'))
 
     try:
         step_index = int(step_index_str)
@@ -6417,7 +7863,7 @@ def admin_delete_step():
             raise ValueError
     except (ValueError, TypeError):
         flash('Некорректный индекс шага')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Загружаем мануалы
     manuals = admin_manager.load_manuals()
@@ -6425,14 +7871,14 @@ def admin_delete_step():
 
     if not manual:
         flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Определяем тип мануала и получаем нужный объект
     if 'subproblems' in manual:
         # Мануал с подпроблемами
         if subproblem_id not in manual['subproblems']:
             flash('Подпроблема не найдена')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
         target_obj = manual['subproblems'][subproblem_id]
         redirect_url = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
     else:
@@ -6480,14 +7926,14 @@ def admin_delete_video():
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
     manual_check = admin_manager.get_manual(manual_id)
     if manual_check and 'subproblems' in manual_check:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
 
     # Удаляем видео
     if admin_manager.delete_video(manual_id, subproblem_id):
@@ -6514,14 +7960,14 @@ def admin_upload_photo():
         # Валидация параметров
         if not admin_manager.validate_manual_id(manual_id):
             flash('Некорректный ID мануала')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
 
         # Для простых мануалов subproblem_id = manual_id (только цифры), пропускаем проверку формата X.Y
         manual = admin_manager.get_manual(manual_id)
         if manual and 'subproblems' in manual:
             if not admin_manager.validate_subproblem_id(subproblem_id):
                 flash('Некорректный ID подпроблемы')
-                return redirect(url_for('admin_dashboard'))
+                return redirect(url_for('admin_manuals'))
 
         try:
             photo_index = int(photo_index)
@@ -6529,7 +7975,7 @@ def admin_upload_photo():
                 raise ValueError
         except (ValueError, TypeError):
             flash('Некорректный индекс фото')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
 
         return render_template('admin_upload_photo.html',
                              manual_id=manual_id,
@@ -6544,14 +7990,14 @@ def admin_upload_photo():
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
     manual_for_check = admin_manager.get_manual(manual_id)
     if manual_for_check and 'subproblems' in manual_for_check:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
 
     try:
         photo_index = int(photo_index_str)
@@ -6559,7 +8005,7 @@ def admin_upload_photo():
             raise ValueError
     except (ValueError, TypeError):
         flash('Некорректный индекс фото')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Security Fix: Improved file upload validation
     allowed_image_types = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
@@ -6608,7 +8054,7 @@ def admin_upload_photo():
             manual = admin_manager.get_manual(manual_id)
             if not manual:
                 flash('Мануал не найден')
-                return redirect(url_for('admin_dashboard'))
+                return redirect(url_for('admin_manuals'))
 
             current_caption = ""
             if 'subproblems' in manual and subproblem_id in manual['subproblems']:
@@ -6646,14 +8092,14 @@ def admin_add_new_step():
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Для простых мануалов subproblem_id = manual_id, для подпроблем проверяем формат X.Y
     manual = admin_manager.get_manual(manual_id)
     if manual and 'subproblems' in manual:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
 
     caption = admin_manager.sanitize_text(caption, max_length=300)
     if not caption:
@@ -6705,12 +8151,12 @@ def admin_upload_video():
         # Валидация параметров
         if not admin_manager.validate_manual_id(manual_id):
             flash('Некорректный ID мануала')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_manuals'))
 
         # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
         # if not admin_manager.validate_subproblem_id(subproblem_id):
         #     flash('Некорректный ID подпроблемы')
-        #     return redirect(url_for('admin_dashboard'))
+        #     return redirect(url_for('admin_manuals'))
 
         return render_template('admin_upload_video.html',
                              manual_id=manual_id,
@@ -6724,12 +8170,12 @@ def admin_upload_video():
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_manuals'))
 
     # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
     # if not admin_manager.validate_subproblem_id(subproblem_id):
     #     flash('Некорректный ID подпроблемы')
-    #     return redirect(url_for('admin_dashboard'))
+    #     return redirect(url_for('admin_manuals'))
 
     # Security Fix: Improved video upload validation
     allowed_video_types = {'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
@@ -7272,12 +8718,45 @@ def _resolve_period_range():
     days_param = request.args.get('days', type=int)
     date_from = (request.args.get('date_from', '') or '').strip()
     date_to = (request.args.get('date_to', '') or '').strip()
+    quarter = (request.args.get('quarter', '') or '').strip().upper()
+    year_param = request.args.get('year', type=int)
     now = datetime.now()
 
-    if date_from and date_to:
-        start = f"{date_from} 00:00:00"
-        end = f"{date_to} 23:59:59"
-        return start, end
+    def _parse_iso_date(value: str):
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value[:10], '%Y-%m-%d')
+        except (TypeError, ValueError):
+            return None
+
+    start_date = _parse_iso_date(date_from)
+    end_date = _parse_iso_date(date_to)
+    if start_date or end_date:
+        if not start_date:
+            start_date = end_date
+        if not end_date:
+            end_date = now
+        start_dt = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = end_date.replace(hour=23, minute=59, second=59, microsecond=0)
+        if start_dt > end_dt:
+            start_dt, end_dt = end_dt.replace(hour=0, minute=0, second=0, microsecond=0), start_dt.replace(hour=23, minute=59, second=59, microsecond=0)
+        return start_dt.strftime('%Y-%m-%d %H:%M:%S'), end_dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    period_quarter = period.upper() if period.upper() in {'Q1', 'Q2', 'Q3', 'Q4'} else ''
+    quarter = quarter if quarter in {'Q1', 'Q2', 'Q3', 'Q4'} else period_quarter
+    if quarter:
+        year = year_param if year_param else now.year
+        year = max(2000, min(year, 2100))
+        quarter_index = int(quarter[1])
+        start_month = (quarter_index - 1) * 3 + 1
+        start_dt = datetime(year, start_month, 1)
+        if quarter_index == 4:
+            next_quarter = datetime(year + 1, 1, 1)
+        else:
+            next_quarter = datetime(year, start_month + 3, 1)
+        end_dt = next_quarter - timedelta(seconds=1)
+        return start_dt.strftime('%Y-%m-%d %H:%M:%S'), end_dt.strftime('%Y-%m-%d %H:%M:%S')
 
     if period == '1d':
         days = 1
@@ -7420,6 +8899,170 @@ def _parse_problem_filters() -> list[str]:
             seen.add(val)
             values.append(val[:300])
     return values
+
+
+RESOLUTION_PROBLEM_LABEL_BY_ID = {
+    problem_id: label for _, label, problem_id in RESOLUTION_PROBLEM_GROUPS
+}
+RESOLUTION_PROBLEM_KEY_BY_ID = {
+    problem_id: key for key, _, problem_id in RESOLUTION_PROBLEM_GROUPS
+}
+
+
+def _resolution_problem_group_from_values(problem: str = '', problem_id: str = '',
+                                          subproblem_id: str = '', is_cisco: bool = False,
+                                          legacy_text_map: dict[str, set[str]] | None = None) -> tuple[str, str]:
+    """Python mirror of _resolution_group_case/_resolution_label_case for in-memory ticket states."""
+    if is_cisco:
+        return 'pid:6', RESOLUTION_PROBLEM_LABEL_BY_ID['6']
+
+    pid = str(problem_id or '').strip()
+    if pid in RESOLUTION_PROBLEM_LABEL_BY_ID:
+        return RESOLUTION_PROBLEM_KEY_BY_ID[pid], RESOLUTION_PROBLEM_LABEL_BY_ID[pid]
+
+    sid = str(subproblem_id or '').strip()
+    for prefix in ('1.', '2.', '3.', '4.', '5.'):
+        if sid.startswith(prefix):
+            group_id = prefix[0]
+            return RESOLUTION_PROBLEM_KEY_BY_ID[group_id], RESOLUTION_PROBLEM_LABEL_BY_ID[group_id]
+
+    normalized_problem = str(problem or '').strip().lower()
+    if normalized_problem:
+        legacy_text_map = legacy_text_map if legacy_text_map is not None else _resolution_problem_text_map()
+        for legacy_problem_id, values in legacy_text_map.items():
+            if normalized_problem in values and legacy_problem_id in RESOLUTION_PROBLEM_LABEL_BY_ID:
+                return (
+                    RESOLUTION_PROBLEM_KEY_BY_ID[legacy_problem_id],
+                    RESOLUTION_PROBLEM_LABEL_BY_ID[legacy_problem_id]
+                )
+
+    return 'pid:7', RESOLUTION_PROBLEM_LABEL_BY_ID['7']
+
+
+def _attach_resolution_problem_fields(state: dict, legacy_text_map: dict[str, set[str]] | None = None) -> dict:
+    key, label = _resolution_problem_group_from_values(
+        state.get('problem', ''),
+        state.get('problem_id', ''),
+        state.get('subproblem_id', ''),
+        bool(state.get('is_cisco')),
+        legacy_text_map
+    )
+    state['problem_key'] = key
+    state['problem_label'] = label
+    return state
+
+
+def _state_matches_problem_filters(state: dict, problem_keys: list[str] | None) -> bool:
+    if not problem_keys:
+        return True
+    key = state.get('problem_key')
+    if not key:
+        key, _ = _resolution_problem_group_from_values(
+            state.get('problem', ''),
+            state.get('problem_id', ''),
+            state.get('subproblem_id', ''),
+            bool(state.get('is_cisco'))
+        )
+    return key in set(problem_keys)
+
+
+def _problem_filter_clause(alias: str, problem_keys: list[str] | None, postgres: bool) -> tuple[str, list[Any]]:
+    problem_keys = problem_keys or []
+    if not problem_keys:
+        return '', []
+    key_sql = _resolution_group_case(alias)
+    if postgres:
+        return f" AND {key_sql} = ANY(%s)", [problem_keys]
+    placeholders = ",".join("?" * len(problem_keys))
+    return f" AND {key_sql} IN ({placeholders})", list(problem_keys)
+
+
+def _load_ticket_event_type_counts(start_at: str, end_at: str,
+                                   problem_keys: list[str] | None = None) -> dict[str, int]:
+    filter_sql, filter_params = _problem_filter_clause('e', problem_keys, ANALYTICS_USE_POSTGRES)
+    counts: dict[str, int] = {}
+
+    if ANALYTICS_USE_POSTGRES:
+        query = f"""
+            SELECT e.event_type, COUNT(*)::int as c
+            FROM ticket_events e
+            WHERE e.created_at BETWEEN %s AND %s
+              {filter_sql}
+            GROUP BY e.event_type
+        """
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, [start_at, end_at, *filter_params])
+                for row in cur.fetchall():
+                    counts[row.get('event_type')] = int(row.get('c') or 0)
+        return counts
+
+    query = f"""
+        SELECT e.event_type, COUNT(*) as c
+        FROM ticket_events e
+        WHERE e.created_at BETWEEN ? AND ?
+          {filter_sql}
+        GROUP BY e.event_type
+    """
+    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(query, [start_at, end_at, *filter_params])
+        for row in cur.fetchall():
+            counts[row['event_type']] = int(row['c'] or 0)
+    return counts
+
+
+def _count_cisco_tickets_created(start_at: str, end_at: str,
+                                 problem_keys: list[str] | None = None) -> int:
+    filter_sql, filter_params = _problem_filter_clause('e', problem_keys, ANALYTICS_USE_POSTGRES)
+    if ANALYTICS_USE_POSTGRES:
+        query = f"""
+            SELECT COUNT(*)::int as c
+            FROM ticket_events e
+            WHERE e.created_at BETWEEN %s AND %s
+              AND e.event_type = 'ticket_created'
+              AND e.is_cisco = 1
+              {filter_sql}
+        """
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, [start_at, end_at, *filter_params])
+                return int((cur.fetchone() or {}).get('c') or 0)
+
+    query = f"""
+        SELECT COUNT(*) as c
+        FROM ticket_events e
+        WHERE e.created_at BETWEEN ? AND ?
+          AND e.event_type = 'ticket_created'
+          AND e.is_cisco = 1
+          {filter_sql}
+    """
+    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(query, [start_at, end_at, *filter_params])
+        return int(cur.fetchone()['c'] or 0)
+
+
+def _ticket_summary_from_counts(counts_by_type: dict[str, int]) -> dict:
+    base_events = {'manual_opened_video', 'manual_opened_text', 'ticket_created'}
+    helped_events = {'video_helped', 'manual_helped', 'ticket_solved_by_helper'}
+    not_helped_events = {
+        'video_not_helped',
+        'manual_not_helped',
+        'ticket_created',
+        'ticket_not_relevant',
+        'ticket_resolved_by_staff'
+    }
+    helped_total = sum(int(counts_by_type.get(et, 0) or 0) for et in helped_events)
+    return {
+        'total': sum(int(counts_by_type.get(et, 0) or 0) for et in base_events),
+        'helped': helped_total,
+        'not_helped': sum(int(counts_by_type.get(et, 0) or 0) for et in not_helped_events),
+        'self_solved': helped_total,
+        'rejected': int(counts_by_type.get('ticket_not_relevant', 0) or 0)
+    }
 
 
 def _load_resolution_rows(start_at: str, end_at: str, problem_keys: list[str] | None = None) -> list[dict]:
@@ -7895,8 +9538,131 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
 @app.route('/admin/stats')
 @AdminAuth.manuals_required
 def admin_stats_dashboard():
-    """Страница статистики с dashboard"""
+    """Основная статистика теперь находится в новом admin dashboard."""
+    return redirect(url_for('admin_dashboard') + '#stats')
+
+
+@app.route('/admin/stats-legacy')
+@AdminAuth.manuals_required
+def admin_stats_legacy():
+    """Старая страница статистики, оставлена как fallback."""
     return render_template('admin_stats_dashboard.html')
+
+
+@app.route('/api/stats/manual_feedback')
+@AdminAuth.manuals_required
+def api_stats_manual_feedback():
+    try:
+        start_at, end_at = _resolve_period_range()
+        limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
+        feedback_events = ['video_helped', 'video_not_helped', 'manual_helped', 'manual_not_helped']
+        labels = {
+            'video_helped': 'Видео помогло',
+            'video_not_helped': 'Видео не помогло',
+            'manual_helped': 'Текст помог',
+            'manual_not_helped': 'Текст не помог'
+        }
+        tones = {
+            'video_helped': 'status-closed',
+            'video_not_helped': 'status-danger',
+            'manual_helped': 'status-ready',
+            'manual_not_helped': 'status-work'
+        }
+
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT event_type, COUNT(*)::int AS c
+                        FROM ticket_events
+                        WHERE event_type = ANY(%s)
+                          AND created_at BETWEEN %s AND %s
+                        GROUP BY event_type
+                    """, (feedback_events, start_at, end_at))
+                    counts = {row.get('event_type'): int(row.get('c') or 0) for row in cur.fetchall()}
+
+                    cur.execute("""
+                        SELECT
+                            created_at::text AS created_at,
+                            event_type,
+                            ticket_number,
+                            problem,
+                            problem_id,
+                            subproblem_id,
+                            department,
+                            user_name,
+                            workplace,
+                            details_json::text AS details_json
+                        FROM ticket_events
+                        WHERE event_type = ANY(%s)
+                          AND created_at BETWEEN %s AND %s
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT %s
+                    """, (feedback_events, start_at, end_at, limit))
+                    rows = [dict(row) for row in cur.fetchall()]
+        else:
+            placeholders = ",".join("?" * len(feedback_events))
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(f"""
+                    SELECT event_type, COUNT(*) AS c
+                    FROM ticket_events
+                    WHERE event_type IN ({placeholders})
+                      AND created_at BETWEEN ? AND ?
+                    GROUP BY event_type
+                """, [*feedback_events, start_at, end_at])
+                counts = {row['event_type']: int(row['c'] or 0) for row in cur.fetchall()}
+
+                cur.execute(f"""
+                    SELECT
+                        created_at,
+                        event_type,
+                        ticket_number,
+                        problem,
+                        problem_id,
+                        subproblem_id,
+                        department,
+                        user_name,
+                        workplace,
+                        details_json
+                    FROM ticket_events
+                    WHERE event_type IN ({placeholders})
+                      AND created_at BETWEEN ? AND ?
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?
+                """, [*feedback_events, start_at, end_at, limit])
+                rows = [dict(row) for row in cur.fetchall()]
+
+        data = []
+        for row in rows:
+            event_type = row.get('event_type') or ''
+            details = _parse_event_details(row.get('details_json'))
+            data.append({
+                'created_at': row.get('created_at') or '',
+                'event_type': event_type,
+                'label': labels.get(event_type, event_type),
+                'tone': tones.get(event_type, 'status-work'),
+                'ticket_number': row.get('ticket_number'),
+                'problem': row.get('problem') or 'Без описания',
+                'problem_id': row.get('problem_id') or '',
+                'subproblem_id': row.get('subproblem_id') or '',
+                'department': row.get('department') or 'Не указан',
+                'user_name': row.get('user_name') or 'Неизвестно',
+                'workplace': row.get('workplace') or '',
+                'next_step': details.get('next_step') or '',
+                'ticket_delivery': details.get('ticket_delivery') or ''
+            })
+
+        summary = {event_type: int(counts.get(event_type, 0) or 0) for event_type in feedback_events}
+        summary['helped'] = summary['video_helped'] + summary['manual_helped']
+        summary['not_helped'] = summary['video_not_helped'] + summary['manual_not_helped']
+
+        return jsonify({'success': True, 'data': data, 'summary': summary})
+    except Exception as e:
+        print(f"[api_stats_manual_feedback] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения обратной связи по мануалам'}), 500
 
 
 @app.route('/api/admin/duty-settings')
@@ -7939,6 +9705,66 @@ def api_admin_duty_settings_save():
         print(f"[api_admin_duty_settings_save] Ошибка: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Ошибка сохранения настроек дежурного'}), 500
+
+
+@app.route('/api/admin/ticket-schedule')
+@AdminAuth.manuals_required
+def api_admin_ticket_schedule_get():
+    try:
+        return jsonify({'success': True, 'data': _get_ticket_schedule_settings()})
+    except Exception as e:
+        print(f"[api_admin_ticket_schedule_get] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка получения графика заявок'}), 500
+
+
+@app.route('/api/admin/ticket-schedule', methods=['POST'])
+@AdminAuth.manuals_required
+def api_admin_ticket_schedule_save():
+    try:
+        data = request.get_json(silent=True) or {}
+        workdays = _normalize_ticket_workdays(data.get('workdays'))
+        work_start = _normalize_time_text(data.get('work_start'), '08:30')
+        work_end = _normalize_time_text(data.get('work_end'), '17:30')
+        if work_start >= work_end:
+            return jsonify({'success': False, 'error': 'Время начала должно быть меньше времени окончания'}), 400
+
+        lunch_enabled = _bool_from_value(data.get('lunch_enabled'), True)
+        lunch_start = _normalize_time_text(data.get('lunch_start'), '12:00')
+        lunch_end = _normalize_time_text(data.get('lunch_end'), '13:00')
+        if lunch_enabled and lunch_start >= lunch_end:
+            return jsonify({'success': False, 'error': 'Начало обеда должно быть меньше окончания обеда'}), 400
+
+        holidays = _normalize_ticket_holidays(data.get('holidays') if isinstance(data.get('holidays'), list) else [])
+        workday_overrides = _normalize_ticket_workday_overrides(
+            data.get('workday_overrides') if isinstance(data.get('workday_overrides'), list) else []
+        )
+
+        values = {
+            'ticket_workdays': ','.join(str(day) for day in workdays),
+            'ticket_work_start': work_start,
+            'ticket_work_end': work_end,
+            'ticket_lunch_enabled': 'true' if lunch_enabled else 'false',
+            'ticket_lunch_start': lunch_start,
+            'ticket_lunch_end': lunch_end,
+            'ticket_holidays_json': json.dumps(holidays, ensure_ascii=False),
+            'ticket_workday_overrides_json': json.dumps(workday_overrides, ensure_ascii=False),
+        }
+        actor = _current_actor()
+        _set_app_settings(values, updated_by=actor.get('username') or actor.get('name') or '')
+        write_audit_log('POST /api/admin/ticket-schedule', 200, {
+            'workdays': workdays,
+            'work_start': work_start,
+            'work_end': work_end,
+            'lunch_enabled': lunch_enabled,
+            'holidays_count': len(holidays),
+            'workday_overrides_count': len(workday_overrides)
+        })
+        return jsonify({'success': True, 'data': _get_ticket_schedule_settings()})
+    except Exception as e:
+        print(f"[api_admin_ticket_schedule_save] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка сохранения графика заявок'}), 500
 
 
 @app.route('/api/stats/online')
@@ -8024,7 +9850,9 @@ def api_stats_summary():
     """API для получения общей статистики"""
     try:
         start_at, end_at = _resolve_period_range()
-        stats, _, _, _ = _load_ticket_dashboard_data(start_at, end_at)
+        problem_keys = _parse_problem_filters()
+        counts_by_type = _load_ticket_event_type_counts(start_at, end_at, problem_keys)
+        stats = _ticket_summary_from_counts(counts_by_type)
 
         # Доп. breakdown по типам (видео/текст/тикеты/циско)
         breakdown = {
@@ -8043,61 +9871,13 @@ def api_stats_summary():
             'ticket_resolved_by_staff': 0
         }
 
-        if ANALYTICS_USE_POSTGRES:
-            with _pg_connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT event_type, COUNT(*)::int as c
-                        FROM ticket_events
-                        WHERE created_at BETWEEN %s AND %s
-                        GROUP BY event_type
-                    """, (start_at, end_at))
-                    for row in cur.fetchall():
-                        et = row.get('event_type')
-                        if et in breakdown:
-                            breakdown[et] = int(row.get('c') or 0)
+        for event_type, count in counts_by_type.items():
+            if event_type in breakdown:
+                breakdown[event_type] = int(count or 0)
 
-                    # Совместимость со старым названием (если было)
-                    cur.execute("""
-                        SELECT COUNT(*)::int as c
-                        FROM ticket_events
-                        WHERE created_at BETWEEN %s AND %s AND event_type = 'ticket_solved_by_helper'
-                    """, (start_at, end_at))
-                    legacy_manual_helped = int((cur.fetchone() or {}).get('c') or 0)
-                    breakdown['manual_helped'] += legacy_manual_helped
-
-                    cur.execute("""
-                        SELECT COUNT(*)::int as c
-                        FROM ticket_events
-                        WHERE created_at BETWEEN %s AND %s AND event_type = 'ticket_created' AND is_cisco = 1
-                    """, (start_at, end_at))
-                    breakdown['tickets_created_cisco'] = int((cur.fetchone() or {}).get('c') or 0)
-        else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
-                conn.row_factory = sqlite3.Row
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT event_type, COUNT(*) as c
-                    FROM ticket_events
-                    WHERE created_at BETWEEN ? AND ?
-                    GROUP BY event_type
-                """, (start_at, end_at))
-                for row in cur.fetchall():
-                    et = row['event_type']
-                    if et in breakdown:
-                        breakdown[et] = int(row['c'] or 0)
-                cur.execute("""
-                    SELECT COUNT(*) as c
-                    FROM ticket_events
-                    WHERE created_at BETWEEN ? AND ? AND event_type = 'ticket_solved_by_helper'
-                """, (start_at, end_at))
-                breakdown['manual_helped'] += int(cur.fetchone()['c'] or 0)
-                cur.execute("""
-                    SELECT COUNT(*) as c
-                    FROM ticket_events
-                    WHERE created_at BETWEEN ? AND ? AND event_type = 'ticket_created' AND is_cisco = 1
-                """, (start_at, end_at))
-                breakdown['tickets_created_cisco'] = int(cur.fetchone()['c'] or 0)
+        # Совместимость со старым названием (если было)
+        breakdown['manual_helped'] += int(counts_by_type.get('ticket_solved_by_helper', 0) or 0)
+        breakdown['tickets_created_cisco'] = _count_cisco_tickets_created(start_at, end_at, problem_keys)
 
         # Заполняем удобное поле для UI
         breakdown['tickets_created'] = int(breakdown.get('ticket_created') or 0)
@@ -8737,10 +10517,12 @@ def api_stats_topics_history():
 def api_stats_pending_tickets():
     """API: заявки которые отправлены но ещё не решены."""
     try:
+        problem_keys = _parse_problem_filters()
         active_statuses = {'in_work', 'ready_for_feedback', 'mass_incident'}
         rows = [
             state for state in _load_ticket_states().values()
             if state.get('status') in active_statuses
+            and _state_matches_problem_filters(state, problem_keys)
         ]
         now = datetime.now()
         for row in rows:
@@ -8779,12 +10561,14 @@ def api_stats_tickets_journal():
     """API: полная сводка по всем заявкам — создание, решение, время ожидания."""
     try:
         start_at, end_at = _resolve_period_range()
+        problem_keys = _parse_problem_filters()
         limit = max(1, min(request.args.get('limit', 100, type=int), 500))
         now = datetime.now()
         result = []
         states = [
             state for state in _load_ticket_states().values()
             if start_at <= (state.get('created_at') or '') <= end_at
+            and _state_matches_problem_filters(state, problem_keys)
         ]
         states = sorted(states, key=lambda x: x.get('created_at') or '', reverse=True)[:limit]
 
@@ -8794,6 +10578,8 @@ def api_stats_tickets_journal():
             entry = {
                 'ticket_number': tn,
                 'problem': state.get('problem', ''),
+                'problem_key': state.get('problem_key', ''),
+                'problem_label': state.get('problem_label', ''),
                 'department': state.get('department', ''),
                 'user_name': state.get('user_name', ''),
                 'workplace': state.get('workplace', ''),
@@ -9174,7 +10960,25 @@ def admin_stats_export():
 def admin_users():
     """Список всех администраторов (только для супер-админа)"""
     admins = admins_manager.load_admins()
-    return render_template('admin_users.html', admins=admins, role_names=ROLE_NAMES)
+    permission_choices = [
+        (ROLE_SUPER_ADMIN, ROLE_NAMES.get(ROLE_SUPER_ADMIN, ROLE_SUPER_ADMIN)),
+        (ROLE_ADMIN_MANUALS, ROLE_NAMES.get(ROLE_ADMIN_MANUALS, ROLE_ADMIN_MANUALS)),
+        (ROLE_ADMIN_TOPICS, ROLE_NAMES.get(ROLE_ADMIN_TOPICS, ROLE_ADMIN_TOPICS)),
+        (ROLE_ADMIN_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_TRAINER, ROLE_ADMIN_TRAINER)),
+        (ROLE_TRAINER_VIEWER, ROLE_NAMES.get(ROLE_TRAINER_VIEWER, ROLE_TRAINER_VIEWER)),
+    ]
+    normalized_admins = []
+    for admin in admins:
+        item = dict(admin)
+        item['permissions'] = admins_manager.normalize_permissions(item.get('permissions'), item.get('role', ''))
+        item['auth_type'] = item.get('auth_type') or ('local' if item.get('password_hash') else 'ad')
+        normalized_admins.append(item)
+    return render_template(
+        'admin_users.html',
+        admins=normalized_admins,
+        role_names=ROLE_NAMES,
+        permission_choices=permission_choices
+    )
 
 
 @app.route('/admin/users/add', methods=['GET', 'POST'])
@@ -9183,22 +10987,34 @@ def admin_add_user():
     """Добавление нового администратора"""
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
+        auth_type = request.form.get('auth_type', 'ad').strip()
         password = request.form.get('password', '')
         password_confirm = request.form.get('password_confirm', '')
-        role = request.form.get('role', ROLE_EDITOR)
+        permissions = request.form.getlist('permissions')
 
         # Валидация
-        if not username or not password:
-            flash('Логин и пароль обязательны для заполнения')
+        if not username:
+            flash('Логин обязателен для заполнения')
             return redirect(url_for('admin_add_user'))
 
-        if password != password_confirm:
-            flash('Пароли не совпадают')
-            return redirect(url_for('admin_add_user'))
+        if auth_type != 'ad':
+            auth_type = 'local'
+            if not password:
+                flash('Для локального администратора пароль обязателен')
+                return redirect(url_for('admin_add_user'))
+            if password != password_confirm:
+                flash('Пароли не совпадают')
+                return redirect(url_for('admin_add_user'))
 
         # Создаем администратора
         created_by = session.get('admin_username', 'system')
-        result = admins_manager.create_admin(username, password, role, created_by)
+        result = admins_manager.create_admin(
+            username=username,
+            password=password,
+            created_by=created_by,
+            auth_type=auth_type,
+            permissions=permissions
+        )
 
         if result['success']:
             flash(f'Администратор {username} успешно создан')
@@ -9206,7 +11022,14 @@ def admin_add_user():
         else:
             flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
 
-    return render_template('admin_add_user.html', roles={'super_admin': ROLE_SUPER_ADMIN, 'editor': ROLE_EDITOR}, role_names=ROLE_NAMES)
+    permission_choices = [
+        (ROLE_SUPER_ADMIN, ROLE_NAMES.get(ROLE_SUPER_ADMIN, ROLE_SUPER_ADMIN)),
+        (ROLE_ADMIN_MANUALS, ROLE_NAMES.get(ROLE_ADMIN_MANUALS, ROLE_ADMIN_MANUALS)),
+        (ROLE_ADMIN_TOPICS, ROLE_NAMES.get(ROLE_ADMIN_TOPICS, ROLE_ADMIN_TOPICS)),
+        (ROLE_ADMIN_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_TRAINER, ROLE_ADMIN_TRAINER)),
+        (ROLE_TRAINER_VIEWER, ROLE_NAMES.get(ROLE_TRAINER_VIEWER, ROLE_TRAINER_VIEWER)),
+    ]
+    return render_template('admin_add_user.html', permission_choices=permission_choices, role_names=ROLE_NAMES)
 
 
 @app.route('/admin/users/<string:username>/change_password', methods=['GET', 'POST'])
@@ -9216,6 +11039,9 @@ def admin_change_user_password(username):
     admin = admins_manager.get_admin_by_username(username)
     if not admin:
         flash('Администратор не найден')
+        return redirect(url_for('admin_users'))
+    if admins_manager.is_ad_admin(admin):
+        flash('Для AD-администратора пароль меняется в Active Directory')
         return redirect(url_for('admin_users'))
 
     if request.method == 'POST':
@@ -9255,6 +11081,21 @@ def admin_change_user_role(username):
 
     if result['success']:
         flash(f'Роль для {username} успешно изменена на {ROLE_NAMES.get(new_role, new_role)}')
+    else:
+        flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
+
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/users/<string:username>/change_permissions', methods=['POST'])
+@AdminAuth.super_admin_required
+def admin_change_user_permissions(username):
+    """Изменение набора прав администратора."""
+    permissions = request.form.getlist('permissions')
+    result = admins_manager.update_admin_permissions(username, permissions)
+
+    if result['success']:
+        flash(f'Права для {username} обновлены')
     else:
         flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
 
@@ -9715,11 +11556,17 @@ def run_flask():
 def run_bot():
     print("🤖 Telegram бот запущен и слушает обновления...")
     print("🔍 Ожидание callback запросов от кнопок...")
+    BOT_POLLING_UP.labels(*_metric_base_labels()).set(1)
     try:
         bot.infinity_polling(timeout=10, long_polling_timeout=5)
     except Exception as e:
+        BOT_POLLING_UP.labels(*_metric_base_labels()).set(0)
+        BOT_POLLING_ERRORS_TOTAL.labels(*_metric_base_labels(), type(e).__name__).inc()
+        BOT_ERRORS_TOTAL.labels(*_metric_base_labels(), 'infinity_polling', type(e).__name__).inc()
         print(f"❌ Ошибка в bot polling: {e}")
         traceback.print_exc()
+    finally:
+        BOT_POLLING_UP.labels(*_metric_base_labels()).set(0)
 
 
 if __name__ == '__main__':

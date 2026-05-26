@@ -3,810 +3,216 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Выберите тип помощи</title>
+    <title>Главная — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
     <style>
-        :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
-            --greenLight: #00d4aa;
-        }
-
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-        }
-
-        body.light .help-card,
-        body.light .user-info {
-            box-shadow: 0 2px 12px rgba(0,0,0,0.10);
-        }
-
-        .theme-toggle {
-            position: absolute;
-            top: 0;
-            right: 0;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 1000;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-
-        .theme-toggle:hover { transform: scale(1.12); }
-
-        .logout-btn {
-            position: absolute;
-            top: 0;
-            right: 50px;
-            backgro und: linear-gradient(135deg, #4b4f55 0%, #343a40 100%);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 10px 18px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #fff;
-            cursor: pointer;
-            z-index: 1000;
-            transition: all 0.2s;
-            text-decoration: none;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .logout-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(108 , 117, 125, 0.3);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            min-height: 100vh;
-            padding: 24px;
-            color: var(--text);
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
+        .home-main {
             position: relative;
-            animation: fadeIn 0.4s ease;
+            overflow: hidden;
+            isolation: isolate;
+            background:
+                radial-gradient(circle at 12% 0%, rgba(22, 163, 74, .10), transparent 30%),
+                radial-gradient(circle at 100% 100%, rgba(8, 145, 178, .06), transparent 36%),
+                linear-gradient(180deg, #fbfdff 0%, var(--bg) 48%, #eef3f8 100%);
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        body.dark .home-main {
+            background:
+                radial-gradient(circle at 12% 0%, rgba(34, 197, 94, .10), transparent 30%),
+                radial-gradient(circle at 100% 100%, rgba(59, 130, 246, .05), transparent 35%),
+                linear-gradient(180deg, #0b1730 0%, #091428 50%, #07111f 100%);
         }
 
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
+        .home-main::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            opacity: .18;
+            background-image: radial-gradient(circle, rgba(15, 23, 42, .18) 0 1px, transparent 1px);
+            background-size: 5px 5px;
+            mask-image: linear-gradient(180deg, rgba(0,0,0,.65), transparent 78%);
         }
 
-        .logo-img {
-            height: 48px;
-            width: 48px;
+        body.dark .home-main::before {
+            opacity: .16;
+            background-image: radial-gradient(circle, rgba(255, 255, 255, .18) 0 1px, transparent 1px);
         }
 
-        .logo-text {
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 800;
-            font-size: 38px;
-            letter-spacing: -0.3px;
-            background: linear-gradient(90deg, var(--greenLight) 0%, var(--green) 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            margin-bottom: 16px;
+        .home-main > .page {
+            position: relative;
+            z-index: 1;
         }
 
-        h1 {
-            color: var(--text);
-            font-size: 26px;
-            font-weight: 700;
-            margin-bottom: 10px;
+        .home-main .panel,
+        .home-main .section-card {
+            border-color: rgba(148, 163, 184, .24);
+            background: rgba(255, 255, 255, .78);
+            box-shadow: 0 18px 46px rgba(15, 23, 42, .08);
+            backdrop-filter: blur(14px);
         }
 
-        .subtitle {
-            color: var(--muted);
-            font-size: 15px;
-            margin-bottom: 30px;
+        .home-main .section-card.featured {
+            border-color: rgba(34, 197, 94, .34);
+            background: linear-gradient(180deg, rgba(240, 253, 244, .90), rgba(255, 255, 255, .76));
         }
 
-        .user-info {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 20px 24px;
-            margin-bottom: 35px;
+        .home-main .support-note {
+            margin-top: 16px;
+            border-color: rgba(34, 197, 94, .30);
+            background: linear-gradient(180deg, rgba(240, 253, 244, .88), rgba(255, 255, 255, .74));
         }
 
-        .user-info h3 {
-            color: var(--text);
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        body.dark .home-main .panel,
+        body.dark .home-main .section-card {
+            border-color: rgba(148, 163, 184, .16);
+            background: rgba(15, 23, 42, .66);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
         }
 
-        .user-info p {
-            color: var(--muted);
-            font-size: 14px;
-            margin: 8px 0;
-            line-height: 1.6;
+        body.dark .home-main .section-card:hover {
+            border-color: rgba(187, 247, 208, .36);
+            background: rgba(20, 31, 50, .78);
+            box-shadow: 0 22px 58px rgba(0, 0, 0, .34);
         }
 
-        .user-info strong {
-            color: var(--text);
-            font-weight: 600;
+        body.dark .home-main .section-card.featured,
+        body.dark .home-main .support-note {
+            border-color: rgba(34, 197, 94, .24);
+            background: linear-gradient(180deg, rgba(5, 46, 22, .58), rgba(15, 23, 42, .68));
         }
 
-        .help-types {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
+        .content-grid .card-arrow {
+            width: 22px;
+            height: 22px;
+            color: var(--text-muted);
+            opacity: .85;
+            stroke: currentColor;
+            stroke-width: 2.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
         }
 
-        .help-card {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 32px 24px;
-            text-decoration: none;
-            color: var(--text);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 14px;
-            transition: all 0.2s ease;
-            cursor: pointer;
+        body.dark .content-grid .card-arrow {
+            color: #e2e8f0;
+            opacity: .95;
         }
 
-        .help-card:hover {
-            transform: translateY(-4px);
-            border-color: rgba(0, 166, 81, 0.5);
-            box-shadow: 0 12px 30px rgba(0, 166, 81, 0.15);
-            background: linear-gradient(180deg, var(--card), var(--card2));
-        }
-
-        .help-card:active {
-            transform: translateY(-2px);
-        }
-
-        .help-icon {
-            font-size: 56px;
-            line-height: 1;
-            filter: grayscale(0.3);
-        }
-
-        .help-title {
-            font-size: 19px;
-            font-weight: 700;
-            color: var(--text);
-            text-align: center;
-        }
-
-        .help-description {
-            font-size: 13px;
-            color: var(--muted);
-            text-align: center;
-            line-height: 1.5;
-        }
-
-        /* Карточка тренажера - занимает всю ширину */
-        .scenarios-card {
-            border-color: rgba(33, 150, 243, 0.3);
-        }
-        .scenarios-card:hover {
-            border-color: rgba(33, 150, 243, 0.7);
-            box-shadow: 0 8px 30px rgba(33, 150, 243, 0.15);
-        }
-        .scenarios-card .help-icon { filter: none; }
-
-        .trainer-card {
-            grid-column: 1 / -1;
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border-color: rgba(0, 166, 81, 0.3);
-        }
-
-        .trainer-card:hover {
-            border-color: rgba(0, 166, 81, 0.6);
-            background: linear-gradient(180deg, var(--card), var(--card2));
-        }
-
-        .trainer-card .help-icon {
-            filter: none;
-        }
-
-        @media (max-width: 1024px) {
-            .container {
-                padding: 20px;
-            }
-        }
-
-        @media (max-width: 600px) {
-            .help-types {
-                grid-template-columns: 1fr;
-            }
-
-            .container {
-                padding: 20px 16px;
-            }
-
-            .logo-text {
-                font-size: 32px;
-            }
-
-            h1 {
-                font-size: 22px;
-            }
-
-            .help-card {
-                padding: 28px 20px;
-            }
+        body.dark .content-grid .section-card:hover .card-arrow {
+            color: #bbf7d0;
+            opacity: 1;
         }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
-    <style>body.light .container { background: transparent !important; border: none !important; box-shadow: none !important; }</style>
 </head>
 <body>
-    <div class="container">
-        <a href="{{ url_for('user_logout') }}" class="logout-btn">🚪 Выход</a>
-        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-        <div class="header">
-            <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
-            <h1>Добро пожаловать в Helper!</h1>
-            <p class="subtitle">Выберите, чем мы можем вам помочь сегодня</p>
-        </div>
+{% set active_page = 'home' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
 
-        <!-- Информация о пользователе -->
-        <div class="user-info">
-            <h3>📋 Ваши данные</h3>
-            <p><strong>Отдел:</strong> {{ user_info.department }}</p>
-            <p><strong>Имя:</strong> {{ user_info.name }}</p>
-            {% if user_info.workplace %}
-            <p><strong>Рабочее место:</strong> {{ user_info.workplace }}</p>
-            {% endif %}
-        </div>
-
-        <!-- Выбор типа помощи -->
-        <div class="help-types">
-            <!-- Мануалы -->
-            <a href="{{ url_for('show_problems') }}" class="help-card">
-                <div class="help-icon">📚</div>
-                <div class="help-title">Мануалы</div>
-                <div class="help-description">
-                    Пошаговые инструкции по решению технических проблем
+    <main class="main-content home-main">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Рабочее пространство</div>
+                    <h1 class="page-title">Здравствуйте, {{ user_info.name or 'коллега' }}</h1>
+                    <p class="page-subtitle">Выберите нужный раздел Helper: инструкции, тематики, сценарии консультаций или тренажёр.</p>
                 </div>
-            </a>
+                <a class="btn btn-secondary" href="{{ url_for('user_logout') }}">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg>
+                    Выйти
+                </a>
+            </header>
 
-            <!-- Тематики обращений -->
-            <a href="{{ url_for('search_topics') }}" class="help-card">
-                <div class="help-icon">📋</div>
-                <div class="help-title">Тематики обращений</div>
-                <div class="help-description">
-                    Найдите подходящую тематику для фиксации обращения клиента
+            <section class="panel panel-pad" style="margin-bottom:16px;">
+                <div class="content-grid grid-3">
+                    <div>
+                        <div class="page-kicker">Отдел</div>
+                        <div class="card-title">{{ user_info.department or 'Не указан' }}</div>
+                    </div>
+                    <div>
+                        <div class="page-kicker">Сотрудник</div>
+                        <div class="card-title">{{ user_info.name or 'Не указан' }}</div>
+                    </div>
+                    <div>
+                        <div class="page-kicker">Рабочее место</div>
+                        <div class="card-title">{{ user_info.workplace or 'Не указано' }}</div>
+                    </div>
                 </div>
-            </a>
+            </section>
 
-            <!-- Сценарии консультаций -->
-            <a href="{{ url_for('scenarios_list') }}" class="help-card scenarios-card">
-                <div class="help-icon">🗂️</div>
-                <div class="help-title">Сценарии</div>
-                <div class="help-description">
-                    Пошаговые сценарии консультаций — дерево решений для оператора
-                </div>
-            </a>
+            <section class="content-grid grid-2">
+                <a href="{{ url_for('show_problems') }}" class="section-card featured">
+                    <div class="card-icon-wrap" style="background:var(--primary-mid);">
+                        <span class="card-emoji" aria-hidden="true">📚</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Мануалы</div>
+                        <div class="card-desc">Пошаговые инструкции и отправка заявки, если инструкция не помогла.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
 
-            <!-- Тренажер -->
-            <a href="{{ url_for('trainer_menu') }}" class="help-card trainer-card">
-                <div class="help-icon">🎯</div>
-                <div class="help-title">Тренажер</div>
-                <div class="help-description">
-                    Отработайте навыки работы с клиентами в различных ситуациях
+                <a href="{{ url_for('search_topics') }}" class="section-card">
+                    <div class="card-icon-wrap" style="background:var(--blue-light);color:var(--blue);">
+                        <span class="card-emoji" aria-hidden="true">🏷️</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Тематики</div>
+                        <div class="card-desc">Поиск подходящей тематики обращения по описанию и каналу.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+
+                <a href="{{ url_for('contacts_kc') }}" class="section-card">
+                    <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">
+                        <span class="card-emoji" aria-hidden="true">☎️</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Контакты КЦ</div>
+                        <div class="card-desc">Направления, ответственные группы и внутренние контакты сотрудников.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+
+                <a href="{{ url_for('scenarios_list') }}" class="section-card">
+                    <div class="card-icon-wrap" style="background:var(--purple-light);color:var(--purple);">
+                        <span class="card-emoji" aria-hidden="true">🧭</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Сценарии</div>
+                        <div class="card-desc">Дерево решений для оператора во время консультации клиента.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+
+                <a href="{{ url_for('trainer_menu') }}" class="section-card">
+                    <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">
+                        <span class="card-emoji" aria-hidden="true">🎯</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Тренажёр</div>
+                        <div class="card-desc">Практика диалогов и отработка навыков обслуживания.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+            </section>
+
+            <section class="panel panel-pad support-note">
+                <div style="display:flex;align-items:center;gap:14px;">
+                    <div class="card-icon-wrap" style="background:var(--card);">
+                        <span class="card-emoji" aria-hidden="true">🧩</span>
+                    </div>
+                    <div>
+                        <div class="card-title">Столкнулись с техническими неполадками?</div>
+                        <div class="card-desc">Откройте подходящий мануал и проверьте инструкцию. Если вопрос не решится, Helper поможет оформить заявку в техподдержку.</div>
+                    </div>
                 </div>
-            </a>
+            </section>
         </div>
-    </div>
-
-    <!-- ========== МИНИ-ИГРА FLOW FREE ========== -->
-    <style>
-        #flowWidget {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            width: 52px;
-            height: 52px;
-            z-index: 1000;
-            transition: all 0.35s cubic-bezier(.4,0,.2,1);
-        }
-        #flowWidget.open {
-            width: 320px;
-            height: 420px;
-        }
-        #flowBtn {
-            position: absolute;
-            bottom: 0; left: 0;
-            width: 52px; height: 52px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #00d4aa, #007b7e);
-            border: none;
-            cursor: pointer;
-            font-size: 22px;
-            box-shadow: 0 4px 18px rgba(0,212,170,.45);
-            display: flex; align-items: center; justify-content: center;
-            transition: transform .2s;
-            z-index: 2;
-        }
-        #flowBtn:hover { transform: scale(1.08); }
-        #flowPanel {
-            position: absolute;
-            bottom: 60px; left: 0;
-            width: 320px;
-            background: #1a1a2e;
-            border: 1px solid #2a3a4a;
-            border-radius: 16px;
-            box-shadow: 0 8px 40px rgba(0,0,0,.6);
-            padding: 14px;
-            display: none;
-            flex-direction: column;
-            gap: 10px;
-        }
-        #flowWidget.open #flowPanel { display: flex; }
-        .flow-header {
-            display: flex; align-items: center; justify-content: space-between;
-        }
-        .flow-title { color: #00d4aa; font-weight: 700; font-size: 14px; }
-        .flow-lvl-badge {
-            background: #0a2a2a; color: #00d4aa;
-            border-radius: 8px; padding: 2px 8px; font-size: 12px;
-        }
-        .flow-controls {
-            display: flex; gap: 6px; align-items: center;
-        }
-        .flow-btn-sm {
-            background: #0a2a2a; color: #00d4aa; border: 1px solid #00d4aa44;
-            border-radius: 7px; padding: 3px 9px; font-size: 12px; cursor: pointer;
-        }
-        .flow-btn-sm:hover { background: #00d4aa22; }
-        #flowCanvas {
-            border-radius: 10px;
-            cursor: pointer;
-            touch-action: none;
-            display: block;
-            margin: 0 auto;
-        }
-        .flow-status {
-            text-align: center; font-size: 12px; color: #a0b0b0;
-            min-height: 18px;
-        }
-        .flow-status.win { color: #00d4aa; font-weight: 700; }
-        .flow-progress-bar {
-            height: 4px; background: #0a2a2a; border-radius: 2px; overflow: hidden;
-        }
-        .flow-progress-fill {
-            height: 100%; background: linear-gradient(90deg,#00d4aa,#007b7e);
-            border-radius: 2px; transition: width .4s;
-        }
-        .flow-timer {
-            text-align: center;
-            font-size: 15px;
-            font-weight: 700;
-            font-variant-numeric: tabular-nums;
-            color: #a0c8c8;
-            letter-spacing: 1px;
-            margin: 2px 0 0;
-            transition: color 0.3s;
-        }
-        .flow-timer.warning { color: #f39c12; }
-        .flow-timer.danger  { color: #e74c3c; animation: timerPulse 0.6s ease-in-out infinite alternate; }
-        .flow-timer.expired { color: #e74c3c; font-size: 13px; }
-        @keyframes timerPulse { from { opacity: 1; } to { opacity: 0.5; } }
-
-        body.light #flowPanel {
-            background: #ffffff;
-            border-color: #c8d8e8;
-            box-shadow: 0 8px 40px rgba(0,0,0,.15);
-        }
-        body.light .flow-lvl-badge {
-            background: #e0f0f0; color: #007b7e;
-        }
-        body.light .flow-btn-sm {
-            background: #e0f0f0; color: #007b7e; border-color: #00d4aa88;
-        }
-        body.light .flow-btn-sm:hover { background: #c0e8e0; }
-        body.light .flow-status { color: #507070; }
-        body.light .flow-progress-bar { background: #d0e8e8; }
-        body.light .flow-timer { color: #407070; }
-    </style>
-
-    <div id="flowWidget">
-        <button id="flowBtn" title="Мини-игра" onclick="toggleFlow()">🧩</button>
-        <div id="flowPanel">
-            <div class="flow-header">
-                <span class="flow-title">🧩 Flow Puzzle</span>
-                <span class="flow-lvl-badge" id="flowLvlBadge">Уровень 1</span>
-            </div>
-            <div class="flow-progress-bar">
-                <div class="flow-progress-fill" id="flowProgressFill" style="width:1%"></div>
-            </div>
-            <div class="flow-controls">
-                <button class="flow-btn-sm" onclick="flowPrevLevel()">◀</button>
-                <button class="flow-btn-sm" onclick="flowNextLevel()">▶</button>
-                <button class="flow-btn-sm" onclick="flowRestart()">↺ Заново</button>
-                <button class="flow-btn-sm" id="flowHintBtn" onclick="flowHint()">💡</button>
-                <button class="flow-btn-sm" id="flowResetAllBtn" onclick="flowResetAll()" style="display:none;color:#f39c12;">🔄 Сначала</button>
-            </div>
-            <div class="flow-timer" id="flowTimer">⏱ 1:00</div>
-            <canvas id="flowCanvas" width="290" height="290"></canvas>
-            <div class="flow-status" id="flowStatus">Соедини все пары точек</div>
-        </div>
-    </div>
-
-    <script>
-    // =========================================================
-    // FLOW FREE — 100 уровней
-    // =========================================================
-    (function(){
-    const COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#e91e63','#00bcd4','#ff5722','#8bc34a','#ff9800'];
-    const CNAMES = ['red','blue','green','orange','purple','pink','cyan','deeporange','lime','amber'];
-
-    // Уровни сгенерированы и верифицированы программно —
-    // каждый путь покрывает все клетки сетки и имеет корректное решение
-    const LEVELS = [{"s":4,"d":[[0,3,3,3],[3,2,0,1],[0,0,2,1],[3,1,2,0]]},{"s":4,"d":[[0,2,0,3],[1,3,1,2],[1,1,0,1],[0,0,2,1]]},{"s":4,"d":[[0,3,2,2],[1,2,0,1],[0,0,1,0],[1,1,2,0]]},{"s":4,"d":[[3,1,3,0],[2,0,2,1],[2,2,3,3],[2,3,1,2]]},{"s":4,"d":[[1,2,0,1],[0,0,1,1],[2,1,3,3]]},{"s":4,"d":[[2,2,2,3],[3,3,2,1],[1,1,0,2],[1,2,0,3]]},{"s":4,"d":[[1,0,0,2],[0,3,3,0],[2,0,1,1]]},{"s":4,"d":[[3,2,1,3],[0,3,0,2],[0,1,1,0],[2,0,1,1]]},{"s":4,"d":[[1,2,1,1],[2,1,3,0],[3,1,3,2],[3,3,2,2]]},{"s":4,"d":[[3,1,0,1],[1,1,2,2],[3,2,0,3]]},{"s":5,"d":[[3,3,4,3],[4,2,4,1],[4,0,0,3],[0,4,1,3]]},{"s":5,"d":[[0,4,2,4],[3,4,0,0],[0,1,3,1],[3,2,1,2],[1,3,0,2]]},{"s":5,"d":[[2,4,3,2],[4,2,4,1],[4,0,1,1],[1,2,1,3]]},{"s":5,"d":[[3,3,0,3],[0,2,0,0],[1,0,4,0],[4,1,3,2],[3,1,2,2]]},{"s":5,"d":[[1,1,4,2],[4,3,2,4],[1,4,1,2],[1,3,2,2]]},{"s":5,"d":[[1,3,0,4],[0,3,0,0],[1,0,2,3],[2,4,3,2],[4,2,2,0]]},{"s":5,"d":[[0,0,4,1],[3,1,2,1],[1,1,2,4],[3,4,4,4],[4,3,3,3]]},{"s":5,"d":[[1,3,1,4],[2,4,2,2],[1,2,0,1],[0,0,4,4]]},{"s":5,"d":[[4,0,3,2],[3,1,2,1],[2,2,2,3],[2,4,1,3]]},{"s":5,"d":[[4,2,0,3],[0,4,1,4],[1,3,2,3],[2,4,4,4]]},{"s":5,"d":[[0,4,4,0],[3,0,3,1],[3,2,3,3],[2,3,0,0]]},{"s":5,"d":[[4,4,4,2],[4,1,0,3],[0,4,3,1],[3,2,3,3]]},{"s":5,"d":[[2,2,3,0],[4,0,1,4],[0,4,1,2],[0,2,0,0]]},{"s":5,"d":[[0,2,0,4],[1,4,2,4],[3,4,4,4],[4,3,3,1],[2,1,1,1]]},{"s":5,"d":[[1,1,0,2],[0,3,2,2],[2,3,4,0],[3,0,3,1]]},{"s":5,"d":[[2,2,0,2],[0,3,1,3],[2,3,3,3],[3,2,2,0],[1,0,1,1]]},{"s":5,"d":[[2,4,0,3],[1,3,2,2],[1,2,0,2],[0,1,1,1],[2,1,4,0]]},{"s":5,"d":[[3,1,3,2],[3,3,2,1],[2,0,1,2],[0,2,0,4]]},{"s":5,"d":[[2,4,4,0],[3,0,2,0],[1,0,1,2],[0,2,0,3],[1,3,0,4]]},{"s":5,"d":[[0,0,4,1],[3,1,0,1],[0,2,4,3],[4,4,1,4],[0,4,1,3]]},{"s":6,"d":[[0,4,5,5],[5,4,1,3],[0,3,0,1],[0,0,1,0],[1,1,2,2],[2,3,3,2],[3,1,5,2]]},{"s":6,"d":[[3,0,4,1],[3,1,2,5],[3,5,5,5],[5,4,2,3],[1,3,3,3]]},{"s":6,"d":[[3,2,3,1],[3,0,2,5],[3,5,2,3],[2,4,1,4],[1,3,1,1]]},{"s":6,"d":[[0,5,5,5],[5,4,3,0],[2,0,0,2],[0,3,1,4],[2,4,1,2],[1,3,3,3]]},{"s":6,"d":[[2,3,1,4],[2,4,3,2],[2,2,0,1],[0,0,3,1],[4,1,5,5]]},{"s":6,"d":[[2,5,5,3],[5,2,5,1],[5,0,4,2],[4,3,0,0],[1,0,1,1],[2,1,3,1]]},{"s":6,"d":[[5,3,3,5],[2,5,3,3],[2,3,1,3],[0,3,1,2],[2,2,2,1],[2,0,5,1],[5,2,3,2]]},{"s":6,"d":[[3,5,5,5],[5,4,4,4],[3,4,2,4],[2,5,4,1],[3,1,4,3]]},{"s":6,"d":[[4,0,5,1],[5,2,0,4],[0,3,0,1],[0,0,3,0],[3,1,1,1],[1,2,1,4]]},{"s":6,"d":[[1,4,0,4],[0,3,1,0],[1,1,2,1],[2,0,5,2],[4,2,4,4]]},{"s":6,"d":[[5,5,5,2],[5,1,3,0],[2,0,1,0],[0,0,0,5],[1,5,2,5],[3,5,2,4],[1,4,3,2]]},{"s":6,"d":[[1,5,0,2],[0,1,3,4],[3,3,2,1],[2,0,4,1],[4,2,5,2]]},{"s":6,"d":[[4,5,5,4],[5,3,4,0],[4,1,4,4],[3,4,0,4],[0,3,2,4],[2,3,3,1]]},{"s":6,"d":[[3,4,5,1],[5,0,4,0],[4,1,0,3],[0,2,0,0],[1,0,2,0]]},{"s":6,"d":[[0,5,1,0],[2,0,4,0],[5,0,1,3],[2,3,2,2],[3,2,5,3]]},{"s":6,"d":[[4,5,4,4],[4,3,4,0],[3,0,3,1],[3,2,3,5],[2,5,0,4]]},{"s":6,"d":[[4,0,5,0],[5,1,5,2],[5,3,5,4],[5,5,0,5],[0,4,3,4],[4,4,3,0],[2,0,1,0]]},{"s":6,"d":[[3,4,4,3],[5,3,3,0],[3,1,2,0],[1,0,0,0],[0,1,2,4]]},{"s":6,"d":[[4,4,5,2],[5,1,4,0],[3,0,3,2],[2,2,0,4],[1,4,1,2]]},{"s":6,"d":[[5,3,3,2],[3,1,3,0],[2,0,1,3],[1,2,0,4],[0,5,5,4]]},{"s":6,"d":[[4,0,5,3],[5,4,4,5],[3,5,1,5],[0,5,2,4],[3,4,4,2],[4,1,1,0]]},{"s":6,"d":[[2,5,1,4],[2,4,4,2],[4,1,3,0],[3,1,1,3],[0,3,2,2]]},{"s":6,"d":[[4,5,4,0],[4,1,0,5],[0,4,0,1],[0,0,1,4],[2,4,3,1]]},{"s":6,"d":[[1,5,1,3],[1,4,2,5],[3,5,5,5],[5,4,3,4],[3,3,2,2],[2,1,5,3],[5,2,5,0]]},{"s":6,"d":[[0,0,5,1],[5,2,5,4],[5,5,4,2],[4,1,3,3],[2,3,1,1],[0,1,0,3]]},{"s":7,"d":[[4,6,2,5],[2,4,5,0],[5,1,5,2],[5,3,3,1],[3,2,1,4],[0,4,1,5]]},{"s":7,"d":[[2,0,0,1],[1,1,1,4],[0,4,1,6],[1,5,5,6],[6,6,6,1],[6,0,5,1]]},{"s":7,"d":[[0,0,1,6],[2,6,6,4],[6,3,5,2],[5,3,5,5],[4,5,1,4],[1,5,3,3]]},{"s":7,"d":[[0,6,4,6],[5,6,6,5],[5,5,4,5],[3,5,2,0],[3,0,4,0],[5,0,6,0],[6,1,2,2]]},{"s":7,"d":[[2,4,0,4],[0,3,0,1],[0,0,3,0],[3,1,6,1],[5,1,5,4],[6,4,1,5]]},{"s":7,"d":[[4,4,1,0],[2,0,3,1],[2,1,3,3],[4,3,5,2],[6,2,6,4],[6,5,2,5],[2,6,1,5]]},{"s":7,"d":[[1,3,1,5],[0,5,5,6],[6,6,6,4],[6,3,2,2],[2,3,2,5],[3,5,4,4]]},{"s":7,"d":[[0,0,2,0],[3,0,0,1],[0,2,0,4],[0,5,5,5],[4,5,2,5],[1,5,2,4],[3,4,2,2]]},{"s":7,"d":[[0,4,2,0],[3,0,6,1],[6,2,5,2],[5,1,3,1],[2,1,4,3],[3,3,4,4]]},{"s":7,"d":[[6,0,3,0],[2,0,0,1],[0,2,0,6],[1,6,3,6],[4,6,6,6],[6,5,4,5],[3,5,2,1],[3,1,5,3]]},{"s":7,"d":[[5,5,0,0],[0,1,2,1],[3,1,1,2],[0,2,0,6],[1,6,3,4],[3,3,2,4]]},{"s":7,"d":[[2,4,4,6],[5,6,5,2],[6,2,6,1],[6,0,5,1],[4,1,2,1],[2,0,1,1],[1,2,1,5]]},{"s":7,"d":[[2,6,6,6],[6,5,6,3],[6,2,3,0],[2,0,5,2],[4,2,0,5],[0,6,2,3],[3,3,3,5]]},{"s":7,"d":[[5,1,0,0],[0,1,0,3],[0,4,1,6],[1,5,5,4],[4,4,2,4],[2,5,2,6],[3,6,6,6]]},{"s":7,"d":[[0,0,0,2],[0,3,1,4],[1,3,4,5],[3,5,3,0],[4,0,6,1],[6,2,5,3],[5,2,4,2]]},{"s":7,"d":[[6,2,6,4],[6,5,5,5],[5,4,4,2],[4,3,4,6],[3,6,4,1],[5,1,2,1],[2,2,1,5],[1,4,0,0]]},{"s":7,"d":[[4,0,3,0],[2,0,1,0],[0,0,4,3],[3,3,1,3],[0,3,2,4],[3,4,6,4],[6,5,0,6]]},{"s":7,"d":[[2,6,5,6],[6,6,6,4],[6,3,5,0],[5,1,0,0],[1,0,2,1],[3,1,2,2]]},{"s":7,"d":[[4,0,6,1],[5,1,6,3],[5,3,4,4],[5,4,5,5],[4,5,3,6],[2,6,2,5],[3,5,2,4],[1,4,1,3]]},{"s":7,"d":[[2,4,0,1],[0,0,2,1],[1,1,2,3],[2,2,3,5],[2,5,5,4],[6,4,5,5]]},{"s":8,"d":[[7,2,1,0],[0,0,0,1],[0,2,1,6],[1,5,2,3],[2,4,4,7],[5,7,3,6],[3,5,4,2]]},{"s":8,"d":[[0,3,0,6],[0,7,2,5],[2,6,2,7],[3,7,4,6],[3,6,4,3],[4,4,6,4],[5,4,5,3],[6,3,3,0],[2,0,5,1]]},{"s":8,"d":[[0,6,0,4],[0,3,7,1],[6,1,5,1],[4,1,1,1],[1,2,1,4],[2,4,7,4],[7,5,6,3],[5,3,4,3]]},{"s":8,"d":[[1,2,1,6],[1,5,3,6],[3,5,7,5],[7,4,6,2],[5,2,4,2],[4,1,1,1],[0,1,0,0],[1,0,6,0]]},{"s":8,"d":[[1,3,1,4],[2,4,3,4],[4,4,3,1],[4,1,6,0],[7,0,6,4],[6,3,6,2],[6,1,5,6],[5,7,3,6]]},{"s":8,"d":[[5,6,6,6],[6,5,2,0],[1,0,3,1],[4,1,6,2],[5,2,3,2],[2,2,0,3],[0,4,5,3],[6,3,2,6]]},{"s":8,"d":[[2,0,1,3],[1,2,2,4],[2,5,3,7],[3,6,5,0],[6,0,6,2],[7,2,6,5],[6,4,5,3],[4,3,4,7]]},{"s":8,"d":[[0,7,0,3],[0,2,1,2],[1,3,7,3],[7,2,6,0],[5,0,2,1],[3,1,4,3],[5,3,6,6],[5,6,4,4],[3,4,4,6]]},{"s":8,"d":[[7,6,0,5],[0,4,1,3],[1,4,2,1],[2,0,6,0],[7,0,7,4],[7,5,3,3],[3,4,3,5]]},{"s":8,"d":[[4,6,7,6],[6,6,7,5],[7,4,4,2],[3,2,5,4],[4,4,0,4],[0,5,1,7],[1,6,3,6]]},{"s":8,"d":[[4,1,7,5],[7,6,6,6],[6,5,4,6],[3,6,3,7],[2,7,3,5],[3,4,0,2],[0,1,1,0],[2,0,3,3]]},{"s":8,"d":[[7,0,1,0],[0,0,6,2],[5,2,4,2],[3,2,2,2],[1,2,1,3],[2,3,1,5],[2,5,3,7]]},{"s":8,"d":[[4,0,0,7],[1,7,2,2],[2,3,2,5],[2,6,2,7],[3,7,7,6],[6,6,5,3],[5,2,7,2]]},{"s":8,"d":[[4,5,5,6],[5,5,5,4],[4,4,5,2],[4,2,3,2],[2,2,2,1],[2,0,3,0],[3,1,6,0],[7,0,7,7]]},{"s":8,"d":[[6,6,5,6],[4,6,1,1],[1,2,2,6],[3,6,4,4],[4,5,6,1],[6,2,5,1],[5,0,2,3],[2,2,2,1]]},{"s":9,"d":[[7,7,0,6],[0,5,4,0],[5,0,6,0],[7,0,6,4],[6,5,5,5],[5,4,5,2],[5,1,4,1],[3,1,1,4],[1,3,3,5]]},{"s":9,"d":[[1,3,2,3],[3,3,2,1],[2,0,4,0],[5,0,7,0],[8,0,6,1],[5,1,4,8],[5,8,7,4],[8,4,6,6]]},{"s":9,"d":[[1,5,2,6],[1,6,1,8],[1,7,2,7],[2,8,8,3],[8,2,7,7],[6,7,5,2],[4,2,1,2],[0,2,5,5]]},{"s":9,"d":[[4,8,0,6],[0,5,7,5],[6,5,6,4],[6,3,5,0],[4,0,2,0],[1,0,0,0],[0,1,1,1],[2,1,4,2]]},{"s":9,"d":[[8,4,5,8],[4,8,3,8],[2,8,1,5],[1,6,6,7],[7,7,2,5],[3,5,7,5],[7,4,7,3],[7,2,5,3]]},{"s":9,"d":[[0,4,0,6],[0,7,3,2],[3,3,3,5],[3,6,4,2],[4,1,4,0],[5,0,5,2],[5,3,3,7],[2,7,6,3],[6,2,8,6]]},{"s":9,"d":[[3,5,4,4],[4,3,3,0],[4,0,7,0],[8,0,6,1],[5,1,8,4],[8,5,4,8],[3,8,0,4],[0,3,0,0]]},{"s":9,"d":[[3,3,3,2],[2,2,4,6],[3,6,3,8],[2,8,0,0],[1,0,2,1],[2,0,5,0],[6,0,7,0],[8,0,5,5],[5,6,7,7]]},{"s":9,"d":[[4,4,3,2],[4,2,2,0],[1,0,5,5],[6,5,2,7],[2,8,3,8],[3,7,4,7],[4,8,5,7],[6,7,8,4]]},{"s":9,"d":[[0,8,8,5],[8,4,8,0],[7,0,4,0],[3,0,5,2],[4,2,3,2],[2,2,4,4],[3,4,3,5],[4,5,6,6]]}];
-
-    const CELL = 290; // canvas size
-    const TIME_LIMITS = {4:60, 5:90, 6:120, 7:150, 8:180, 9:240};
-    let curLevel = parseInt(localStorage.getItem('flowLevel') || '0');
-    let grid, size, dots, paths, drawing, drawColor, lastCell;
-    let timerInterval = null, timeLeft = 0;
-
-    function fmtTime(s) {
-        const m = Math.floor(s / 60);
-        const sec = s % 60;
-        return '⏱ ' + m + ':' + (sec < 10 ? '0' : '') + sec;
-    }
-
-    function updateTimerDisplay() {
-        const el = document.getElementById('flowTimer');
-        el.textContent = fmtTime(timeLeft);
-        el.className = 'flow-timer';
-        if (timeLeft <= 0)       el.classList.add('expired');
-        else if (timeLeft <= 10) el.classList.add('danger');
-        else if (timeLeft <= 20) el.classList.add('warning');
-    }
-
-    function startTimer() {
-        clearInterval(timerInterval);
-        timeLeft = TIME_LIMITS[size] || 120;
-        updateTimerDisplay();
-        timerInterval = setInterval(function() {
-            timeLeft--;
-            updateTimerDisplay();
-            if (timeLeft <= 0) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-                const st = document.getElementById('flowStatus');
-                st.textContent = '⏰ Время вышло! Попробуй ещё раз';
-                st.className = 'flow-status';
-                st.style.color = '#e74c3c';
-            }
-        }, 1000);
-    }
-
-    function stopTimer() {
-        clearInterval(timerInterval);
-        timerInterval = null;
-    }
-
-    function cellSize() { return Math.floor(CELL / size); }
-
-    function initLevel(idx) {
-        curLevel = idx;
-        localStorage.setItem('flowLevel', idx);
-        const lv = LEVELS[idx];
-        size = lv.s;
-        dots = lv.d;
-        grid = Array.from({length:size}, () => Array(size).fill(null));
-        paths = dots.map(() => []);
-        drawing = false; drawColor = -1; lastCell = null;
-        // Ставим точки
-        dots.forEach((d,i) => {
-            grid[d[0]][d[1]] = {color:i, isEnd:false};
-            grid[d[2]][d[3]] = {color:i, isEnd:true};
-        });
-        document.getElementById('flowLvlBadge').textContent = 'Уровень '+(idx+1);
-        const pct = Math.round((idx+1)/LEVELS.length*100);
-        document.getElementById('flowProgressFill').style.width = pct+'%';
-        const st = document.getElementById('flowStatus');
-        st.textContent = 'Соедини все пары точек';
-        st.className = 'flow-status';
-        st.style.color = '';
-        document.getElementById('flowResetAllBtn').style.display = 'none';
-        draw();
-        startTimer();
-    }
-
-    function draw() {
-        const cv = document.getElementById('flowCanvas');
-        const ctx = cv.getContext('2d');
-        const cs = cellSize();
-        ctx.clearRect(0,0,CELL,CELL);
-        // Сетка
-        ctx.strokeStyle = '#2a3a4a';
-        ctx.lineWidth = 1;
-        for(let r=0;r<=size;r++){
-            ctx.beginPath(); ctx.moveTo(0,r*cs); ctx.lineTo(size*cs,r*cs); ctx.stroke();
-        }
-        for(let c=0;c<=size;c++){
-            ctx.beginPath(); ctx.moveTo(c*cs,0); ctx.lineTo(c*cs,size*cs); ctx.stroke();
-        }
-        // Пути
-        paths.forEach((path,ci) => {
-            if(path.length<2) return;
-            ctx.strokeStyle = COLORS[ci % COLORS.length];
-            ctx.lineWidth = cs*0.38;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            ctx.moveTo(path[0][1]*cs+cs/2, path[0][0]*cs+cs/2);
-            for(let i=1;i<path.length;i++){
-                ctx.lineTo(path[i][1]*cs+cs/2, path[i][0]*cs+cs/2);
-            }
-            ctx.stroke();
-        });
-        // Точки
-        dots.forEach((d,ci) => {
-            [[d[0],d[1]],[d[2],d[3]]].forEach(([r,c]) => {
-                ctx.beginPath();
-                ctx.arc(c*cs+cs/2, r*cs+cs/2, cs*0.32, 0, Math.PI*2);
-                ctx.fillStyle = COLORS[ci % COLORS.length];
-                ctx.fill();
-                ctx.strokeStyle = '#fff';
-                ctx.lineWidth = cs*0.06;
-                ctx.stroke();
-            });
-        });
-    }
-
-    function cellFromEvent(e) {
-        const cv = document.getElementById('flowCanvas');
-        const rect = cv.getBoundingClientRect();
-        const cs = cellSize();
-        let x, y;
-        if(e.touches) {
-            x = e.touches[0].clientX - rect.left;
-            y = e.touches[0].clientY - rect.top;
-        } else {
-            x = e.clientX - rect.left;
-            y = e.clientY - rect.top;
-        }
-        return [Math.floor(y/cs), Math.floor(x/cs)];
-    }
-
-    function colorOfDot(r,c) {
-        for(let i=0;i<dots.length;i++){
-            if((dots[i][0]===r&&dots[i][1]===c)||(dots[i][2]===r&&dots[i][3]===c)) return i;
-        }
-        return -1;
-    }
-
-    function startDraw(e) {
-        e.preventDefault();
-        const [r,c] = cellFromEvent(e);
-        if(r<0||r>=size||c<0||c>=size) return;
-        const ci = colorOfDot(r,c);
-        if(ci < 0) return;
-        // Очищаем старый путь этого цвета
-        paths[ci] = [[r,c]];
-        // Очищаем клетки пути из сетки
-        for(let rr=0;rr<size;rr++) for(let cc=0;cc<size;cc++){
-            if(grid[rr][cc]&&grid[rr][cc].path===ci) grid[rr][cc]=null;
-        }
-        // Восстанавливаем точки
-        dots.forEach((d,i) => {
-            grid[d[0]][d[1]] = {color:i, isEnd:false};
-            grid[d[2]][d[3]] = {color:i, isEnd:true};
-        });
-        drawing = true; drawColor = ci; lastCell = [r,c];
-        draw();
-    }
-
-    function moveDraw(e) {
-        if(!drawing) return;
-        e.preventDefault();
-        const [r,c] = cellFromEvent(e);
-        if(r<0||r>=size||c<0||c>=size) return;
-        const last = lastCell;
-        if(r===last[0]&&c===last[1]) return;
-        // Только соседние клетки
-        if(Math.abs(r-last[0])+Math.abs(c-last[1]) !== 1) return;
-        // Нельзя на чужую точку
-        const ci2 = colorOfDot(r,c);
-        if(ci2 >= 0 && ci2 !== drawColor) return;
-        // Нельзя на чужой путь
-        if(grid[r][c]&&grid[r][c].path !== undefined && grid[r][c].path !== drawColor) return;
-        // Если возврат — обрезаем
-        const pathArr = paths[drawColor];
-        const backIdx = pathArr.findIndex(p=>p[0]===r&&p[1]===c);
-        if(backIdx >= 0) {
-            // Очищаем обрезанные клетки
-            for(let i=backIdx+1;i<pathArr.length;i++){
-                const [pr,pc] = pathArr[i];
-                if(!colorOfDot(pr,pc) && colorOfDot(pr,pc)!==0) grid[pr][pc]=null;
-                if(colorOfDot(pr,pc)<0) grid[pr][pc]=null;
-            }
-            paths[drawColor] = pathArr.slice(0,backIdx+1);
-            lastCell = [r,c];
-            draw(); return;
-        }
-        paths[drawColor].push([r,c]);
-        if(colorOfDot(r,c)<0) grid[r][c] = {path: drawColor};
-        lastCell = [r,c];
-        draw();
-    }
-
-    function endDraw(e) {
-        drawing = false;
-        checkWin();
-    }
-
-    function checkWin() {
-        // Все пути замкнуты (начало и конец соответствуют точкам)
-        const allConnected = dots.every((d,i) => {
-            const p = paths[i];
-            if(p.length < 2) return false;
-            const s = p[0], en = p[p.length-1];
-            return ((s[0]===d[0]&&s[1]===d[1]&&en[0]===d[2]&&en[1]===d[3])||
-                    (s[0]===d[2]&&s[1]===d[3]&&en[0]===d[0]&&en[1]===d[1]));
-        });
-        // Все клетки заполнены
-        let filled = 0;
-        paths.forEach(p => filled += p.length);
-        const allFilled = filled >= size*size;
-        if(allConnected && allFilled) {
-            stopTimer();
-            const st = document.getElementById('flowStatus');
-            st.textContent = '🎉 Уровень пройден!';
-            st.className = 'flow-status win';
-            st.style.color = '';
-            document.getElementById('flowTimer').className = 'flow-timer';
-            setTimeout(() => {
-                if(curLevel < LEVELS.length-1) {
-                    initLevel(curLevel+1);
-                } else {
-                    document.getElementById('flowStatus').textContent = '🏆 Все 100 уровней пройдены!';
-                    document.getElementById('flowResetAllBtn').style.display = 'inline-block';
-                }
-            }, 900);
-        }
-    }
-
-    function flowHint() {
-        // Подсвечиваем не соединённые цвета
-        const unconnected = dots.map((_,i)=>i).filter(i => paths[i].length < 2);
-        if(unconnected.length === 0) return;
-        const hi = unconnected[0];
-        const cv = document.getElementById('flowCanvas');
-        const ctx = cv.getContext('2d');
-        const cs = cellSize();
-        const d = dots[hi];
-        ctx.beginPath();
-        ctx.arc(d[1]*cs+cs/2, d[0]*cs+cs/2, cs*0.45, 0, Math.PI*2);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(d[3]*cs+cs/2, d[2]*cs+cs/2, cs*0.45, 0, Math.PI*2);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-    }
-
-    window.toggleFlow = function() {
-        const widget = document.getElementById('flowWidget');
-        const isOpen = widget.classList.contains('open');
-        widget.classList.toggle('open');
-        if (isOpen) {
-            // Закрываем — замораживаем таймер
-            clearInterval(timerInterval);
-            timerInterval = null;
-        } else {
-            // Открываем — возобновляем таймер если время ещё есть
-            if (timeLeft > 0 && !timerInterval) {
-                timerInterval = setInterval(function() {
-                    timeLeft--;
-                    updateTimerDisplay();
-                    if (timeLeft <= 0) {
-                        clearInterval(timerInterval);
-                        timerInterval = null;
-                        const st = document.getElementById('flowStatus');
-                        st.textContent = '⏰ Время вышло! Попробуй ещё раз';
-                        st.className = 'flow-status';
-                        st.style.color = '#e74c3c';
-                    }
-                }, 1000);
-            }
-        }
-    };
-    window.flowNextLevel = function() {
-        if(curLevel < LEVELS.length-1) initLevel(curLevel+1);
-    };
-    window.flowPrevLevel = function() {
-        if(curLevel > 0) initLevel(curLevel-1);
-    };
-    window.flowRestart = function() { initLevel(curLevel); };
-    window.flowHint = flowHint;
-    window.flowResetAll = function() {
-        if(!confirm('Сбросить прогресс и начать с первого уровня?')) return;
-        localStorage.setItem('flowLevel', '0');
-        document.getElementById('flowResetAllBtn').style.display = 'none';
-        initLevel(0);
-    };
-
-    document.addEventListener('DOMContentLoaded', function() {
-        const cv = document.getElementById('flowCanvas');
-        cv.addEventListener('mousedown', startDraw);
-        cv.addEventListener('mousemove', moveDraw);
-        cv.addEventListener('mouseup', endDraw);
-        cv.addEventListener('touchstart', startDraw, {passive:false});
-        cv.addEventListener('touchmove', moveDraw, {passive:false});
-        cv.addEventListener('touchend', endDraw);
-        initLevel(curLevel);
-    });
-    })();
-    </script>
-    <!-- ========== КОНЕЦ МИНИ-ИГРЫ ========== -->
-
-    <script>
-        (function() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.body.classList.add('light');
-            }
-        })();
-        function toggleTheme() {
-            const isLight = document.body.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
-        }
-        document.addEventListener('DOMContentLoaded', function() {
-            if (document.body.classList.contains('light')) {
-                document.getElementById('themeToggle').textContent = '☀️';
-            }
-        });
-    </script>
+    </main>
+</div>
 </body>
 </html>

@@ -4,485 +4,222 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ manual_title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
     <style>
-        :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
-            --greenLight: #00d4aa;
-            --red: #e74c3c;
-            --redHover: #c0392b;
-        }
-
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-        }
-
-        .theme-toggle {
-            position: absolute;
-            top: 0;
-            right: 0;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 1000;
-            transition: all 0.2s;
+        .manual-steps {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-
-        .theme-toggle:hover { transform: scale(1.12); }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            position: relative;
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            padding: 40px;
-            border-radius: 14px;
-            animation: fadeIn 0.4s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        h1 {
-            color: var(--text);
-            text-align: center;
-            margin-bottom: 35px;
-            font-size: 26px;
-            font-weight: 700;
+            flex-direction: column;
+            gap: 14px;
         }
 
         .instruction-step {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 30px;
+            padding: 18px;
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            background: rgba(255, 255, 255, 0.02);
-            transition: all 0.2s ease;
-        }
-
-        .instruction-step:hover {
-            border-color: rgba(0, 166, 81, 0.3);
-            background: rgba(255, 255, 255, 0.03);
+            border-radius: var(--radius-lg);
+            background: var(--card);
         }
 
         .instruction-step p {
+            margin: 0 0 14px;
             color: var(--text);
+            font-size: var(--text-md);
             font-weight: 500;
-            font-size: 16px;
-            text-align: center;
-            margin: 0 0 18px 0;
-            padding: 0 10px;
-            line-height: 1.7;
+            line-height: 1.55;
         }
 
-        .instruction-step img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-        }
-
-        .instruction-step iframe,
+        .instruction-step img,
         .instruction-step video {
+            display: block;
             max-width: 100%;
             width: 100%;
-            height: 400px;
-            border-radius: 10px;
             border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
         }
 
-        .video-badge {
-            display: inline-block;
-            background: linear-gradient(135deg, var(--red) 0%, var(--redHover) 100%);
-            color: white;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 12px;
+        .instruction-step video {
+            max-height: 520px;
         }
 
-        .video-feedback-container {
-            text-align: center;
-            margin: 30px 0;
-            padding: 28px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
-            border: 1px solid var(--border);
+        .feedback-panel {
+            margin-top: 16px;
+            padding: 20px;
+            border: 1px solid var(--primary-mid);
+            border-radius: var(--radius-lg);
+            background: var(--primary-light);
         }
 
-        .video-feedback-container p:first-of-type {
-            font-size: 17px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: var(--text);
-        }
-
-        .video-feedback-container > div {
+        .button-row {
             display: flex;
-            justify-content: center;
-            gap: 14px;
-            flex-wrap: wrap;
-        }
-
-        .video-feedback-container button {
-            padding: 12px 28px;
-            font-size: 15px;
-            font-weight: 600;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .video-feedback-container button:first-child {
-            background: var(--green);
-            color: #fff;
-        }
-
-        .video-feedback-container button:first-child:hover {
-            background: var(--greenHover);
-            transform: translateY(-2px);
-        }
-
-        .video-feedback-container button:last-child {
-            background: var(--red);
-            color: white;
-        }
-
-        .video-feedback-container button:last-child:hover {
-            background: var(--redHover);
-            transform: translateY(-2px);
-        }
-
-        .video-feedback-container p:last-of-type {
-            color: var(--muted);
-            font-size: 13px;
+            gap: 10px;
             margin-top: 14px;
         }
 
-        .buttons-container {
-            text-align: center;
-            margin-top: 50px;
-            padding-top: 30px;
-            border-top: 1px solid var(--border);
-        }
-
-        .buttons-container > p {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 24px;
-            color: var(--text);
-        }
-
-        .buttons-container button {
-            padding: 14px 32px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            margin: 0 8px;
-            transition: all 0.2s ease;
-        }
-
-        .solved-button {
-            background: var(--green);
-            color: #fff;
-        }
-
-        .solved-button:hover {
-            background: var(--greenHover);
-            transform: translateY(-2px);
-        }
-
-        .ticket-button {
-            background: var(--red);
-            color: white;
-        }
-
-        .ticket-button:hover {
-            background: var(--redHover);
-            transform: translateY(-2px);
-        }
-
-        .buttons-container button:active {
-            transform: translateY(0);
-        }
-
-        .no-manual-message {
-            text-align: center;
-            font-size: 16px;
-            color: var(--muted);
-            margin-top: 50px;
-        }
-
         .missing-photo {
-            color: #ffc107;
-            margin: 10px 0;
-            padding: 16px;
-            background: rgba(255, 193, 7, 0.1);
-            border: 1px solid rgba(255, 193, 7, 0.3);
-            border-radius: 8px;
+            padding: 18px;
+            border: 1px dashed var(--yellow);
+            border-radius: var(--radius-md);
+            background: var(--yellow-light);
+            color: var(--yellow);
+            font-size: var(--text-sm);
+            font-weight: 700;
             text-align: center;
         }
 
-        .back-link {
+        #processing-overlay {
             position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
-            font-size: 14px;
-            text-decoration: none;
-            color: var(--text);
-            font-weight: 600;
-            background: rgba(0, 166, 81, 0.15);
-            backdrop-filter: blur(10px);
-            padding: 10px 18px;
-            border: 1px solid rgba(0, 166, 81, 0.3);
-            border-radius: 8px;
-            transition: all 0.2s ease;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            background: rgba(15, 23, 42, .55);
         }
 
-        .back-link:hover {
-            background: rgba(0, 166, 81, 0.25);
-            border-color: rgba(0, 166, 81, 0.5);
-            transform: translateY(-2px);
-            text-decoration: none;
+        #processing-overlay.show {
+            display: flex;
         }
 
-        @media (max-width: 768px) {
-            body {
-                padding: 16px;
-            }
-
-            .container {
-                padding: 28px 20px;
-            }
-
-            h1 {
-                font-size: 22px;
-            }
-
-            .instruction-step {
-                padding: 20px 16px;
-            }
-
-            .buttons-container button {
-                display: block;
-                width: 100%;
-                margin: 8px 0;
-            }
-
-            .back-link {
-                top: 16px;
-                left: 16px;
-                font-size: 12px;
-                padding: 8px 14px;
-            }
+        .processing-box {
+            width: 260px;
+            padding: 22px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-lg);
+            text-align: center;
         }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    {% if back_url %}
-    <a href="{{ back_url }}" class="back-link">
-        ⬅️ Назад
-    </a>
-    {% endif %}
-    <div class="container">
-        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-        <h1>{{ manual_title | e }}</h1>
+{% set active_page = 'manuals' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
 
-        {% if video_data %}
-            <div class="instruction-step">
-                <span class="video-badge">📹 ВИДЕО-ИНСТРУКЦИЯ</span>
-                <p><strong>{{ video_data.caption }}</strong></p>
-                <video controls>
-                    <source src="{{ video_data.url }}" type="video/mp4">
-                    Ваш браузер не поддерживает видео.
-                </video>
-            </div>
-
-            <!-- Опрос после видео -->
-            <div class="video-feedback-container">
-                <p>Видео-инструкция помогла решить проблему?</p>
+    <main class="main-content">
+        <div class="page">
+            <header class="page-header">
                 <div>
-                    <button onclick="handleVideoFeedback('helped')">
-                        Да, помогло ✅
-                    </button>
-                    <button onclick="handleVideoFeedback('not_helped')">
-                        Нет, не помогло ❌
-                    </button>
+                    <div class="page-kicker">Инструкция</div>
+                    <h1 class="page-title">{{ manual_title | e }}</h1>
+                    <p class="page-subtitle">Выполните шаги ниже. Если инструкция не поможет, Helper отправит заявку в техподдержку.</p>
                 </div>
-                <p>Если видео не помогло, вам будет показана пошаговая инструкция</p>
-            </div>
-        {% endif %}
-
-        {# Если есть видео и пользователь еще не ответил на опрос - не показываем пошаговую инструкцию #}
-        {% if not video_data or skip_video_feedback %}
-            {% if photo_urls_with_captions %}
-                {% for photo in photo_urls_with_captions %}
-                    <div class="instruction-step">
-                        <p>{{ photo.caption }}</p>
-                        {% if photo.url %}
-                            <img src="{{ photo.url }}" alt="Инструкция">
-                        {% else %}
-                            <div class="missing-photo">
-                                📷 Фото для данного шага пока отсутствует
-                            </div>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-            {% else %}
-                {% if not video_data %}
-                    <p class="no-manual-message">Для данной проблемы инструкция с фотографиями отсутствует.</p>
+                {% if back_url %}
+                <a href="{{ back_url }}" class="btn btn-secondary">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+                    Назад
+                </a>
                 {% endif %}
-            {% endif %}
+            </header>
 
-            <div class="buttons-container">
-                <p>Я решил вашу проблему?</p>
-                <button class="solved-button" id="btn-solved" onclick="handleSolved()">Да, решил</button>
-                <button class="ticket-button" id="btn-unsolved" onclick="handleUnsolved()">Нет, не решил</button>
-            </div>
-        {% endif %}
-    </div>
-
-    <script>
-        // Защита от множественных нажатий
-        let isProcessing = false;
-
-        function disableAllButtons() {
-            document.querySelectorAll('button').forEach(btn => {
-                btn.disabled = true;
-                btn.style.opacity = '0.6';
-                btn.style.cursor = 'not-allowed';
-            });
-        }
-
-        function showProcessing() {
-            const overlay = document.createElement('div');
-            overlay.id = 'processing-overlay';
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.7);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 9999;
-            `;
-            overlay.innerHTML = `
-                <div style="background: linear-gradient(180deg, #1a1a1a, #202020); padding: 35px; border-radius: 14px; text-align: center; border: 1px solid #2a2a2a;">
-                    <div style="font-size: 52px; margin-bottom: 16px;">⏳</div>
-                    <div style="font-size: 18px; font-weight: 600; color: #e8e8e8;">Обработка...</div>
-                    <div style="font-size: 14px; color: #a8a8a8; margin-top: 8px;">Пожалуйста, подождите</div>
+            <section class="manual-steps">
+                {% if video_data %}
+                <div class="instruction-step">
+                    <span class="badge badge-error" style="margin-bottom:12px;">Видео-инструкция</span>
+                    <p>{{ video_data.caption }}</p>
+                    <video controls>
+                        <source src="{{ video_data.url }}" type="video/mp4">
+                        Ваш браузер не поддерживает видео.
+                    </video>
                 </div>
-            `;
-            document.body.appendChild(overlay);
-        }
 
-        // Блокировка возврата назад после нажатия кнопок
-        function blockBackNavigation() {
-            history.pushState(null, null, location.href);
-            window.addEventListener('popstate', function(event) {
-                history.pushState(null, null, location.href);
-            });
-        }
+                <div class="feedback-panel">
+                    <div class="card-title">Видео помогло решить проблему?</div>
+                    <div class="card-desc">Если нет, покажем пошаговую инструкцию или создадим заявку.</div>
+                    <div class="button-row">
+                        <button class="btn btn-primary" type="button" onclick="handleVideoFeedback('helped')">Да, помогло</button>
+                        <button class="btn btn-secondary" type="button" onclick="handleVideoFeedback('not_helped')">Нет, показать шаги</button>
+                    </div>
+                </div>
+                {% endif %}
 
-        function handleSolved() {
-            if (isProcessing) return;
-            isProcessing = true;
-            disableAllButtons();
-            showProcessing();
-            blockBackNavigation();
-            location.href = '{{ url_for('finish_solved') }}';
-        }
+                {% if not video_data or skip_video_feedback %}
+                    {% if photo_urls_with_captions %}
+                        {% for photo in photo_urls_with_captions %}
+                        <div class="instruction-step">
+                            <span class="badge badge-info" style="margin-bottom:10px;">Шаг {{ loop.index }}</span>
+                            <p>{{ photo.caption }}</p>
+                            {% if photo.url %}
+                            <img src="{{ photo.url }}" alt="Шаг инструкции {{ loop.index }}">
+                            {% else %}
+                            <div class="missing-photo">Фото для этого шага пока отсутствует</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% elif not video_data %}
+                    <div class="empty-state panel">
+                        <strong>Инструкция с фотографиями отсутствует</strong>
+                        Можно сразу создать заявку в техподдержку.
+                    </div>
+                    {% endif %}
 
-        function handleUnsolved() {
-            if (isProcessing) return;
-            isProcessing = true;
-            disableAllButtons();
-            showProcessing();
-            blockBackNavigation();
-            location.href = '{{ url_for('send_final_ticket') }}';
-        }
+                    <div class="feedback-panel">
+                        <div class="card-title">Проблема решена?</div>
+                        <div class="card-desc">Выберите результат, чтобы закрыть обращение или отправить заявку.</div>
+                        <div class="button-row">
+                            <button class="btn btn-primary" id="btn-solved" type="button" onclick="handleSolved()">Да, решена</button>
+                            <button class="btn btn-danger" id="btn-unsolved" type="button" onclick="handleUnsolved()">Нет, создать заявку</button>
+                        </div>
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+    </main>
+</div>
 
-        // Защита для видео-опроса
-        function handleVideoFeedback(result) {
-            if (isProcessing) return;
-            isProcessing = true;
-            disableAllButtons();
-            showProcessing();
-            blockBackNavigation();
-            location.href = '/video_feedback/' + result;
-        }
-    </script>
-    <script>
-        (function() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.body.classList.add('light');
-            }
-        })();
-        function toggleTheme() {
-            const isLight = document.body.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
-        }
-        document.addEventListener('DOMContentLoaded', function() {
-            if (document.body.classList.contains('light')) {
-                document.getElementById('themeToggle').textContent = '☀️';
-            }
+<div id="processing-overlay">
+    <div class="processing-box">
+        <div class="card-title">Обработка...</div>
+        <div class="card-desc">Пожалуйста, подождите</div>
+    </div>
+</div>
+
+<script>
+    let isProcessing = false;
+
+    function disableAllButtons() {
+        document.querySelectorAll('button').forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = '0.65';
+            btn.style.cursor = 'not-allowed';
         });
-    </script>
+    }
+
+    function showProcessing() {
+        document.getElementById('processing-overlay').classList.add('show');
+    }
+
+    function blockBackNavigation() {
+        history.pushState(null, null, location.href);
+        window.addEventListener('popstate', function() {
+            history.pushState(null, null, location.href);
+        });
+    }
+
+    function startProcessing() {
+        if (isProcessing) return false;
+        isProcessing = true;
+        disableAllButtons();
+        showProcessing();
+        blockBackNavigation();
+        return true;
+    }
+
+    function handleSolved() {
+        if (!startProcessing()) return;
+        location.href = '{{ url_for('finish_solved') }}';
+    }
+
+    function handleUnsolved() {
+        if (!startProcessing()) return;
+        location.href = '{{ url_for('send_final_ticket') }}';
+    }
+
+    function handleVideoFeedback(result) {
+        if (!startProcessing()) return;
+        location.href = '/video_feedback/' + result;
+    }
+</script>
 </body>
 </html>

@@ -427,6 +427,8 @@ ROLE_NAMES = {
 }
 
 ALL_ADMIN_ROLES = {ROLE_SUPER_ADMIN, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER}
+ROLE_EDITOR_PERMISSIONS = [ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS]
+ADMIN_PERMISSION_ORDER = [ROLE_SUPER_ADMIN, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER]
 
 
 class AdminsManager:
@@ -468,37 +470,97 @@ class AdminsManager:
 
     @staticmethod
     def validate_username(username: str) -> bool:
-        """Валидация имени пользователя (только латиница, цифры, подчеркивание)"""
+        """Валидация имени пользователя AD/local."""
         if not isinstance(username, str):
             return False
-        return bool(re.match(r'^[a-zA-Z0-9_]{3,30}$', username))
+        return bool(re.match(r'^[a-zA-Z0-9_.-]{2,64}$', username))
 
     @staticmethod
     def validate_role(role: str) -> bool:
         """Валидация роли"""
         return role in ALL_ADMIN_ROLES or role == ROLE_EDITOR
 
+    @staticmethod
+    def normalize_username(username: str) -> str:
+        return str(username or '').strip().split('\\')[-1].split('@')[0].lower()
+
+    @staticmethod
+    def normalize_permissions(permissions=None, role: str = '') -> List[str]:
+        """Нормализует список прав с поддержкой старого поля role."""
+        raw_permissions = []
+        if isinstance(permissions, str):
+            raw_permissions = [permissions]
+        elif isinstance(permissions, list):
+            raw_permissions = permissions
+
+        if not raw_permissions and role:
+            if role == ROLE_EDITOR:
+                raw_permissions = ROLE_EDITOR_PERMISSIONS[:]
+            elif role in ALL_ADMIN_ROLES:
+                raw_permissions = [role]
+
+        normalized = []
+        for perm in raw_permissions:
+            perm = str(perm or '').strip()
+            if perm == ROLE_EDITOR:
+                for editor_perm in ROLE_EDITOR_PERMISSIONS:
+                    if editor_perm not in normalized:
+                        normalized.append(editor_perm)
+                continue
+            if perm in ALL_ADMIN_ROLES and perm not in normalized:
+                normalized.append(perm)
+
+        if ROLE_SUPER_ADMIN in normalized:
+            return [ROLE_SUPER_ADMIN]
+
+        return [perm for perm in ADMIN_PERMISSION_ORDER if perm in normalized]
+
+    @staticmethod
+    def role_from_permissions(permissions: List[str]) -> str:
+        permissions = AdminsManager.normalize_permissions(permissions)
+        if ROLE_SUPER_ADMIN in permissions:
+            return ROLE_SUPER_ADMIN
+        return permissions[0] if permissions else ROLE_EDITOR
+
+    @staticmethod
+    def is_ad_admin(admin: Dict[str, Any]) -> bool:
+        auth_type = admin.get('auth_type') or admin.get('auth_method')
+        return auth_type == 'ad' or not admin.get('password_hash')
+
+    @staticmethod
+    def is_super_admin(admin: Dict[str, Any]) -> bool:
+        permissions = AdminsManager.normalize_permissions(admin.get('permissions'), admin.get('role', ''))
+        return ROLE_SUPER_ADMIN in permissions
+
     def get_admin_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Получить администратора по username"""
+        username = self.normalize_username(username)
         if not self.validate_username(username):
             return None
 
         admins = self.load_admins()
         for admin in admins:
-            if admin.get('username') == username:
+            if self.normalize_username(admin.get('username')) == username:
                 return admin
         return None
 
-    def create_admin(self, username: str, password: str, role: str, created_by: str = 'system') -> Dict[str, Any]:
+    def create_admin(self, username: str, password: str = '', role: str = ROLE_EDITOR,
+                     created_by: str = 'system', auth_type: str = 'local',
+                     permissions: List[str] | None = None) -> Dict[str, Any]:
         """Создать нового администратора"""
         # Валидация
+        username = self.normalize_username(username)
+        auth_type = 'ad' if auth_type == 'ad' else 'local'
+        permissions = self.normalize_permissions(permissions, role)
+        role = self.role_from_permissions(permissions)
+
         if not self.validate_username(username):
             return {'success': False, 'error': 'Некорректное имя пользователя'}
 
-        if not self.validate_role(role):
-            return {'success': False, 'error': 'Некорректная роль'}
+        if not permissions:
+            return {'success': False, 'error': 'Выберите хотя бы одно право'}
 
-        if len(password) < 6 or len(password) > 128:
+        if auth_type == 'local' and (len(password) < 6 or len(password) > 128):
             return {'success': False, 'error': 'Пароль должен быть от 6 до 128 символов'}
 
         # Проверяем, что администратор с таким именем не существует
@@ -510,13 +572,16 @@ class AdminsManager:
         # Создаем нового администратора
         new_admin = {
             'username': username,
-            'password_hash': generate_password_hash(password),
+            'auth_type': auth_type,
             'role': role,
+            'permissions': permissions,
             'created_by': created_by,
             'created_at': self._get_current_timestamp(),
             'active': True,
             'trainer_segments': ['kc', 'branch']  # по умолчанию доступ ко всем сегментам
         }
+        if auth_type == 'local':
+            new_admin['password_hash'] = generate_password_hash(password)
 
         admins.append(new_admin)
 
@@ -527,6 +592,7 @@ class AdminsManager:
 
     def update_admin_password(self, username: str, new_password: str) -> Dict[str, Any]:
         """Обновить пароль администратора"""
+        username = self.normalize_username(username)
         if not self.validate_username(username):
             return {'success': False, 'error': 'Некорректное имя пользователя'}
 
@@ -537,7 +603,9 @@ class AdminsManager:
         admin_found = False
 
         for admin in admins:
-            if admin.get('username') == username:
+            if self.normalize_username(admin.get('username')) == username:
+                if self.is_ad_admin(admin):
+                    return {'success': False, 'error': 'Для AD-администратора пароль меняется в Active Directory'}
                 admin['password_hash'] = generate_password_hash(new_password)
                 admin_found = True
                 break
@@ -552,18 +620,19 @@ class AdminsManager:
 
     def delete_admin(self, username: str) -> Dict[str, Any]:
         """Удалить администратора"""
+        username = self.normalize_username(username)
         if not self.validate_username(username):
             return {'success': False, 'error': 'Некорректное имя пользователя'}
 
         admins = self.load_admins()
 
         # Проверяем, что это не последний супер-админ
-        super_admins = [a for a in admins if a.get('role') == ROLE_SUPER_ADMIN]
-        if len(super_admins) == 1 and super_admins[0].get('username') == username:
+        super_admins = [a for a in admins if a.get('active', True) and self.is_super_admin(a)]
+        if len(super_admins) == 1 and self.normalize_username(super_admins[0].get('username')) == username:
             return {'success': False, 'error': 'Нельзя удалить последнего супер-администратора'}
 
         # Удаляем администратора
-        admins = [a for a in admins if a.get('username') != username]
+        admins = [a for a in admins if self.normalize_username(a.get('username')) != username]
 
         if self.save_admins(admins):
             return {'success': True}
@@ -572,6 +641,7 @@ class AdminsManager:
 
     def change_admin_role(self, username: str, new_role: str) -> Dict[str, Any]:
         """Изменить роль администратора"""
+        username = self.normalize_username(username)
         if not self.validate_username(username):
             return {'success': False, 'error': 'Некорректное имя пользователя'}
 
@@ -582,10 +652,10 @@ class AdminsManager:
 
         # Проверяем, что это не последний супер-админ
         admin_to_change = None
-        super_admins = [a for a in admins if a.get('role') == ROLE_SUPER_ADMIN]
+        super_admins = [a for a in admins if a.get('active', True) and self.is_super_admin(a)]
 
         for admin in admins:
-            if admin.get('username') == username:
+            if self.normalize_username(admin.get('username')) == username:
                 admin_to_change = admin
                 break
 
@@ -593,21 +663,55 @@ class AdminsManager:
             return {'success': False, 'error': 'Администратор не найден'}
 
         # Если пытаемся понизить роль последнего супер-админа
-        if (admin_to_change.get('role') == ROLE_SUPER_ADMIN and
+        if (self.is_super_admin(admin_to_change) and
             new_role != ROLE_SUPER_ADMIN and
             len(super_admins) == 1):
             return {'success': False, 'error': 'Нельзя понизить роль последнего супер-администратора'}
 
         # Изменяем роль
         admin_to_change['role'] = new_role
+        admin_to_change['permissions'] = self.normalize_permissions(role=new_role)
 
         if self.save_admins(admins):
             return {'success': True}
         else:
             return {'success': False, 'error': 'Ошибка при сохранении'}
 
+    def update_admin_permissions(self, username: str, permissions: List[str]) -> Dict[str, Any]:
+        """Изменить набор прав администратора."""
+        username = self.normalize_username(username)
+        if not self.validate_username(username):
+            return {'success': False, 'error': 'Некорректное имя пользователя'}
+
+        normalized = self.normalize_permissions(permissions)
+        if not normalized:
+            return {'success': False, 'error': 'Выберите хотя бы одно право'}
+
+        admins = self.load_admins()
+        admin_to_change = None
+        super_admins = [a for a in admins if a.get('active', True) and self.is_super_admin(a)]
+
+        for admin in admins:
+            if self.normalize_username(admin.get('username')) == username:
+                admin_to_change = admin
+                break
+
+        if not admin_to_change:
+            return {'success': False, 'error': 'Администратор не найден'}
+
+        if self.is_super_admin(admin_to_change) and ROLE_SUPER_ADMIN not in normalized and len(super_admins) == 1:
+            return {'success': False, 'error': 'Нельзя понизить роль последнего супер-администратора'}
+
+        admin_to_change['permissions'] = normalized
+        admin_to_change['role'] = self.role_from_permissions(normalized)
+
+        if self.save_admins(admins):
+            return {'success': True}
+        return {'success': False, 'error': 'Ошибка при сохранении'}
+
     def update_trainer_segments(self, username: str, segments: List[str]) -> Dict[str, Any]:
         """Обновить доступные сегменты тренажёра для администратора"""
+        username = self.normalize_username(username)
         if not self.validate_username(username):
             return {'success': False, 'error': 'Некорректное имя пользователя'}
 
@@ -616,7 +720,7 @@ class AdminsManager:
 
         admins = self.load_admins()
         for admin in admins:
-            if admin.get('username') == username:
+            if self.normalize_username(admin.get('username')) == username:
                 admin['trainer_segments'] = segments
                 if self.save_admins(admins):
                     return {'success': True}
@@ -668,14 +772,22 @@ class AdminAuth:
                 ad_result = ad_auth.verify_credentials(username, password)
                 if ad_result:
                     ad_username = ad_result.get('username', username)
-                    # Берём trainer_segments из локального admins.json если есть запись
+                    permissions = AdminsManager.normalize_permissions(ad_result.get('permissions'), ad_result.get('role', ''))
+                    # Дополняем AD-права локальными назначениями из admins.json
                     local_admin = admins_mgr.get_admin_by_username(ad_username)
+                    if local_admin and local_admin.get('active', True) and AdminsManager.is_ad_admin(local_admin):
+                        local_permissions = AdminsManager.normalize_permissions(
+                            local_admin.get('permissions'),
+                            local_admin.get('role', '')
+                        )
+                        permissions = AdminsManager.normalize_permissions(permissions + local_permissions)
                     trainer_segments = (local_admin.get('trainer_segments', ['kc', 'branch'])
                                         if local_admin else ['kc', 'branch'])
+                    role = AdminsManager.role_from_permissions(permissions)
                     return {
                         'username': ad_username,
-                        'role': ad_result.get('role', ROLE_EDITOR),
-                        'permissions': ad_result.get('permissions', []),
+                        'role': role,
+                        'permissions': permissions,
                         'display_name': ad_result.get('display_name', username),
                         'email': ad_result.get('email', ''),
                         'auth_method': 'ad',
@@ -690,10 +802,12 @@ class AdminAuth:
 
         if admin and admin.get('active', True):
             password_hash = admin.get('password_hash', '')
-            if check_password_hash(password_hash, password):
+            if password_hash and check_password_hash(password_hash, password):
+                permissions = AdminsManager.normalize_permissions(admin.get('permissions'), admin.get('role', ROLE_EDITOR))
                 return {
                     'username': username,
-                    'role': admin.get('role', ROLE_EDITOR),
+                    'role': AdminsManager.role_from_permissions(permissions),
+                    'permissions': permissions,
                     'auth_method': 'local',
                     'trainer_segments': admin.get('trainer_segments', ['kc', 'branch'])
                 }
@@ -706,6 +820,7 @@ class AdminAuth:
                 return {
                     'username': username,
                     'role': env_credentials[username]['role'],
+                    'permissions': AdminsManager.normalize_permissions(role=env_credentials[username]['role']),
                     'auth_method': 'env'
                 }
 

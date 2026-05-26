@@ -3,496 +3,240 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Управление администраторами</title>
+    <title>Роли и права — Helper Admin</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0c0c0c;
-            background-attachment: fixed;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
-        }
-
-        h1 {
-            color: #007b7e;
-            font-size: 28px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-            color: white;
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
-            color: #212529;
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
-            color: white;
-        }
-
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 12px;
-        }
-
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .alert-danger {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        th {
-            background: linear-gradient(135deg, #007b7e 0%, #006064 100%);
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-        }
-
-        td {
-            padding: 15px;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        .role-badge {
-            display: inline-block;
-            padding: 5px 12px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .role-super-admin {
-            background-color: #dc3545;
-            color: white;
-        }
-
-        .role-editor {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #666;
-        }
-
-        .empty-state-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-
-        .role-form {
-            display: inline-block;
-        }
-
-        .role-select {
-            padding: 4px 8px;
-            border-radius: 5px;
-            border: 1px solid #ced4da;
-            font-size: 12px;
-        }
-    
-        /* Admin Dark Theme */
         :root {
-            --bg: #0c0c0c;
-            --panel: #1a1a1a;
-            --panel-2: #202020;
-            --panel-3: #141414;
-            --text: #e8e8e8;
-            --muted: #b5b5b5;
-            --border: #242424;
-            --accent: #00a651;
-            --accent-2: #009448;
-            --danger: #e94b5a;
-            --warning: #f2b705;
+            --bg: #f6f8fb;
+            --panel: #ffffff;
+            --panel-soft: #f9fbfd;
+            --line: #e8edf3;
+            --text: #172033;
+            --muted: #6f7a8d;
+            --green: #12a66a;
+            --green-dark: #0b8756;
+            --green-soft: #e7f7ef;
+            --red: #e5485d;
+            --red-soft: #ffecef;
+            --amber: #f5a524;
+            --amber-soft: #fff4df;
+            --blue: #2f80ed;
+            --blue-soft: #eaf3ff;
+            --shadow: 0 12px 28px rgba(28, 39, 60, .07);
         }
 
+        body.dark {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --panel-soft: #263347;
+            --line: #334155;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --green-dark: #86efac;
+            --red: #fca5a5;
+            --amber: #fbbf24;
+            --blue: #67e8f9;
+            --green-soft: #052e16;
+            --red-soft: #450a0a;
+            --amber-soft: #451a03;
+            --blue-soft: #0c2840;
+            --shadow: 0 18px 42px rgba(0, 0, 0, .28);
+        }
+
+        * { box-sizing: border-box; }
         body {
-            background: var(--bg) !important;
+            margin: 0;
+            min-width: 1024px;
+            min-height: 100vh;
+            background: var(--bg);
             color: var(--text);
+            font-family: "Inter", "Segoe UI", system-ui, Arial, sans-serif;
+            font-size: 14px;
         }
 
-        .container {
-            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
-            border: 1px solid #151515;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        }
-
-        .header,
-        .form-actions {
-            border-bottom: 1px solid #2a2a2a !important;
-            border-top: 1px solid #2a2a2a !important;
-        }
-
-        h1, h2, h3, h4 {
-            color: var(--text) !important;
-        }
-
-        .subtitle,
-        .stat-label,
-        .subproblems-count,
-        .helper-text,
-        .help-text,
-        .info-text,
-        .warning-text,
-        .error-text,
-        .role-description,
-        label {
-            color: var(--muted) !important;
-        }
-
-        .stat-card,
-        .manual-card,
-        .form-section,
-        .info-box,
-        .warning-box,
-        .error-card,
-        .subproblem-card,
-        .problem-item,
-        .upload-form,
-        .modal-content,
-        .preview-container,
-        .photo-item,
-        .video-item,
-        .stats-summary,
-        .stat-item {
-            background: var(--panel-3) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 14px;
-            color: var(--text);
-        }
-
-        .warning-box {
-            border-color: rgba(242, 183, 5, 0.4) !important;
-            background: rgba(242, 183, 5, 0.08) !important;
-        }
-
-        .error-card {
-            border-color: rgba(233, 75, 90, 0.4) !important;
-            background: rgba(233, 75, 90, 0.08) !important;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="password"],
-        input[type="email"],
-        textarea,
-        select {
-            background: #111 !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-        }
-
-        input:focus,
-        textarea:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent) !important;
-            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
-        }
-
-        table {
-            color: var(--text);
-        }
-
-        th {
-            background: #1f1f1f !important;
-            color: var(--text) !important;
-            border-bottom: 1px solid #2a2a2a !important;
-        }
-
-        td {
-            background: #141414 !important;
-            border-bottom: 1px solid #242424 !important;
-        }
-
-        tr:nth-child(even) td {
-            background: #171717 !important;
-        }
+        a { color: inherit; text-decoration: none; }
+        .page { max-width: 1280px; margin: 0 auto; padding: 28px; }
+        .topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:20px; }
+        .kicker { color: var(--green); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        h1 { margin: 6px 0 8px; font-size: 28px; line-height: 1.1; }
+        .subtitle { margin:0; color:var(--muted); max-width:720px; line-height:1.5; }
+        .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
         .btn {
-            border-radius: 12px !important;
+            min-height: 38px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            gap:7px;
+            padding: 8px 14px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--panel);
+            color: var(--text);
+            font-weight: 800;
+            cursor:pointer;
         }
+        .btn-primary { border-color: var(--green); background: var(--green); color:#fff; box-shadow:0 10px 24px rgba(18,166,106,.18); }
+        .btn-danger { border-color: var(--red); background: var(--red); color:#fff; }
+        .btn-warning { border-color: var(--amber); background: var(--amber-soft); color:#8a5200; }
+        body.dark .btn-warning { color:#f8d88a; }
+        .btn-sm { min-height:32px; padding:6px 10px; font-size:12px; }
 
-        .btn-primary,
-        .btn-success {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
-        }
+        .theme-toggle { min-width:128px; padding:0 12px; gap:8px; font-size:13px; }
+        .theme-icon { width:18px; text-align:center; font-size:16px; line-height:1; }
+        .theme-label { white-space:nowrap; }
+        .alert { margin-bottom:14px; padding:12px 14px; border-radius:12px; font-weight:700; }
+        .alert-success { background:var(--green-soft); color:var(--green-dark); border:1px solid rgba(18,166,106,.28); }
+        .alert-danger { background:var(--red-soft); color:var(--red); border:1px solid rgba(229,72,93,.28); }
 
-        .btn-primary:hover,
-        .btn-success:hover {
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-        }
+        .panel { background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; }
+        table { width:100%; border-collapse:collapse; }
+        th { color:var(--muted); background:var(--panel-soft); font-size:12px; text-align:left; padding:14px 16px; }
+        td { padding:16px; border-top:1px solid var(--line); vertical-align:top; }
+        tr:hover td { background: color-mix(in srgb, var(--panel-soft) 64%, transparent); }
 
-        .btn-secondary,
-        .btn-logout {
-            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
-        }
+        .login-cell { font-weight:900; }
+        .sub { margin-top:4px; color:var(--muted); font-size:12px; font-weight:700; }
+        .badge { display:inline-flex; padding:5px 9px; border-radius:999px; font-size:12px; font-weight:900; }
+        .badge-ad { background:var(--blue-soft); color:var(--blue); }
+        .badge-local { background:var(--amber-soft); color:#a26400; }
+        body.dark .badge-local { color:#f8d88a; }
 
-        .btn-danger,
-        .btn-delete {
-            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
-            color: #1b1b1b !important;
-            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
-        }
-
-        .alert-success {
-            background-color: rgba(0, 166, 81, 0.12) !important;
-            color: #bfe8d1 !important;
-            border: 1px solid rgba(0, 166, 81, 0.25) !important;
-        }
-
-        .alert-danger,
-        .danger {
-            background-color: rgba(233, 75, 90, 0.12) !important;
-            color: #f3c0c6 !important;
-            border: 1px solid rgba(233, 75, 90, 0.25) !important;
-        }
-
-        .back-link {
-            background: rgba(26, 26, 26, 0.95) !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        .back-link:hover {
-            border-color: var(--accent) !important;
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
-        }
-
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
-        }
-
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
+        .check-grid { display:grid; gap:8px; min-width:240px; }
+        .check-item { display:flex; align-items:center; gap:8px; color:var(--text); font-weight:750; }
+        .check-item input { width:16px; height:16px; accent-color:var(--green); }
+        .row-form { display:grid; gap:10px; }
+        .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+        .empty { padding:54px 24px; color:var(--muted); text-align:center; font-weight:800; }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <div class="container">
-        <div class="header">
-            <h1>👥 Управление администраторами</h1>
-            <div style="display: flex; gap: 10px;">
-                <a href="{{ url_for('admin_add_user') }}" class="btn btn-success">➕ Добавить администратора</a>
-                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">← Назад</a>
-            </div>
+<script>
+    if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
+    function updateThemeToggle() {
+        const btn = document.getElementById('themeToggle');
+        if (!btn) return;
+        const isDark = document.body.classList.contains('dark');
+        btn.innerHTML = `<span class="theme-icon">${isDark ? '☀' : '☾'}</span><span class="theme-label">${isDark ? 'Светлая тема' : 'Тёмная тема'}</span>`;
+        btn.setAttribute('title', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+        btn.setAttribute('aria-label', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+    }
+    function toggleTheme() {
+        document.body.classList.toggle('dark');
+        localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+        updateThemeToggle();
+    }
+</script>
+
+<main class="page">
+    <header class="topbar">
+        <div>
+            <div class="kicker">Администрирование</div>
+            <h1>Роли и права</h1>
+            <p class="subtitle">Добавляйте AD-логины и назначайте им доступ к разделам Helper. Пароль для AD-пользователей не хранится в Helper.</p>
         </div>
+        <div class="actions">
+            <button class="btn theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Включить тёмную тему" aria-label="Включить тёмную тему">
+                <span class="theme-icon">☾</span>
+                <span class="theme-label">Тёмная тема</span>
+            </button>
+            <a class="btn" href="{{ url_for('admin_dashboard') }}">Обзор</a>
+            <a class="btn btn-primary" href="{{ url_for('admin_add_user') }}">Добавить</a>
+        </div>
+    </header>
 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert {% if 'Ошибка' in message or 'запрещен' in message %}alert-danger{% else %}alert-success{% endif %}">
-                        {{ message }}
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        {% if admins %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Логин</th>
-                        <th>Роль</th>
-                        <th>Тренажёр (сегменты)</th>
-                        <th>Создан</th>
-                        <th>Создатель</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for admin in admins %}
-                        {% set segs = admin.trainer_segments if admin.trainer_segments is defined else ['kc', 'branch'] %}
-                        <tr>
-                            <td><strong>{{ admin.username | e }}</strong></td>
-                            <td>
-                                <form method="POST" action="{{ url_for('admin_change_user_role', username=admin.username) }}" class="role-form">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <select name="role" class="role-select" onchange="this.form.submit()">
-                                        <option value="super_admin" {% if admin.role == 'super_admin' %}selected{% endif %}>
-                                            {{ role_names.get('super_admin', 'Супер-администратор') }}
-                                        </option>
-                                        <option value="editor" {% if admin.role == 'editor' %}selected{% endif %}>
-                                            {{ role_names.get('editor', 'Редактор') }}
-                                        </option>
-                                    </select>
-                                </form>
-                            </td>
-                            <td>
-                                {% if admin.role == 'super_admin' %}
-                                    <span style="color:#00a651;font-weight:600;">Все сегменты</span>
-                                {% else %}
-                                    <form method="POST" action="{{ url_for('admin_change_user_segments', username=admin.username) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-                                            <input type="checkbox" name="trainer_segments" value="kc"
-                                                   {% if 'kc' in segs %}checked{% endif %}
-                                                   onchange="this.form.submit()">
-                                            🎧 КЦ
-                                        </label>
-                                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-                                            <input type="checkbox" name="trainer_segments" value="branch"
-                                                   {% if 'branch' in segs %}checked{% endif %}
-                                                   onchange="this.form.submit()">
-                                            🏦 Филиалы
-                                        </label>
-                                    </form>
-                                {% endif %}
-                            </td>
-                            <td>{{ admin.created_at | e }}</td>
-                            <td>{{ admin.created_by | e }}</td>
-                            <td>
-                                <div class="actions">
-                                    <a href="{{ url_for('admin_change_user_password', username=admin.username) }}" class="btn btn-warning btn-sm">
-                                        🔑 Пароль
-                                    </a>
-                                    <form method="POST" action="{{ url_for('admin_delete_user', username=admin.username) }}" style="display: inline;" onsubmit="return confirm('Вы уверены, что хотите удалить администратора {{ admin.username | e }}?');">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <button type="submit" class="btn btn-danger btn-sm">🗑️ Удалить</button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% else %}
-            <div class="empty-state">
-                <div class="empty-state-icon">👤</div>
-                <p>Администраторов пока нет</p>
-                <p style="margin-top: 10px;">
-                    <a href="{{ url_for('admin_add_user') }}" class="btn btn-success">Добавить первого администратора</a>
-                </p>
-            </div>
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert {% if 'Ошибка' in message or 'Нельзя' in message or 'обязател' in message %}alert-danger{% else %}alert-success{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
         {% endif %}
-    </div>
-    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    {% endwith %}
+
+    <section class="panel">
+        {% if admins %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Логин</th>
+                    <th>Источник</th>
+                    <th>Права</th>
+                    <th>Тренажёр</th>
+                    <th>Создан</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for admin in admins %}
+                {% set segs = admin.trainer_segments if admin.trainer_segments is defined else ['kc', 'branch'] %}
+                <tr>
+                    <td>
+                        <div class="login-cell">{{ admin.username | e }}</div>
+                        <div class="sub">Создал: {{ admin.created_by or 'system' }}</div>
+                    </td>
+                    <td>
+                        {% if admin.auth_type == 'ad' %}
+                            <span class="badge badge-ad">AD</span>
+                        {% else %}
+                            <span class="badge badge-local">Локальный</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form class="row-form" method="POST" action="{{ url_for('admin_change_user_permissions', username=admin.username) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="check-grid">
+                                {% for value, label in permission_choices %}
+                                <label class="check-item">
+                                    <input type="checkbox" name="permissions" value="{{ value }}" {% if value in admin.permissions %}checked{% endif %}>
+                                    {{ label }}
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div><button class="btn btn-sm" type="submit">Сохранить права</button></div>
+                        </form>
+                    </td>
+                    <td>
+                        {% if 'super_admin' in admin.permissions %}
+                            <span class="badge badge-ad">Все сегменты</span>
+                        {% else %}
+                            <form class="row-form" method="POST" action="{{ url_for('admin_change_user_segments', username=admin.username) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <label class="check-item"><input type="checkbox" name="trainer_segments" value="kc" {% if 'kc' in segs %}checked{% endif %}> КЦ</label>
+                                <label class="check-item"><input type="checkbox" name="trainer_segments" value="branch" {% if 'branch' in segs %}checked{% endif %}> Филиалы</label>
+                                <div><button class="btn btn-sm" type="submit">Сохранить</button></div>
+                            </form>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ admin.created_at or '—' }}
+                    </td>
+                    <td>
+                        <div class="row-actions">
+                            {% if admin.auth_type != 'ad' %}
+                            <a class="btn btn-warning btn-sm" href="{{ url_for('admin_change_user_password', username=admin.username) }}">Пароль</a>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('admin_delete_user', username=admin.username) }}" onsubmit="return confirm('Удалить администратора {{ admin.username | e }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-danger btn-sm" type="submit">Удалить</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">
+            Администраторов пока нет.
+            <div style="margin-top:14px;"><a class="btn btn-primary" href="{{ url_for('admin_add_user') }}">Добавить первого</a></div>
+        </div>
+        {% endif %}
+    </section>
+</main>
+
+<script>
+    updateThemeToggle();
+</script>
 </body>
 </html>

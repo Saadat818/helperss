@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Контакты КЦ — Админка</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        html { min-width: 1180px; }
+        body { background: var(--bg); }
+        .admin-page {
+            max-width: 1480px;
+            margin: 0 auto;
+            padding: 28px 32px 46px;
+        }
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 22px;
+            margin-bottom: 18px;
+        }
+        .header-actions,
+        .row-actions,
+        .panel-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .flash {
+            margin-bottom: 12px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text);
+            font-weight: 700;
+        }
+        .flash.success { border-color: var(--primary-mid); color: var(--primary-dark); background: var(--primary-light); }
+        .flash.error { border-color: rgba(220,38,38,.35); color: var(--red); background: var(--red-light); }
+        .flash.warning { border-color: rgba(217,119,6,.35); color: var(--yellow); background: var(--yellow-light); }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .stat-box {
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+        }
+        .stat-value {
+            color: var(--text);
+            font-size: 28px;
+            font-weight: 800;
+        }
+        .stat-label {
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 700;
+        }
+        .filter-bar {
+            display: grid;
+            grid-template-columns: minmax(300px, 1fr) 240px 160px auto;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .form-control {
+            width: 100%;
+            min-width: 0;
+            min-height: 38px;
+            padding: 9px 11px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text);
+            outline: none;
+            text-overflow: ellipsis;
+        }
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(22, 163, 74, .12);
+        }
+        .autocomplete-field {
+            position: relative;
+            min-width: 0;
+        }
+        .autocomplete-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            z-index: 1300;
+            max-height: min(280px, 44vh);
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            box-shadow: var(--shadow-lg);
+        }
+        .autocomplete-field.open .autocomplete-dropdown {
+            display: block;
+        }
+        .autocomplete-option,
+        .autocomplete-empty {
+            padding: 10px 11px;
+            color: var(--text);
+            font-size: var(--text-sm);
+            font-weight: 700;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+        .autocomplete-option {
+            cursor: pointer;
+        }
+        .autocomplete-option:hover,
+        .autocomplete-option.active {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+        }
+        .autocomplete-empty {
+            color: var(--text-muted);
+        }
+        .field-error {
+            display: none;
+            margin-top: 5px;
+            color: var(--red);
+            font-size: var(--text-xs);
+            font-weight: 800;
+        }
+        .field-error.show {
+            display: block;
+        }
+        textarea.form-control {
+            min-height: 92px;
+            resize: vertical;
+            line-height: 1.45;
+        }
+        .admin-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+        .table-wrap {
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-sm);
+        }
+        table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            min-width: 1120px;
+        }
+        th,
+        td {
+            padding: 10px 11px;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            vertical-align: top;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        th:nth-child(1), td:nth-child(1) { width: 29%; }
+        th:nth-child(2), td:nth-child(2) { width: 23%; }
+        th:nth-child(3), td:nth-child(3) { width: 18%; }
+        th:nth-child(4), td:nth-child(4) { width: 8%; }
+        th:nth-child(5), td:nth-child(5) { width: 9%; }
+        th:nth-child(6), td:nth-child(6) { width: 13%; }
+        th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+        tr:last-child td { border-bottom: none; }
+        .cell-title {
+            color: var(--text);
+            font-weight: 800;
+            line-height: 1.25;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .employee-cell {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            min-width: 0;
+        }
+        .employee-cell > div {
+            min-width: 0;
+        }
+        .contact-thumb,
+        .contact-thumb-empty {
+            width: 64px;
+            aspect-ratio: 1 / 1;
+            flex: 0 0 64px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .contact-thumb {
+            display: block;
+            height: auto;
+            object-fit: cover;
+            object-position: center;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            cursor: zoom-in;
+        }
+        img.contact-thumb {
+            height: 64px;
+        }
+        .contact-thumb:hover { border-color: var(--primary); }
+        .contact-thumb-empty {
+            display: grid;
+            place-items: center;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: 22px;
+            font-weight: 800;
+        }
+        .cell-sub {
+            margin-top: 3px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            line-height: 1.35;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .likes-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: var(--text-xs);
+            font-weight: 900;
+        }
+        .mini-btn {
+            min-height: 30px;
+            padding: 6px 9px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--card);
+            color: var(--text);
+            font-size: var(--text-xs);
+            font-weight: 800;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .mini-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-light);
+        }
+        .mini-danger:hover {
+            border-color: var(--red);
+            color: var(--red);
+            background: var(--red-light);
+        }
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(15, 23, 42, .52);
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            width: min(900px, 100%);
+            max-height: 92vh;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-lg);
+        }
+        .modal-sm { width: min(560px, 100%); }
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-title {
+            margin: 0;
+            color: var(--text);
+            font-size: 20px;
+            font-weight: 800;
+        }
+        .modal-body {
+            padding: 18px 20px 20px;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+        .form-grid .wide { grid-column: 1 / -1; }
+        .check-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text);
+            font-weight: 700;
+        }
+        .photo-preview {
+            display: none;
+            width: 96px;
+            aspect-ratio: 1 / 1;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            object-fit: cover;
+            object-position: center;
+            background: var(--bg-secondary);
+        }
+        img.photo-preview {
+            height: 96px;
+        }
+        .photo-preview.show { display: block; }
+        .photo-dropzone {
+            display: grid;
+            gap: 8px;
+            padding: 14px;
+            border: 1px dashed var(--border-hover);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+            cursor: pointer;
+            transition: border-color .15s, background .15s, box-shadow .15s;
+        }
+        .photo-dropzone:hover,
+        .photo-dropzone.dragover,
+        .photo-dropzone:focus-visible {
+            border-color: var(--primary);
+            background: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(22, 163, 74, .10);
+            outline: none;
+        }
+        .photo-drop-title {
+            color: var(--text);
+            font-weight: 800;
+        }
+        .photo-file-name {
+            min-height: 18px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 700;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 18px;
+        }
+        .image-viewer {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1200;
+            align-items: center;
+            justify-content: center;
+            padding: 28px;
+            background: rgba(15, 23, 42, .78);
+        }
+        .image-viewer.show { display: flex; }
+        .image-viewer-card {
+            width: min(920px, 100%);
+            max-height: 92vh;
+            display: grid;
+            gap: 12px;
+        }
+        .image-viewer img {
+            max-width: 100%;
+            max-height: 78vh;
+            object-fit: contain;
+            border-radius: 12px;
+            background: #fff;
+        }
+        .image-viewer-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            color: #fff;
+            font-weight: 800;
+        }
+        .image-viewer-close {
+            min-height: 34px;
+            padding: 7px 12px;
+            border: 1px solid rgba(255,255,255,.35);
+            border-radius: 8px;
+            background: rgba(255,255,255,.12);
+            color: #fff;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<main class="admin-page">
+    <header class="admin-header">
+        <div>
+            <div class="page-kicker">Администрирование</div>
+            <h1 class="page-title">Контакты КЦ</h1>
+            <p class="page-subtitle">Справочник сотрудников, отделов и рабочих контактов для операторов.</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-primary" type="button" onclick="openContactModal()">Добавить контакт</button>
+            <a class="btn btn-secondary" href="{{ url_for('contacts_kc') }}">Справочник</a>
+            <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Обзор</a>
+        </div>
+    </header>
+
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+
+    <section class="stats-grid">
+        <div class="stat-box">
+            <div class="stat-value">{{ stats.contacts_total }}</div>
+            <div class="stat-label">Контактов всего</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">{{ stats.contacts_active }}</div>
+            <div class="stat-label">Активных</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">{{ stats.contacts_inactive }}</div>
+            <div class="stat-label">Неактивных</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">{{ stats.departments_total }}</div>
+            <div class="stat-label">Отделов</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">{{ total }}</div>
+            <div class="stat-label">В текущем фильтре</div>
+        </div>
+    </section>
+
+    <form class="filter-bar" method="get" action="{{ url_for('admin_contacts_kc') }}">
+        <input class="form-control" type="search" name="q" value="{{ q }}" placeholder="Поиск по ФИО, отделу, должности, телефону или Telegram">
+        <select class="form-control" name="department">
+            <option value="">Все отделы</option>
+            {% for department in departments %}
+            <option value="{{ department.name }}" {% if selected_department|lower == department.name|lower %}selected{% endif %}>
+                {{ department.name }}
+            </option>
+            {% endfor %}
+        </select>
+        <select class="form-control" name="status">
+            <option value="active" {% if status == 'active' %}selected{% endif %}>Активные</option>
+            <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Неактивные</option>
+            <option value="all" {% if status == 'all' %}selected{% endif %}>Все</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Показать</button>
+    </form>
+
+    <section class="admin-layout">
+        <div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Сотрудник</th>
+                        <th>Отдел</th>
+                        <th>Контакты</th>
+                        <th>Лайки</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% if contacts %}
+                        {% for contact in contacts %}
+                        <tr>
+                            <td>
+                                <div class="employee-cell">
+                                    {% if contact.photo_path %}
+                                    <img class="contact-thumb"
+                                         src="{{ url_for('static', filename=contact.photo_path) }}"
+                                         alt=""
+                                         data-full-image="{{ url_for('static', filename=contact.photo_path) }}"
+                                         data-image-title="{{ contact.full_name }}">
+                                    {% else %}
+                                    <div class="contact-thumb-empty">{{ (contact.full_name or '?')[:1] }}</div>
+                                    {% endif %}
+                                    <div>
+                                        <div class="cell-title">{{ contact.full_name }}</div>
+                                        {% if contact.position %}<div class="cell-sub">{{ contact.position }}</div>{% endif %}
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if contact.department %}
+                                <div class="cell-title">{{ contact.department }}</div>
+                                {% else %}
+                                <span class="cell-sub">Без отдела</span>
+                                {% endif %}
+                                {% if contact.tags %}<div class="cell-sub">{{ contact.tags }}</div>{% endif %}
+                            </td>
+                            <td>
+                                {% if contact.phone %}<div>{{ contact.phone }}</div>{% endif %}
+                                {% if contact.extension %}<div class="cell-sub">вн. {{ contact.extension }}</div>{% endif %}
+                                {% if contact.telegram %}<div class="cell-sub">{{ contact.telegram }}</div>{% endif %}
+                            </td>
+                            <td><span class="likes-pill">♥ {{ contact.likes_count or 0 }}</span></td>
+                            <td>
+                                {% if contact.is_active %}
+                                <span class="badge badge-success">Активен</span>
+                                {% else %}
+                                <span class="badge badge-warning">Неактивен</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="row-actions">
+                                    <button class="mini-btn" type="button"
+                                            data-contact-id="{{ contact.id }}"
+                                            data-full-name="{{ contact.full_name|e }}"
+                                            data-position="{{ contact.position|e }}"
+                                            data-department="{{ contact.department|e }}"
+                                            data-phone="{{ contact.phone|e }}"
+                                            data-extension="{{ contact.extension|e }}"
+                                            data-mobile="{{ contact.mobile|e }}"
+                                            data-email="{{ contact.email|e }}"
+                                            data-telegram="{{ contact.telegram|e }}"
+                                            data-workplace="{{ contact.workplace|e }}"
+                                            data-schedule="{{ contact.schedule|e }}"
+                                            data-responsibilities="{{ contact.responsibilities|e }}"
+                                            data-notes="{{ contact.notes|e }}"
+                                            data-tags="{{ contact.tags|e }}"
+                                            data-photo-path="{{ contact.photo_path|e }}"
+                                            data-sort-order="{{ contact.sort_order or 0 }}"
+                                            data-active="{{ contact.is_active }}"
+                                            onclick="openContactModal(this)">Изменить</button>
+                                    <form method="post" action="{{ url_for('admin_contact_toggle', contact_id=contact.id) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="return_q" value="{{ q }}">
+                                        <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                                        <input type="hidden" name="return_status" value="{{ status }}">
+                                        <input type="hidden" name="return_page" value="{{ page }}">
+                                        <input type="hidden" name="is_active" value="{{ 0 if contact.is_active else 1 }}">
+                                        <button class="mini-btn" type="submit">{{ 'Скрыть' if contact.is_active else 'Вернуть' }}</button>
+                                    </form>
+                                    <form method="post" action="{{ url_for('admin_contact_delete', contact_id=contact.id) }}" onsubmit="return confirm('Удалить контакт?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="return_q" value="{{ q }}">
+                                        <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                                        <input type="hidden" name="return_status" value="{{ status }}">
+                                        <button class="mini-btn mini-danger" type="submit">Удалить</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6">
+                                <div class="empty-state">
+                                    <strong>Контакты не найдены</strong>
+                                    Добавьте контакт или измените фильтры.
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% set pages = ((total + per_page - 1) // per_page) %}
+            <div class="pagination">
+                <div class="cell-sub">Страница {{ page }}{% if pages > 0 %} из {{ pages }}{% endif %}</div>
+                <div class="row-actions">
+                    {% if page > 1 %}
+                    <a class="btn btn-secondary" href="{{ url_for('admin_contacts_kc', q=q, department=selected_department or '', status=status, page=page-1) }}">Назад</a>
+                    {% endif %}
+                    {% if page < pages %}
+                    <a class="btn btn-secondary" href="{{ url_for('admin_contacts_kc', q=q, department=selected_department or '', status=status, page=page+1) }}">Далее</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<div class="modal-overlay" id="contactModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2 class="modal-title" id="contactModalTitle">Добавить контакт</h2>
+            <button class="mini-btn" type="button" onclick="closeModal('contactModal')">Закрыть</button>
+        </div>
+        <div class="modal-body">
+            <form method="post" action="{{ url_for('admin_contact_create') }}" id="contactForm" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_q" value="{{ q }}">
+                <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                <input type="hidden" name="return_status" value="{{ status }}">
+                <input type="hidden" name="return_page" value="{{ page }}">
+                <input type="hidden" name="workplace" data-field="workplace">
+                <input type="hidden" name="mobile" data-field="mobile">
+                <input type="hidden" name="email" data-field="email">
+                <input type="hidden" name="schedule" data-field="schedule">
+                <input type="hidden" name="responsibilities" data-field="responsibilities">
+
+                <div class="form-grid">
+                    <label>
+                        <span class="form-label">ФИО *</span>
+                        <input class="form-control" name="full_name" data-field="full_name" required>
+                    </label>
+                    <label>
+                        <span class="form-label">Должность</span>
+                        <input class="form-control" name="position" data-field="position">
+                    </label>
+                    <label>
+                        <span class="form-label">Отдел</span>
+                        <div class="autocomplete-field" data-department-combobox>
+                            <input class="form-control"
+                                   id="departmentSearch"
+                                   data-department-input
+                                   type="text"
+                                   placeholder="Выберите отдел"
+                                   autocomplete="off"
+                                   aria-autocomplete="list"
+                                   aria-controls="departmentDropdown"
+                                   aria-expanded="false">
+                            <input type="hidden" name="department" data-field="department" data-department-value>
+                            <div class="autocomplete-dropdown" id="departmentDropdown" data-department-dropdown role="listbox"></div>
+                        </div>
+                        <div class="field-error" id="departmentError">Выберите отдел из списка</div>
+                    </label>
+                    <label>
+                        <span class="form-label">Телефон</span>
+                        <input class="form-control" name="phone" data-field="phone">
+                    </label>
+                    <label>
+                        <span class="form-label">Внутренний номер</span>
+                        <input class="form-control" name="extension" data-field="extension">
+                    </label>
+                    <label>
+                        <span class="form-label">Telegram</span>
+                        <input class="form-control" name="telegram" data-field="telegram">
+                    </label>
+                    <div class="wide">
+                        <span class="form-label">Фото или скрин</span>
+                        <div class="photo-dropzone" id="contactPhotoDropzone" tabindex="0">
+                            <div class="photo-drop-title">Перетащите изображение, выберите файл или вставьте Ctrl+V</div>
+                            <input class="form-control" id="contactPhotoInput" name="photo" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.jfif,.avif">
+                            <div class="photo-file-name" id="contactPhotoFileName">JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF</div>
+                        </div>
+                    </div>
+                    <label class="wide">
+                        <span class="form-label">Заметки</span>
+                        <textarea class="form-control" name="notes" data-field="notes"></textarea>
+                    </label>
+                    <label>
+                        <span class="form-label">Теги</span>
+                        <input class="form-control" name="tags" data-field="tags">
+                    </label>
+                    <label>
+                        <span class="form-label">Сортировка</span>
+                        <input class="form-control" name="sort_order" data-field="sort_order" type="number" value="0">
+                    </label>
+                    <label class="check-row">
+                        <input type="checkbox" name="is_active" data-field="is_active" checked>
+                        Активен
+                    </label>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" type="button" onclick="closeModal('contactModal')">Отмена</button>
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="image-viewer" id="imageViewer">
+    <div class="image-viewer-card">
+        <div class="image-viewer-bar">
+            <div id="imageViewerTitle"></div>
+            <button class="image-viewer-close" type="button" onclick="closeImageViewer()">Закрыть</button>
+        </div>
+        <img id="imageViewerImg" src="" alt="">
+    </div>
+</div>
+
+<script>
+const contactCreateUrl = "{{ url_for('admin_contact_create') }}";
+const departmentOptions = {{ departments|map(attribute='name')|list|tojson }};
+const initialSelectedDepartment = {{ (selected_department or '')|tojson }};
+let selectedPhotoObjectUrl = '';
+let activeDepartmentIndex = -1;
+let renderedDepartmentOptions = [];
+
+function setField(form, field, value) {
+    const el = form.querySelector(`[data-field="${field}"]`);
+    if (!el) return;
+    if (el.type === 'checkbox') {
+        el.checked = value === 1 || value === '1' || value === true || value === 'true';
+    } else {
+        el.value = value || '';
+    }
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+    closeDepartmentDropdown();
+}
+
+function normalizeDepartment(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function departmentExists(value) {
+    const key = normalizeDepartment(value);
+    return departmentOptions.some(item => normalizeDepartment(item) === key);
+}
+
+function canonicalDepartment(value) {
+    const key = normalizeDepartment(value);
+    return departmentOptions.find(item => normalizeDepartment(item) === key) || '';
+}
+
+function departmentMatches(option, query) {
+    const optionKey = normalizeDepartment(option);
+    const queryKey = normalizeDepartment(query);
+    if (!queryKey) return {match: true, rank: 4};
+    if (optionKey === queryKey) return {match: true, rank: 0};
+    if (optionKey.startsWith(queryKey)) return {match: true, rank: 1};
+    if (optionKey.includes(queryKey)) return {match: true, rank: 2};
+    const tokens = queryKey.split(' ').filter(Boolean);
+    if (tokens.length > 1 && tokens.every(token => optionKey.includes(token))) {
+        return {match: true, rank: 3};
+    }
+    return {match: false, rank: 99};
+}
+
+function getDepartmentInput() {
+    return document.querySelector('[data-department-input]');
+}
+
+function getDepartmentValueInput() {
+    return document.querySelector('[data-department-value]');
+}
+
+function setDepartmentError(show) {
+    const error = document.getElementById('departmentError');
+    if (error) error.classList.toggle('show', Boolean(show));
+}
+
+function setDepartmentValue(value) {
+    const input = getDepartmentInput();
+    const hidden = getDepartmentValueInput();
+    const canonical = canonicalDepartment(value);
+    if (input) input.value = canonical || '';
+    if (hidden) hidden.value = canonical || '';
+    setDepartmentError(false);
+}
+
+function clearDepartmentSelection(visibleValue = '') {
+    const input = getDepartmentInput();
+    const hidden = getDepartmentValueInput();
+    if (input) input.value = visibleValue;
+    if (hidden) hidden.value = '';
+}
+
+function filterDepartments(query) {
+    return departmentOptions
+        .map(name => ({name, score: departmentMatches(name, query)}))
+        .filter(item => item.score.match)
+        .sort((a, b) => (
+            a.score.rank - b.score.rank ||
+            a.name.localeCompare(b.name, 'ru', {sensitivity: 'base'})
+        ))
+        .slice(0, 60)
+        .map(item => item.name);
+}
+
+function renderDepartmentDropdown(query = '') {
+    const field = document.querySelector('[data-department-combobox]');
+    const input = getDepartmentInput();
+    const dropdown = document.querySelector('[data-department-dropdown]');
+    if (!field || !input || !dropdown) return;
+
+    renderedDepartmentOptions = filterDepartments(query);
+    activeDepartmentIndex = renderedDepartmentOptions.length ? 0 : -1;
+    dropdown.innerHTML = '';
+
+    if (!renderedDepartmentOptions.length) {
+        const empty = document.createElement('div');
+        empty.className = 'autocomplete-empty';
+        empty.textContent = 'Отдел не найден';
+        dropdown.appendChild(empty);
+    } else {
+        renderedDepartmentOptions.forEach((name, index) => {
+            const option = document.createElement('div');
+            option.className = `autocomplete-option${index === activeDepartmentIndex ? ' active' : ''}`;
+            option.textContent = name;
+            option.role = 'option';
+            option.tabIndex = -1;
+            option.dataset.departmentOption = name;
+            option.addEventListener('mousedown', event => {
+                event.preventDefault();
+                selectDepartment(name);
+            });
+            dropdown.appendChild(option);
+        });
+    }
+
+    field.classList.add('open');
+    input.setAttribute('aria-expanded', 'true');
+}
+
+function closeDepartmentDropdown() {
+    const field = document.querySelector('[data-department-combobox]');
+    const input = getDepartmentInput();
+    if (field) field.classList.remove('open');
+    if (input) input.setAttribute('aria-expanded', 'false');
+    activeDepartmentIndex = -1;
+}
+
+function refreshActiveDepartmentOption() {
+    document.querySelectorAll('[data-department-option]').forEach((option, index) => {
+        option.classList.toggle('active', index === activeDepartmentIndex);
+        if (index === activeDepartmentIndex) {
+            option.scrollIntoView({block: 'nearest'});
+        }
+    });
+}
+
+function selectDepartment(name) {
+    setDepartmentValue(name);
+    closeDepartmentDropdown();
+}
+
+function initDepartmentAutocomplete() {
+    const input = getDepartmentInput();
+    const hidden = getDepartmentValueInput();
+    const form = document.getElementById('contactForm');
+    if (!input || !hidden || !form) return;
+
+    input.addEventListener('focus', () => renderDepartmentDropdown(input.value));
+    input.addEventListener('click', () => renderDepartmentDropdown(input.value));
+    input.addEventListener('input', () => {
+        clearDepartmentSelection(input.value);
+        setDepartmentError(false);
+        renderDepartmentDropdown(input.value);
+    });
+    input.addEventListener('keydown', event => {
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (!renderedDepartmentOptions.length) renderDepartmentDropdown(input.value);
+            activeDepartmentIndex = Math.min(activeDepartmentIndex + 1, renderedDepartmentOptions.length - 1);
+            refreshActiveDepartmentOption();
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            activeDepartmentIndex = Math.max(activeDepartmentIndex - 1, 0);
+            refreshActiveDepartmentOption();
+        } else if (event.key === 'Enter') {
+            if (renderedDepartmentOptions[activeDepartmentIndex]) {
+                event.preventDefault();
+                selectDepartment(renderedDepartmentOptions[activeDepartmentIndex]);
+            }
+        } else if (event.key === 'Escape') {
+            closeDepartmentDropdown();
+        }
+    });
+
+    form.addEventListener('submit', event => {
+        if (!hidden.value || !departmentExists(hidden.value)) {
+            event.preventDefault();
+            setDepartmentError(true);
+            renderDepartmentDropdown(input.value);
+            input.focus();
+        }
+    });
+
+    document.addEventListener('click', event => {
+        if (!event.target.closest('[data-department-combobox]')) {
+            closeDepartmentDropdown();
+        }
+    });
+}
+
+function setContactPhotoPreview(photoPath) {
+    const preview = document.getElementById('contactPhotoPreview');
+    const clearRow = document.getElementById('clearPhotoRow');
+    const fileName = document.getElementById('contactPhotoFileName');
+    if (selectedPhotoObjectUrl) {
+        URL.revokeObjectURL(selectedPhotoObjectUrl);
+        selectedPhotoObjectUrl = '';
+    }
+    const hasPhoto = Boolean(photoPath);
+    if (preview) {
+        preview.classList.toggle('show', hasPhoto);
+        preview.src = hasPhoto ? `/static/${photoPath}` : '';
+    }
+    if (clearRow) clearRow.style.display = hasPhoto ? 'flex' : 'none';
+    if (fileName) fileName.textContent = hasPhoto ? 'Фото уже сохранено. Можно загрузить новое.' : 'JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF';
+}
+
+function contactModalIsOpen() {
+    return document.getElementById('contactModal').classList.contains('show');
+}
+
+function normalizedImageFile(file) {
+    if (!file) return null;
+    const isImage = file.type ? file.type.startsWith('image/') : /\.(jpe?g|png|webp|gif|bmp|jfif|avif)$/i.test(file.name || '');
+    if (!isImage) {
+        alert('Выберите изображение: JPG, PNG, WEBP, GIF, BMP, JFIF или AVIF.');
+        return null;
+    }
+    if (file.name) return file;
+
+    const extByType = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+        'image/bmp': 'bmp',
+        'image/avif': 'avif'
+    };
+    const ext = extByType[file.type] || 'png';
+    return new File([file], `clipboard-screenshot.${ext}`, {type: file.type || 'image/png'});
+}
+
+function setSelectedPhoto(file) {
+    const normalized = normalizedImageFile(file);
+    if (!normalized) return;
+
+    const input = document.getElementById('contactPhotoInput');
+    const fileName = document.getElementById('contactPhotoFileName');
+    const preview = document.getElementById('contactPhotoPreview');
+    const clearPhoto = document.querySelector('#clearPhotoRow input[name="clear_photo"]');
+
+    const dt = new DataTransfer();
+    dt.items.add(normalized);
+    input.files = dt.files;
+
+    if (selectedPhotoObjectUrl) {
+        URL.revokeObjectURL(selectedPhotoObjectUrl);
+    }
+    selectedPhotoObjectUrl = URL.createObjectURL(normalized);
+    if (preview) {
+        preview.src = selectedPhotoObjectUrl;
+        preview.classList.add('show');
+    }
+    if (fileName) fileName.textContent = normalized.name;
+    if (clearPhoto) clearPhoto.checked = false;
+}
+
+function initPhotoDropzone() {
+    const dropzone = document.getElementById('contactPhotoDropzone');
+    const input = document.getElementById('contactPhotoInput');
+    if (!dropzone || !input) return;
+
+    dropzone.addEventListener('click', (event) => {
+        if (event.target !== input) input.click();
+    });
+    dropzone.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            input.click();
+        }
+    });
+    input.addEventListener('change', () => {
+        if (input.files && input.files[0]) setSelectedPhoto(input.files[0]);
+    });
+
+    ['dragenter', 'dragover'].forEach(type => {
+        dropzone.addEventListener(type, (event) => {
+            event.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(type => {
+        dropzone.addEventListener(type, () => dropzone.classList.remove('dragover'));
+    });
+    dropzone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        const file = Array.from(event.dataTransfer.files || []).find(item => item.type.startsWith('image/'));
+        if (file) setSelectedPhoto(file);
+    });
+
+    document.addEventListener('paste', (event) => {
+        if (!contactModalIsOpen()) return;
+        const item = Array.from(event.clipboardData?.items || []).find(entry => (
+            entry.kind === 'file' && entry.type.startsWith('image/')
+        ));
+        if (!item) return;
+        event.preventDefault();
+        setSelectedPhoto(item.getAsFile());
+    });
+}
+
+function openContactModal(button) {
+    const form = document.getElementById('contactForm');
+    form.reset();
+    form.action = contactCreateUrl;
+    document.getElementById('contactModalTitle').textContent = 'Добавить контакт';
+    setField(form, 'is_active', '1');
+    setField(form, 'sort_order', '0');
+    setDepartmentValue(initialSelectedDepartment);
+    setContactPhotoPreview('');
+    document.getElementById('contactPhotoInput').value = '';
+
+    if (button && button.dataset.contactId) {
+        const d = button.dataset;
+        form.action = `/admin/contacts_kc/contacts/${d.contactId}/update`;
+        document.getElementById('contactModalTitle').textContent = 'Изменить контакт';
+        ['full_name', 'position', 'phone', 'extension', 'mobile',
+         'email', 'telegram', 'workplace', 'schedule', 'responsibilities', 'notes',
+         'tags', 'sort_order'].forEach(field => setField(form, field, d[toCamel(field)]));
+        setDepartmentValue(d.department || '');
+        setField(form, 'is_active', d.active);
+        setContactPhotoPreview(d.photoPath || '');
+    }
+
+    document.getElementById('contactModal').classList.add('show');
+}
+
+function toCamel(value) {
+    return value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+document.addEventListener('click', (event) => {
+    const photo = event.target.closest('[data-full-image]');
+    if (photo) {
+        openImageViewer(photo.dataset.fullImage, photo.dataset.imageTitle || '');
+        return;
+    }
+
+    if (event.target.classList.contains('modal-overlay')) {
+        event.target.classList.remove('show');
+    }
+});
+
+function openImageViewer(src, title) {
+    document.getElementById('imageViewerImg').src = src;
+    document.getElementById('imageViewerTitle').textContent = title;
+    document.getElementById('imageViewer').classList.add('show');
+}
+
+function closeImageViewer() {
+    document.getElementById('imageViewer').classList.remove('show');
+    document.getElementById('imageViewerImg').src = '';
+}
+
+document.getElementById('imageViewer').addEventListener('click', (event) => {
+    if (event.target.id === 'imageViewer') closeImageViewer();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeImageViewer();
+});
+
+initPhotoDropzone();
+initDepartmentAutocomplete();
+</script>
+</body>
+</html>

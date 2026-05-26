@@ -3,1082 +3,567 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Поиск тематики обращения</title>
+    <title>Тематики обращений — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
     <style>
-        :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
-            --greenLight: #00d4aa;
-        }
-
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-        }
-
-        .theme-toggle {
-            position: absolute;
-            top: 0;
-            right: 0;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 1000;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-
-        .theme-toggle:hover { transform: scale(1.12); }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            min-height: 100vh;
-            padding: 20px;
-            color: var(--text);
-        }
-
-        .main-wrapper {
-            display: flex;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-            align-items: flex-start;
-            animation: fadeIn 0.4s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .sidebar {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            padding: 24px 20px;
-            border-radius: 14px;
-            width: 280px;
-            flex-shrink: 0;
-            position: sticky;
-            top: 20px;
-        }
-
-        .container {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            padding: 40px;
-            border-radius: 14px;
-            flex: 1;
-            text-align: center;
+        .topics-main {
             position: relative;
+            overflow: hidden;
+            isolation: isolate;
+            background:
+                radial-gradient(circle at 18% 4%, rgba(22, 163, 74, .085), transparent 31%),
+                radial-gradient(circle at 92% 88%, rgba(8, 145, 178, .055), transparent 34%),
+                linear-gradient(180deg, #fbfdff 0%, var(--bg) 52%, #eef3f8 100%);
         }
 
-        .logo-text {
-            display: inline-flex;
-            align-items: center;
+        body.dark .topics-main {
+            background:
+                radial-gradient(circle at 18% 4%, rgba(34, 197, 94, .085), transparent 31%),
+                radial-gradient(circle at 92% 88%, rgba(59, 130, 246, .055), transparent 34%),
+                linear-gradient(180deg, #0b172d 0%, #091426 52%, #07111f 100%);
+        }
+
+        .topics-main::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            opacity: .14;
+            background-image: radial-gradient(circle, rgba(15, 23, 42, .16) 0 1px, transparent 1px);
+            background-size: 6px 6px;
+            mask-image: linear-gradient(180deg, rgba(0,0,0,.58), transparent 76%);
+        }
+
+        body.dark .topics-main::before {
+            opacity: .13;
+            background-image: radial-gradient(circle, rgba(255, 255, 255, .16) 0 1px, transparent 1px);
+        }
+
+        .topics-main > .page {
+            position: relative;
+            z-index: 1;
+        }
+
+        .topics-main .panel {
+            border-color: rgba(148, 163, 184, .24);
+            background: rgba(255, 255, 255, .80);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, .075);
+            backdrop-filter: blur(14px);
+        }
+
+        body.dark .topics-main .panel {
+            border-color: rgba(148, 163, 184, .16);
+            background: rgba(15, 23, 42, .68);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+        }
+
+        .topics-main .search-input,
+        .topics-main .channel-btn,
+        .topics-main .topic-item {
+            border-color: rgba(148, 163, 184, .26);
+            background: rgba(255, 255, 255, .76);
+        }
+
+        body.dark .topics-main .search-input,
+        body.dark .topics-main .channel-btn,
+        body.dark .topics-main .topic-item {
+            border-color: rgba(148, 163, 184, .16);
+            background: rgba(17, 25, 40, .70);
+        }
+
+        body.dark .topics-main .topic-item:hover,
+        body.dark .topics-main .topic-item.active-keyboard {
+            border-color: rgba(187, 247, 208, .34);
+            background: rgba(22, 33, 53, .82);
+            box-shadow: 0 16px 34px rgba(0, 0, 0, .24);
+        }
+
+        .topics-toolbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             gap: 10px;
-            font-weight: 800;
-            font-size: 28px;
-            letter-spacing: -0.3px;
-            background: linear-gradient(90deg, var(--greenLight) 0%, var(--green) 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
 
-        .logo-img {
-            height: 36px;
-            width: 36px;
+        .topics-layout {
+            display: grid;
+            grid-template-columns: 260px minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
         }
 
-        h2 {
-            color: var(--text);
-            margin-bottom: 12px;
-            font-size: 24px;
-            font-weight: 700;
+        .filter-panel {
+            position: sticky;
+            top: 24px;
         }
 
-        .subtitle {
-            color: var(--muted);
-            margin-bottom: 30px;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        .search-box {
-            margin-bottom: 30px;
-            text-align: left;
-        }
-
-        .search-controls {
+        .channel-list {
             display: flex;
-            gap: 10px;
-            align-items: center;
+            flex-direction: column;
+            gap: 7px;
+            max-height: calc(100vh - 260px);
+            overflow: auto;
+            padding-right: 4px;
         }
 
-        .search-label {
-            display: block;
-            margin-bottom: 10px;
-            font-weight: 600;
-            color: var(--greenLight);
-            font-size: 14px;
-        }
-
-        .search-input {
+        .channel-btn {
+            justify-content: flex-start;
             width: 100%;
-            padding: 16px;
-            background: var(--bg);
             border: 1px solid var(--border);
-            border-radius: 10px;
-            box-sizing: border-box;
-            font-size: 15px;
-            font-family: inherit;
-            color: var(--text);
-            transition: all 0.3s ease;
-        }
-
-        .clear-search-btn {
-            padding: 12px 14px;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            background: var(--bg);
-            color: var(--muted);
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            white-space: nowrap;
-        }
-
-        .clear-search-btn:hover {
-            border-color: rgba(0, 166, 81, 0.45);
-            color: var(--text);
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: var(--green);
-            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.1);
-        }
-
-        .search-input::placeholder {
-            color: var(--muted);
-        }
-
-        .search-hint {
-            margin-top: 8px;
-            font-size: 12px;
-            color: var(--muted);
-            font-style: italic;
-        }
-
-        .search-meta {
-            margin-top: 12px;
-            font-size: 12px;
-            color: var(--muted);
+            background: var(--card);
+            color: var(--text-muted);
             text-align: left;
-            min-height: 18px;
+        }
+
+        .channel-btn.active {
+            border-color: var(--primary-mid);
+            background: var(--primary-light);
+            color: var(--primary-dark);
         }
 
         .topic-results {
-            margin-top: 30px;
-            max-height: 500px;
-            overflow-y: auto;
-            overflow-x: hidden;
-        }
-
-        .topic-results::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .topic-results::-webkit-scrollbar-track {
-            background: var(--bg);
-            border-radius: 4px;
-        }
-
-        .topic-results::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 4px;
-        }
-
-        .topic-results::-webkit-scrollbar-thumb:hover {
-            background: var(--green);
-        }
-
-        .load-more-indicator {
-            text-align: center;
-            padding: 15px;
-            color: var(--text-secondary, #888);
-            font-size: 14px;
-            animation: pulse 1.5s ease-in-out infinite;
-        }
-
-        .load-more-hint {
-            animation: none;
-            opacity: 0.7;
-            font-size: 13px;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: calc(100vh - 245px);
+            min-height: 420px;
+            overflow: auto;
+            padding: 2px 4px 2px 0;
         }
 
         .topic-item {
-            padding: 20px 22px;
-            margin-bottom: 12px;
+            padding: 16px 18px;
             border: 1px solid var(--border);
-            border-radius: 10px;
-            cursor: default;
-            transition: all 0.2s ease;
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            text-align: left;
-            width: 100%;
-            overflow: hidden;
-            box-sizing: border-box;
+            border-radius: var(--radius-md);
+            background: var(--card);
+            transition: border-color .15s, box-shadow .15s, transform .15s, background .15s;
         }
 
-        .topic-item:hover {
-            border-color: rgba(0, 166, 81, 0.5);
-            transform: translateX(4px);
-        }
-
+        .topic-item:hover,
         .topic-item.active-keyboard {
-            border-color: var(--green);
-            box-shadow: 0 0 0 2px rgba(0, 166, 81, 0.2);
-            transform: translateX(4px);
+            border-color: var(--primary-mid);
+            background: var(--card-hover);
+            box-shadow: var(--shadow-sm);
+            transform: translateY(-1px);
         }
 
         .topic-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            gap: 15px;
+            gap: 14px;
+            align-items: flex-start;
         }
 
         .topic-name {
-            font-weight: 600;
             color: var(--text);
-            font-size: 14px;
-            line-height: 1.6;
-            word-break: break-word;
-            flex: 1;
-        }
-
-        .topic-similarity {
-            display: inline-block;
-            padding: 6px 12px;
-            background: var(--green);
-            color: #ffffff;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .loading {
-            text-align: center;
-            color: var(--greenLight);
-            font-style: italic;
-            margin: 30px 0;
-            font-size: 15px;
-        }
-
-        .no-results {
-            text-align: center;
-            color: var(--muted);
-            font-style: italic;
-            margin: 30px 0;
-            font-size: 15px;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 50px 20px;
-            color: var(--muted);
-        }
-
-        .empty-state-icon {
-            font-size: 60px;
-            margin-bottom: 15px;
-        }
-
-        .back-link {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
-            font-size: 13px;
-            text-decoration: none;
-            color: var(--text);
+            font-size: var(--text-base);
             font-weight: 600;
-            background: rgba(0, 166, 81, 0.15);
-            border: 1px solid rgba(0, 166, 81, 0.3);
-            padding: 10px 18px;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .back-link:hover {
-            background: rgba(0, 166, 81, 0.25);
-            border-color: rgba(0, 166, 81, 0.5);
-            transform: translateY(-2px);
-            text-decoration: none;
-        }
-
-        .channel-buttons {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-
-        .channel-btn {
-            padding: 12px 16px;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            color: var(--text);
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-family: inherit;
-        }
-
-        .channel-btn:hover {
-            border-color: rgba(0, 166, 81, 0.5);
-            background: linear-gradient(180deg, #1f1f1f, #252525);
-            transform: translateY(-2px);
-        }
-
-        .channel-btn.active {
-            border-color: var(--green);
-            background: var(--green);
-            color: #ffffff;
-        }
-
-        .channel-btn:active {
-            transform: translateY(0);
+            line-height: 1.45;
         }
 
         .topic-channel-badge {
-            padding: 4px 10px;
-            font-size: 11px;
-            color: var(--greenLight);
-            font-weight: 600;
-            background: rgba(0, 212, 170, 0.15);
-            border-radius: 20px;
-            display: inline-block;
-            white-space: nowrap;
-            margin-top: 6px;
+            display: inline-flex;
+            margin-top: 8px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: var(--blue-light);
+            color: var(--blue);
+            font-size: var(--text-xs);
+            font-weight: 700;
+        }
+
+        .topic-similarity {
+            flex: 0 0 auto;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff;
+            font-size: var(--text-xs);
+            font-weight: 700;
         }
 
         .match-highlight {
-            background: rgba(0, 212, 170, 0.18);
-            color: var(--greenLight);
             border-radius: 4px;
-            padding: 0 3px;
+            background: var(--primary-mid);
+            color: var(--primary-dark);
             font-weight: 700;
         }
 
-        .sidebar h3 {
-            color: var(--text);
-            margin-bottom: 16px;
-            font-size: 18px;
-            font-weight: 700;
+        .search-meta,
+        .hint-text,
+        .loading,
+        .no-results,
+        .load-more-indicator {
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+        }
+
+        .search-meta {
+            margin: 10px 0 0;
+            min-height: 18px;
+        }
+
+        .loading,
+        .no-results,
+        .load-more-indicator {
+            padding: 28px 16px;
             text-align: center;
-        }
-
-        .sidebar-label {
-            display: block;
-            margin-bottom: 12px;
-            font-weight: 600;
-            color: var(--greenLight);
-            font-size: 13px;
-            text-align: center;
-        }
-
-        @media (max-width: 768px) {
-            .main-wrapper {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                width: 100%;
-                position: static;
-            }
-
-            .container {
-                padding: 24px 20px;
-            }
-        }
-
-        /* Кнопка Админ */
-        .admin-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            font-size: 13px;
-            font-weight: 600;
-            color: #fff;
-            background: rgba(0, 166, 129, 0.8);
-            border: 1px solid rgba(0, 166, 129, 0.5);
-            padding: 10px 18px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .admin-btn:hover {
-            background: rgba(0, 166, 129, 1);
-            transform: translateY(-2px);
-        }
-        .modal-overlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.7);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 2000;
-        }
-        .modal-overlay.show { display: flex; }
-        .modal-box {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 30px;
-            width: 320px;
-            text-align: center;
-            position: relative;
-        }
-        .modal-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: var(--text);
-        }
-        .modal-input {
-            width: 100%;
-            padding: 12px 16px;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-size: 14px;
-            margin-bottom: 15px;
-        }
-        .modal-input:focus { outline: none; border-color: var(--green); }
-        .modal-btn-admin {
-            width: 100%;
-            padding: 12px;
-            background: var(--green);
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .modal-btn-admin:hover { background: var(--greenHover); }
-        .modal-error { color: #f44336; font-size: 13px; margin-top: 10px; display: none; }
-        .modal-close {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: none;
-            border: none;
-            color: var(--muted);
-            font-size: 20px;
-            cursor: pointer;
         }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    <button class="admin-btn" onclick="showAdminModal()">⚙️ Админ</button>
+{% set active_page = 'topics' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
 
-    <div class="modal-overlay" id="adminModal">
-        <div class="modal-box">
-            <button class="modal-close" onclick="hideAdminModal()">×</button>
-            <div class="modal-title">🔐 Вход в админ-панель</div>
-            <input type="password" class="modal-input" id="adminPassword" placeholder="Введите пароль" onkeypress="if(event.key==='Enter')checkAdminPassword()">
-            <button class="modal-btn-admin" onclick="checkAdminPassword()">Войти</button>
-            <div class="modal-error" id="adminError">Неверный пароль</div>
-        </div>
-    </div>
+    <main class="main-content topics-main">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Тематики обращений</div>
+                    <h1 class="page-title">Поиск тематики</h1>
+                    <p class="page-subtitle">Введите описание вопроса или выберите канал, чтобы быстро найти корректную тематику для фиксации обращения.</p>
+                </div>
+                <a class="btn btn-secondary" href="{{ url_for('admin_topics') }}">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M2 12h20"/></svg>
+                    Админ
+                </a>
+            </header>
 
-    <a href="{{ url_for('choose_help_type') }}" class="back-link">
-        ⬅️ Назад
-    </a>
-
-    <div class="main-wrapper">
-        <div class="sidebar">
-            <h3>📂 Фильтры</h3>
-            <label class="sidebar-label">Канал обращения:</label>
-            <div class="channel-buttons">
-                <button type="button" class="channel-btn" data-channel="">Все каналы</button>
-                {% for channel in channels %}
-                <button type="button" class="channel-btn" data-channel="{{ channel }}">{{ channel }}</button>
-                {% endfor %}
-            </div>
-            <p class="search-hint">💡 Выберите канал для более точного поиска</p>
-        </div>
-
-        <div class="container">
-            <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-            <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
-            <h2>📋 Просмотр тематик обращений</h2>
-            <p class="subtitle">
-                Поиск и просмотр тематик. Введите описание для поиска или выберите канал для просмотра всех тематик
-            </p>
-
-            <div id="topicForm">
+            <section class="panel panel-pad">
                 <input type="hidden" id="selected_channel" value="">
-
-                <div class="search-box">
-                    <label class="search-label">💬 Опишите вашу проблему или вопрос:</label>
-                    <div class="search-controls">
-                        <input
-                            type="text"
-                            id="search_query"
-                            class="search-input"
-                            placeholder="Например: не проходит платеж по карте..."
-                            autocomplete="off"
-                            required
-                        >
-                        <button type="button" id="clear_search_btn" class="clear-search-btn">Очистить</button>
+                <div class="topics-toolbar">
+                    <div>
+                        <div class="search-bar">
+                            <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input
+                                type="text"
+                                id="search_query"
+                                class="search-input"
+                                placeholder="Поиск тематики: не проходит платеж, ошибка карты, доступ..."
+                                autocomplete="off"
+                            >
+                        </div>
+                        <div id="search_meta" class="search-meta"></div>
                     </div>
-                    <div id="search_meta" class="search-meta"></div>
-                    <p class="search-hint">💡 Введите минимум 3 символа для начала поиска</p>
+                    <button type="button" id="clear_search_btn" class="btn btn-secondary">Очистить</button>
                 </div>
 
-                <div id="topic_results" class="topic-results"></div>
-            </div>
+                <div class="topics-layout">
+                    <aside class="filter-panel">
+                        <div class="page-kicker">Канал обращения</div>
+                        <div class="channel-list">
+                            <button type="button" class="btn channel-btn" data-channel="">Все каналы</button>
+                            {% for channel in channels %}
+                            <button type="button" class="btn channel-btn" data-channel="{{ channel }}">{{ channel }}</button>
+                            {% endfor %}
+                        </div>
+                        <p class="hint-text">Фильтр по каналу сужает выдачу и ускоряет поиск нужной тематики.</p>
+                    </aside>
+
+                    <div>
+                        <div id="topic_results" class="topic-results"></div>
+                    </div>
+                </div>
+            </section>
         </div>
-    </div>
+    </main>
+</div>
 
-    <script>
-        var searchTimeout = null;
-        const csrfToken = '{{ csrf_token() }}';
-        const searchInput = document.getElementById('search_query');
-        const clearSearchBtn = document.getElementById('clear_search_btn');
-        const searchMeta = document.getElementById('search_meta');
-        const selectedChannelInput = document.getElementById('selected_channel');
-        const topicResults = document.getElementById('topic_results');
-        const channelButtons = document.querySelectorAll('.channel-btn');
-        let activeRequestController = null;
-        let highlightedIndex = -1;
+<script>
+    var searchTimeout = null;
+    const csrfToken = '{{ csrf_token() }}';
+    const searchInput = document.getElementById('search_query');
+    const clearSearchBtn = document.getElementById('clear_search_btn');
+    const searchMeta = document.getElementById('search_meta');
+    const selectedChannelInput = document.getElementById('selected_channel');
+    const topicResults = document.getElementById('topic_results');
+    const channelButtons = document.querySelectorAll('.channel-btn');
+    let activeRequestController = null;
+    let highlightedIndex = -1;
+    let paginationOffset = 0;
+    const TOPICS_PAGE_LIMIT = 200;
+    let paginationHasMore = false;
+    let paginationLoading = false;
+    let paginationTotal = 0;
+    let paginationMode = '';
+    let paginationChannel = '';
 
-        // Состояние пагинации (общее для "Все каналы" и каналов)
-        let paginationOffset = 0;
-        const TOPICS_PAGE_LIMIT = 200;
-        let paginationHasMore = false;
-        let paginationLoading = false;
-        let paginationTotal = 0;
-        let paginationMode = ''; // 'all' | 'channel' | '' (выключено)
-        let paginationChannel = ''; // текущий канал при mode='channel'
+    const defaultChannel = 'Звонки Физ лиц';
+    let defaultButton = Array.from(channelButtons).find(btn => btn.dataset.channel === defaultChannel)
+        || Array.from(channelButtons).find(btn => btn.dataset.channel === '')
+        || channelButtons[0];
 
-	        // По умолчанию выбран "Звонки Физ лиц" (самый популярный канал).
-	        const defaultChannel = 'Звонки Физ лиц';
-	        let defaultButton = null;
+    if (defaultButton) {
+        defaultButton.classList.add('active');
+        selectedChannelInput.value = defaultButton.dataset.channel || '';
+    }
 
-        channelButtons.forEach(button => {
-            if (button.getAttribute('data-channel') === defaultChannel) {
-                button.classList.add('active');
-                defaultButton = button;
-            }
+    if (selectedChannelInput.value) {
+        updateSearchMeta('Канал: ' + selectedChannelInput.value);
+        loadChannelTopics(selectedChannelInput.value);
+    } else {
+        updateSearchMeta('Все каналы');
+        loadAllTopics();
+    }
+
+    function updateSearchMeta(text) {
+        searchMeta.textContent = text || '';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+
+    function highlightText(text, query) {
+        if (!query || query.length < 3) return escapeHtml(text);
+        const escapedText = escapeHtml(text);
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return escapedText.replace(new RegExp(escapedQuery, 'gi'), function(match) {
+            return '<span class="match-highlight">' + match + '</span>';
         });
+    }
 
-        // Если канал не найден в списке — fallback на "Все каналы"
-        if (!defaultButton) {
-            channelButtons.forEach(button => {
-                if (button.getAttribute('data-channel') === '') {
-                    button.classList.add('active');
-                    defaultButton = button;
-                }
-            });
-        }
-
-	        // Устанавливаем канал в скрытое поле
-	        selectedChannelInput.value = defaultButton ? defaultButton.getAttribute('data-channel') : '';
-
-	        // Загружаем тематики выбранного канала
-	        if (selectedChannelInput.value) {
-	            updateSearchMeta('Канал: ' + selectedChannelInput.value);
-	            loadChannelTopics(selectedChannelInput.value);
-	        } else {
-	            updateSearchMeta('Все каналы');
-	            loadAllTopics();
-	        }
-
-        // Функция поиска тематик
-        function updateSearchMeta(text) {
-            searchMeta.textContent = text || '';
-        }
-
-        function highlightText(text, query) {
-            if (!query || query.length < 3) {
-                return escapeHtml(text);
-            }
-
-            const escapedText = escapeHtml(text);
-            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(escapedQuery, 'gi');
-            return escapedText.replace(regex, function(match) {
-                return '<span class="match-highlight">' + match + '</span>';
-            });
-        }
-
-        function applyKeyboardHighlight(items) {
-            items.forEach(function(item, idx) {
-                if (idx === highlightedIndex) {
-                    item.classList.add('active-keyboard');
-                } else {
-                    item.classList.remove('active-keyboard');
-                }
-            });
-        }
-
-        async function searchTopics(query) {
-            const selectedChannel = selectedChannelInput.value;
-
-            if (!query) {
-                updateSearchMeta(selectedChannel ? 'Показаны все тематики выбранного канала' : 'Показаны все тематики');
-                if (selectedChannel) {
-                    await loadChannelTopics(selectedChannel);
-                } else {
-                    await loadAllTopics();
-                }
-                return;
-            }
-
-            if (query.length < 3) {
-                updateSearchMeta('Введите еще ' + (3 - query.length) + ' симв. для поиска');
-                topicResults.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>Введите минимум 3 символа для начала поиска</p></div>';
-                return;
-            }
-
-            paginationMode = ''; // Отключаем lazy loading при поиске
-            topicResults.innerHTML = '<div class="loading">🔍 Поиск тематик...</div>';
-            updateSearchMeta('Выполняется поиск...');
-
-            try {
-                if (activeRequestController) {
-                    activeRequestController.abort();
-                }
-                activeRequestController = new AbortController();
-
-                var response = await fetch('/api/search_topic', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({query: query, channel: selectedChannel}),
-                    signal: activeRequestController.signal
-                });
-
-                var data = await response.json();
-
-                if (data.success && data.results.length > 0) {
-                    updateSearchMeta('Найдено: ' + data.results.length + ' | Запрос: "' + query + '"' + (selectedChannel ? ' | Канал: ' + selectedChannel : ''));
-                    displayTopics(data.results, query);
-                } else {
-                    updateSearchMeta('Совпадений не найдено');
-                    topicResults.innerHTML = '<div class="no-results"><p>❌ Тематики не найдены</p><p style="margin-top: 10px; font-size: 13px;">Попробуйте изменить описание или использовать другие ключевые слова</p></div>';
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    return;
-                }
-                updateSearchMeta('Ошибка поиска');
-                topicResults.innerHTML = '<div class="no-results">❌ Ошибка поиска тематик. Попробуйте еще раз.</div>';
-            }
-        }
-
-        // Отображение найденных тематик
-        function displayTopics(topics, query) {
-            topicResults.innerHTML = '';
-            highlightedIndex = -1;
-
-            topics.forEach(function(topic, idx) {
-                var topicDiv = document.createElement('div');
-                topicDiv.className = 'topic-item';
-                topicDiv.setAttribute('data-topic-id', topic.id);
-                topicDiv.setAttribute('data-topic-name', topic.topic);
-                topicDiv.setAttribute('data-similarity', topic.similarity);
-
-                // Формируем иерархию через слэш
-                var hierarchy = [];
-                if (topic.sr1) hierarchy.push(topic.sr1);
-                if (topic.sr2) hierarchy.push(topic.sr2);
-                if (topic.sr3) hierarchy.push(topic.sr3);
-                if (topic.sr4) hierarchy.push(topic.sr4);
-
-                var topicName = hierarchy.length > 0 ? hierarchy.join('/') : topic.topic;
-                var channelName = topic.channel || 'Неизвестный канал';
-
-                var contentHTML = '<div class="topic-header">' +
-                    '<div style="flex: 1;">' +
-                        '<div class="topic-name">' + highlightText(topicName, query) + '</div>' +
-                        '<div class="topic-channel-badge">📂 ' + escapeHtml(channelName) + '</div>' +
-                    '</div>' +
-                    '<span class="topic-similarity">' + topic.similarity + '%</span>' +
-                '</div>';
-
-                topicDiv.innerHTML = contentHTML;
-                topicDiv.addEventListener('click', function() {
-                    const items = Array.from(topicResults.querySelectorAll('.topic-item'));
-                    highlightedIndex = idx;
-                    applyKeyboardHighlight(items);
-                });
-
-                topicResults.appendChild(topicDiv);
-            });
-        }
-
-        // Экранирование HTML
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Слушаем ввод в поле поиска
-        searchInput.addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            const query = this.value.trim();
-
-            // Задержка перед поиском (debounce) - живой поиск
-            searchTimeout = setTimeout(() => {
-                searchTopics(query);
-            }, 300);
+    function applyKeyboardHighlight(items) {
+        items.forEach(function(item, idx) {
+            item.classList.toggle('active-keyboard', idx === highlightedIndex);
         });
+    }
 
-        clearSearchBtn.addEventListener('click', function() {
-            searchInput.value = '';
-            highlightedIndex = -1;
-            searchInput.focus();
-            searchTopics('');
-        });
+    function topicNameFrom(topic) {
+        const hierarchy = [];
+        if (topic.sr1) hierarchy.push(topic.sr1);
+        if (topic.sr2) hierarchy.push(topic.sr2);
+        if (topic.sr3) hierarchy.push(topic.sr3);
+        if (topic.sr4) hierarchy.push(topic.sr4);
+        return hierarchy.length ? hierarchy.join(' / ') : topic.topic;
+    }
 
-        searchInput.addEventListener('keydown', function(event) {
+    function createTopicElement(topic, query) {
+        const topicDiv = document.createElement('div');
+        topicDiv.className = 'topic-item';
+        topicDiv.dataset.topicId = topic.id;
+        topicDiv.dataset.topicName = topic.topic || '';
+        topicDiv.dataset.similarity = topic.similarity || '';
+        const channelName = topic.channel || 'Неизвестный канал';
+
+        topicDiv.innerHTML =
+            '<div class="topic-header">' +
+                '<div style="min-width:0;flex:1;">' +
+                    '<div class="topic-name">' + highlightText(topicNameFrom(topic), query) + '</div>' +
+                    '<div class="topic-channel-badge">' + escapeHtml(channelName) + '</div>' +
+                '</div>' +
+                '<span class="topic-similarity">' + escapeHtml(String(topic.similarity || 100)) + '%</span>' +
+            '</div>';
+
+        topicDiv.addEventListener('click', function() {
             const items = Array.from(topicResults.querySelectorAll('.topic-item'));
-            if (!items.length) {
-                return;
-            }
-
-            if (event.key === 'ArrowDown') {
-                event.preventDefault();
-                highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
-                applyKeyboardHighlight(items);
-                items[highlightedIndex].scrollIntoView({ block: 'nearest' });
-            } else if (event.key === 'ArrowUp') {
-                event.preventDefault();
-                highlightedIndex = Math.max(highlightedIndex - 1, 0);
-                applyKeyboardHighlight(items);
-                items[highlightedIndex].scrollIntoView({ block: 'nearest' });
-            } else if (event.key === 'Enter') {
-                if (highlightedIndex >= 0 && highlightedIndex < items.length) {
-                    event.preventDefault();
-                    items[highlightedIndex].click();
-                }
-            }
+            highlightedIndex = items.indexOf(topicDiv);
+            applyKeyboardHighlight(items);
         });
 
-        // Обработчики кнопок выбора канала
-        channelButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                // Убираем активный класс со всех кнопок
-                channelButtons.forEach(btn => btn.classList.remove('active'));
+        return topicDiv;
+    }
 
-                // Добавляем активный класс к выбранной кнопке
-                this.classList.add('active');
+    function displayTopics(topics, query) {
+        topicResults.innerHTML = '';
+        highlightedIndex = -1;
+        topics.forEach(topic => topicResults.appendChild(createTopicElement(topic, query)));
+    }
 
-                // Сохраняем выбранный канал
-                const channel = this.getAttribute('data-channel');
-                selectedChannelInput.value = channel;
+    function appendTopics(topics, query) {
+        topics.forEach(topic => topicResults.appendChild(createTopicElement(topic, query)));
+    }
 
-                const query = searchInput.value.trim();
+    async function searchTopics(query) {
+        const selectedChannel = selectedChannelInput.value;
+        if (!query) {
+            updateSearchMeta(selectedChannel ? 'Показаны все тематики выбранного канала' : 'Показаны все тематики');
+            return selectedChannel ? loadChannelTopics(selectedChannel) : loadAllTopics();
+        }
 
-                // Если канал выбран (не "Все каналы"), показываем все тематики
-                if (channel) {
-                    loadChannelTopics(channel);
-                } else {
-                    // "Все каналы" - если есть текст в поле поиска, запускаем поиск, иначе все тематики
-                    if (query.length >= 3) {
-                        searchTopics(query);
-                    } else {
-                        loadAllTopics();
-                    }
-                }
-                updateSearchMeta(channel ? ('Канал: ' + channel) : 'Все каналы');
+        if (query.length < 3) {
+            updateSearchMeta('Введите еще ' + (3 - query.length) + ' симв. для поиска');
+            topicResults.innerHTML = '<div class="empty-state"><strong>Начните поиск</strong>Введите минимум 3 символа.</div>';
+            return;
+        }
+
+        paginationMode = '';
+        topicResults.innerHTML = '<div class="loading">Поиск тематик...</div>';
+        updateSearchMeta('Выполняется поиск...');
+
+        try {
+            if (activeRequestController) activeRequestController.abort();
+            activeRequestController = new AbortController();
+            const response = await fetch('/api/search_topic', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                body: JSON.stringify({query: query, channel: selectedChannel}),
+                signal: activeRequestController.signal
             });
-        });
-
-        // Функция загрузки всех тематик с пагинацией (ленивая загрузка)
-        async function loadAllTopics() {
-            resetPagination('all', '');
-            topicResults.innerHTML = '<div class="loading">📂 Загрузка тематик...</div>';
-            await loadTopicsBatch(false);
-        }
-
-        // Функция загрузки тематик канала с пагинацией
-        async function loadChannelTopics(channel) {
-            resetPagination('channel', channel);
-            topicResults.innerHTML = '<div class="loading">📂 Загрузка тематик канала...</div>';
-            await loadTopicsBatch(false);
-        }
-
-        // Сброс состояния пагинации
-        function resetPagination(mode, channel) {
-            paginationOffset = 0;
-            paginationHasMore = false;
-            paginationLoading = false;
-            paginationTotal = 0;
-            paginationMode = mode;
-            paginationChannel = channel || '';
-        }
-
-        // Универсальная загрузка порции тематик (append = true — дозагрузка при скролле)
-        async function loadTopicsBatch(append) {
-            if (paginationLoading) return;
-            paginationLoading = true;
-
-            // Показываем индикатор загрузки внизу при дозагрузке
-            if (append) {
-                removeLoadMoreIndicator();
-                const loader = document.createElement('div');
-                loader.className = 'load-more-indicator';
-                loader.id = 'loadMoreIndicator';
-                loader.innerHTML = '⏳ Загрузка ещё тематик...';
-                topicResults.appendChild(loader);
+            const data = await response.json();
+            if (data.success && data.results.length > 0) {
+                updateSearchMeta('Найдено: ' + data.results.length + (selectedChannel ? ' | Канал: ' + selectedChannel : ''));
+                displayTopics(data.results, query);
+            } else {
+                updateSearchMeta('Совпадений не найдено');
+                topicResults.innerHTML = '<div class="no-results">Тематики не найдены. Попробуйте изменить запрос.</div>';
             }
-
-            try {
-                // Формируем URL в зависимости от режима
-                let url;
-                if (paginationMode === 'all') {
-                    url = '/api/get_all_topics?limit=' + TOPICS_PAGE_LIMIT + '&offset=' + paginationOffset;
-                } else {
-                    url = '/api/get_channel_topics?channel=' + encodeURIComponent(paginationChannel) +
-                          '&limit=' + TOPICS_PAGE_LIMIT + '&offset=' + paginationOffset;
-                }
-
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {'Content-Type': 'application/json'}
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    paginationTotal = data.total || 0;
-                    paginationHasMore = data.has_more || false;
-
-                    if (!append) {
-                        // Первая загрузка — очищаем и показываем
-                        if (data.results.length > 0) {
-                            displayTopics(data.results, '');
-                        } else {
-                            const label = paginationMode === 'channel'
-                                ? 'Для канала нет тематик'
-                                : 'Тематики не найдены';
-                            updateSearchMeta(label);
-                            topicResults.innerHTML = '<div class="no-results">❌ ' + label + '</div>';
-                            paginationLoading = false;
-                            return;
-                        }
-                    } else {
-                        // Дозагрузка — добавляем к существующим
-                        removeLoadMoreIndicator();
-                        appendTopics(data.results, '');
-                    }
-
-                    paginationOffset += data.results.length;
-
-                    // Обновляем мету
-                    const loaded = Math.min(paginationOffset, paginationTotal);
-                    if (paginationMode === 'channel') {
-                        updateSearchMeta('Канал: ' + paginationChannel + ' | Показано: ' + loaded + ' из ' + paginationTotal);
-                    } else {
-                        updateSearchMeta('Показано: ' + loaded + ' из ' + paginationTotal + ' тематик');
-                    }
-
-                    // Если есть ещё — показываем подсказку внизу
-                    if (paginationHasMore) {
-                        addLoadMoreHint();
-                    }
-                } else {
-                    if (!append) {
-                        updateSearchMeta('Ошибка загрузки тематик');
-                        topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
-                    }
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки тематик');
-                removeLoadMoreIndicator();
-                if (!append) {
-                    updateSearchMeta('Ошибка загрузки тематик');
-                    topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
-                }
-            }
-
-            paginationLoading = false;
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            updateSearchMeta('Ошибка поиска');
+            topicResults.innerHTML = '<div class="no-results">Ошибка поиска тематик. Попробуйте ещё раз.</div>';
         }
+    }
 
-        // Удаляет индикатор загрузки/подсказку внизу
-        function removeLoadMoreIndicator() {
-            const existing = document.getElementById('loadMoreIndicator');
-            if (existing) existing.remove();
-        }
+    function resetPagination(mode, channel) {
+        paginationOffset = 0;
+        paginationHasMore = false;
+        paginationLoading = false;
+        paginationTotal = 0;
+        paginationMode = mode;
+        paginationChannel = channel || '';
+    }
 
-        // Подсказка внизу списка что есть ещё
-        function addLoadMoreHint() {
+    async function loadAllTopics() {
+        resetPagination('all', '');
+        topicResults.innerHTML = '<div class="loading">Загрузка тематик...</div>';
+        await loadTopicsBatch(false);
+    }
+
+    async function loadChannelTopics(channel) {
+        resetPagination('channel', channel);
+        topicResults.innerHTML = '<div class="loading">Загрузка тематик канала...</div>';
+        await loadTopicsBatch(false);
+    }
+
+    async function loadTopicsBatch(append) {
+        if (paginationLoading) return;
+        paginationLoading = true;
+        if (append) {
             removeLoadMoreIndicator();
-            const hint = document.createElement('div');
-            hint.className = 'load-more-indicator load-more-hint';
-            hint.id = 'loadMoreIndicator';
-            hint.innerHTML = '⬇️ Прокрутите вниз для загрузки ещё тематик';
-            topicResults.appendChild(hint);
+            const loader = document.createElement('div');
+            loader.className = 'load-more-indicator';
+            loader.id = 'loadMoreIndicator';
+            loader.textContent = 'Загрузка ещё тематик...';
+            topicResults.appendChild(loader);
         }
 
-        // Добавить тематики к уже отображённым (для дозагрузки)
-        function appendTopics(topics, query) {
-            topics.forEach(function(topic, idx) {
-                var topicDiv = document.createElement('div');
-                topicDiv.className = 'topic-item';
-                topicDiv.setAttribute('data-topic-id', topic.id);
-                topicDiv.setAttribute('data-topic-name', topic.topic);
-                topicDiv.setAttribute('data-similarity', topic.similarity);
+        try {
+            const url = paginationMode === 'all'
+                ? '/api/get_all_topics?limit=' + TOPICS_PAGE_LIMIT + '&offset=' + paginationOffset
+                : '/api/get_channel_topics?channel=' + encodeURIComponent(paginationChannel) + '&limit=' + TOPICS_PAGE_LIMIT + '&offset=' + paginationOffset;
+            const response = await fetch(url, {method: 'GET', headers: {'Content-Type': 'application/json'}});
+            const data = await response.json();
 
-                var hierarchy = [];
-                if (topic.sr1) hierarchy.push(topic.sr1);
-                if (topic.sr2) hierarchy.push(topic.sr2);
-                if (topic.sr3) hierarchy.push(topic.sr3);
-                if (topic.sr4) hierarchy.push(topic.sr4);
-
-                var topicName = hierarchy.length > 0 ? hierarchy.join('/') : topic.topic;
-                var channelName = topic.channel || 'Неизвестный канал';
-
-                var contentHTML = '<div class="topic-header">' +
-                    '<div style="flex: 1;">' +
-                        '<div class="topic-name">' + highlightText(topicName, query) + '</div>' +
-                        '<div class="topic-channel-badge">📂 ' + escapeHtml(channelName) + '</div>' +
-                    '</div>' +
-                    '<span class="topic-similarity">' + topic.similarity + '%</span>' +
-                '</div>';
-
-                topicDiv.innerHTML = contentHTML;
-                topicDiv.addEventListener('click', function() {
-                    const items = Array.from(topicResults.querySelectorAll('.topic-item'));
-                    highlightedIndex = Array.from(topicResults.querySelectorAll('.topic-item')).indexOf(topicDiv);
-                    applyKeyboardHighlight(items);
-                });
-
-                topicResults.appendChild(topicDiv);
-            });
-        }
-
-        // Scroll listener для автоподгрузки (работает для "Все каналы" и для каналов)
-        topicResults.addEventListener('scroll', function() {
-            if (!paginationMode || !paginationHasMore || paginationLoading) return;
-
-            // Если пользователь прокрутил до конца (за 300px до конца) — подгружаем ещё
-            const scrollBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
-            if (scrollBottom < 300) {
-                loadTopicsBatch(true);
-            }
-        });
-
-        // Функции админ-панели
-        function showAdminModal() {
-            document.getElementById('adminModal').classList.add('show');
-            document.getElementById('adminPassword').focus();
-        }
-        function hideAdminModal() {
-            document.getElementById('adminModal').classList.remove('show');
-            document.getElementById('adminPassword').value = '';
-            document.getElementById('adminError').style.display = 'none';
-        }
-        async function checkAdminPassword() {
-            const password = document.getElementById('adminPassword').value;
-            try {
-                const response = await fetch('/api/admin/check-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({ password: password, section: 'topics' })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    window.location.href = '{{ url_for("admin_topics") }}';
+            if (data.success) {
+                paginationTotal = data.total || 0;
+                paginationHasMore = data.has_more || false;
+                if (!append) {
+                    if (data.results.length > 0) {
+                        displayTopics(data.results, '');
+                    } else {
+                        const label = paginationMode === 'channel' ? 'Для канала нет тематик' : 'Тематики не найдены';
+                        updateSearchMeta(label);
+                        topicResults.innerHTML = '<div class="no-results">' + label + '</div>';
+                        paginationLoading = false;
+                        return;
+                    }
                 } else {
-                    document.getElementById('adminError').style.display = 'block';
-                    document.getElementById('adminPassword').value = '';
+                    removeLoadMoreIndicator();
+                    appendTopics(data.results, '');
                 }
-            } catch (e) {
-                document.getElementById('adminError').style.display = 'block';
+                paginationOffset += data.results.length;
+                const loaded = Math.min(paginationOffset, paginationTotal);
+                updateSearchMeta((paginationMode === 'channel' ? 'Канал: ' + paginationChannel + ' | ' : '') + 'Показано: ' + loaded + ' из ' + paginationTotal);
+                if (paginationHasMore) addLoadMoreHint();
+            } else if (!append) {
+                updateSearchMeta('Ошибка загрузки тематик');
+                topicResults.innerHTML = '<div class="no-results">Ошибка загрузки тематик</div>';
+            }
+        } catch (error) {
+            removeLoadMoreIndicator();
+            if (!append) {
+                updateSearchMeta('Ошибка загрузки тематик');
+                topicResults.innerHTML = '<div class="no-results">Ошибка загрузки тематик</div>';
             }
         }
-        document.getElementById('adminModal').addEventListener('click', function(e) {
-            if (e.target === this) hideAdminModal();
-        });
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') hideAdminModal();
-        });
-    </script>
-    <script>
-        (function() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.body.classList.add('light');
-            }
-        })();
-        function toggleTheme() {
-            const isLight = document.body.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
+        paginationLoading = false;
+    }
+
+    function removeLoadMoreIndicator() {
+        const existing = document.getElementById('loadMoreIndicator');
+        if (existing) existing.remove();
+    }
+
+    function addLoadMoreHint() {
+        removeLoadMoreIndicator();
+        const hint = document.createElement('div');
+        hint.className = 'load-more-indicator';
+        hint.id = 'loadMoreIndicator';
+        hint.textContent = 'Прокрутите вниз для загрузки ещё тематик';
+        topicResults.appendChild(hint);
+    }
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        searchTimeout = setTimeout(() => searchTopics(query), 300);
+    });
+
+    clearSearchBtn.addEventListener('click', function() {
+        searchInput.value = '';
+        highlightedIndex = -1;
+        searchInput.focus();
+        searchTopics('');
+    });
+
+    searchInput.addEventListener('keydown', function(event) {
+        const items = Array.from(topicResults.querySelectorAll('.topic-item'));
+        if (!items.length) return;
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+            applyKeyboardHighlight(items);
+            items[highlightedIndex].scrollIntoView({block: 'nearest'});
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            highlightedIndex = Math.max(highlightedIndex - 1, 0);
+            applyKeyboardHighlight(items);
+            items[highlightedIndex].scrollIntoView({block: 'nearest'});
+        } else if (event.key === 'Enter' && highlightedIndex >= 0 && highlightedIndex < items.length) {
+            event.preventDefault();
+            items[highlightedIndex].click();
         }
-        document.addEventListener('DOMContentLoaded', function() {
-            if (document.body.classList.contains('light')) {
-                document.getElementById('themeToggle').textContent = '☀️';
+    });
+
+    channelButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            channelButtons.forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
+            const channel = this.dataset.channel || '';
+            selectedChannelInput.value = channel;
+            const query = searchInput.value.trim();
+            if (channel) {
+                loadChannelTopics(channel);
+            } else if (query.length >= 3) {
+                searchTopics(query);
+            } else {
+                loadAllTopics();
             }
+            updateSearchMeta(channel ? 'Канал: ' + channel : 'Все каналы');
         });
-    </script>
+    });
+
+    topicResults.addEventListener('scroll', function() {
+        if (!paginationMode || !paginationHasMore || paginationLoading) return;
+        const scrollBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
+        if (scrollBottom < 300) loadTopicsBatch(true);
+    });
+</script>
 </body>
 </html>

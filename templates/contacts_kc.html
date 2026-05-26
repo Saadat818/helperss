@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Контакты КЦ — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        .contacts-main {
+            background:
+                radial-gradient(circle at 12% 0%, rgba(8, 145, 178, .08), transparent 32%),
+                var(--bg);
+        }
+
+        .contacts-toolbar {
+            display: grid;
+            grid-template-columns: minmax(320px, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .contacts-layout {
+            display: grid;
+            grid-template-columns: 260px minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+
+        .department-list {
+            display: grid;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .department-link {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            min-width: 0;
+            padding: 11px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .department-link:hover,
+        .department-link.active {
+            border-color: var(--primary-mid);
+            background: var(--primary-light);
+            color: var(--primary-dark);
+        }
+
+        .department-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            font-weight: 700;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .department-count {
+            flex: 0 0 auto;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 700;
+        }
+
+        .contacts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+        .contacts-grid > * { min-width: 0; }
+
+        .contact-card {
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .contact-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .contact-identity {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            min-width: 0;
+        }
+        .contact-identity > div {
+            min-width: 0;
+        }
+        .contact-photo,
+        .contact-photo-empty {
+            width: 92px;
+            aspect-ratio: 1 / 1;
+            flex: 0 0 92px;
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .contact-photo {
+            display: block;
+            height: auto;
+            object-fit: cover;
+            object-position: center;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            cursor: zoom-in;
+        }
+        img.contact-photo {
+            height: 92px;
+        }
+        .contact-photo:hover { border-color: var(--primary); }
+        .contact-photo-empty {
+            display: grid;
+            place-items: center;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: 30px;
+            font-weight: 800;
+        }
+
+        .contact-name {
+            margin: 0 0 5px;
+            color: var(--text);
+            font-size: 18px;
+            font-weight: 800;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+
+        .contact-position {
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .contact-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+        }
+
+        .contact-chip {
+            max-width: 100%;
+            padding: 5px 8px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
+        .contact-note {
+            color: var(--text);
+            font-size: var(--text-sm);
+            line-height: 1.55;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .contact-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+        .contact-social {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding-top: 2px;
+        }
+        .like-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            min-height: 36px;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 800;
+            cursor: pointer;
+            transition: border-color .15s, background .15s, color .15s, transform .15s;
+        }
+        .like-btn:hover,
+        .like-btn.liked {
+            border-color: var(--primary);
+            background: var(--primary-light);
+            color: var(--primary-dark);
+        }
+        .like-btn:disabled {
+            opacity: .65;
+            cursor: wait;
+        }
+
+        .contact-action {
+            min-width: 0;
+            min-height: 36px;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text);
+            font-size: var(--text-sm);
+            font-weight: 700;
+            cursor: pointer;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .contact-action:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .results-meta {
+            margin-bottom: 12px;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 700;
+        }
+        .image-viewer {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 28px;
+            background: rgba(15, 23, 42, .78);
+        }
+        .image-viewer.show { display: flex; }
+        .image-viewer-card {
+            width: min(920px, 100%);
+            max-height: 92vh;
+            display: grid;
+            gap: 12px;
+        }
+        .image-viewer img {
+            max-width: 100%;
+            max-height: 78vh;
+            object-fit: contain;
+            border-radius: 12px;
+            background: #fff;
+        }
+        .image-viewer-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            color: #fff;
+            font-weight: 800;
+        }
+        .image-viewer-close {
+            min-height: 34px;
+            padding: 7px 12px;
+            border: 1px solid rgba(255,255,255,.35);
+            border-radius: 8px;
+            background: rgba(255,255,255,.12);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        @media (max-width: 980px) {
+            html { min-width: 0; }
+            .contacts-toolbar,
+            .contacts-layout,
+            .contacts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'contacts' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
+
+    <main class="main-content contacts-main">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Справочник</div>
+                    <h1 class="page-title">Контакты КЦ</h1>
+                    <p class="page-subtitle">Сотрудники, отделы и рабочие контакты для быстрых консультаций.</p>
+                </div>
+                {% set perms = session.get('admin_permissions', []) %}
+                {% if session.get('admin_logged_in') and ('super_admin' in perms or 'admin_manuals' in perms) %}
+                <a class="btn btn-secondary" href="{{ url_for('admin_contacts_kc') }}">Управление</a>
+                {% endif %}
+            </header>
+
+            <form class="contacts-toolbar" method="get" action="{{ url_for('contacts_kc') }}">
+                <div class="search-bar">
+                    <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Поиск: ФИО, отдел, должность, телефон или Telegram">
+                </div>
+                {% if selected_department %}
+                <input type="hidden" name="department" value="{{ selected_department }}">
+                {% endif %}
+                <button class="btn btn-primary" type="submit">Найти</button>
+            </form>
+
+            <main class="contacts-layout">
+                <aside class="panel panel-pad">
+                    <div class="page-kicker">Отделы</div>
+                    <div class="department-list">
+                        <a class="department-link {% if not selected_department %}active{% endif %}" href="{{ url_for('contacts_kc', q=q) }}">
+                            <span class="department-name">Все отделы</span>
+                            <span class="department-count">{{ stats.contacts_active }}</span>
+                        </a>
+                        {% for department in departments %}
+                        <a class="department-link {% if selected_department|lower == department.name|lower %}active{% endif %}"
+                           href="{{ url_for('contacts_kc', department=department.name, q=q) }}">
+                            <span class="department-name">{{ department.name }}</span>
+                            <span class="department-count">{{ department.active_contacts_count or 0 }}</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </aside>
+
+                <section>
+                    <div class="results-meta">
+                        Найдено: {{ contacts|length }}
+                        {% if q %}по запросу “{{ q }}”{% endif %}
+                    </div>
+
+                    {% if contacts %}
+                    <div class="contacts-grid">
+                        {% for contact in contacts %}
+                        <article class="contact-card">
+                            <div class="contact-head">
+                                <div class="contact-identity">
+                                    {% if contact.photo_path %}
+                                    <img class="contact-photo"
+                                         src="{{ url_for('static', filename=contact.photo_path) }}"
+                                         alt=""
+                                         data-full-image="{{ url_for('static', filename=contact.photo_path) }}"
+                                         data-image-title="{{ contact.full_name }}">
+                                    {% else %}
+                                    <div class="contact-photo-empty">{{ (contact.full_name or '?')[:1] }}</div>
+                                    {% endif %}
+                                    <div>
+                                        <h2 class="contact-name">{{ contact.full_name }}</h2>
+                                        {% if contact.position or contact.department %}
+                                        <div class="contact-position">
+                                            {{ contact.position }}{% if contact.position and contact.department %}, {% endif %}{{ contact.department }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="contact-meta">
+                                {% if contact.workplace %}<span class="contact-chip">{{ contact.workplace }}</span>{% endif %}
+                                {% if contact.schedule %}<span class="contact-chip">{{ contact.schedule }}</span>{% endif %}
+                                {% if contact.tags %}<span class="contact-chip">{{ contact.tags }}</span>{% endif %}
+                            </div>
+
+                            {% if contact.responsibilities %}
+                            <div class="contact-note">{{ contact.responsibilities }}</div>
+                            {% endif %}
+
+                            <div class="contact-social">
+                                <button class="like-btn {% if contact.liked_by_user %}liked{% endif %}"
+                                        type="button"
+                                        data-like-contact="{{ contact.id }}"
+                                        aria-pressed="{{ 'true' if contact.liked_by_user else 'false' }}">
+                                    <span class="like-icon">{{ '♥' if contact.liked_by_user else '♡' }}</span>
+                                    <span>Лайк</span>
+                                    <span class="like-count">{{ contact.likes_count or 0 }}</span>
+                                </button>
+                            </div>
+
+                            <div class="contact-actions">
+                                {% if contact.phone %}
+                                <button class="contact-action" type="button" data-copy="{{ contact.phone }}">☎ {{ contact.phone }}</button>
+                                {% endif %}
+                                {% if contact.extension %}
+                                <button class="contact-action" type="button" data-copy="{{ contact.extension }}">вн. {{ contact.extension }}</button>
+                                {% endif %}
+                                {% if contact.email %}
+                                <button class="contact-action" type="button" data-copy="{{ contact.email }}">{{ contact.email }}</button>
+                                {% endif %}
+                                {% if contact.telegram %}
+                                <button class="contact-action" type="button" data-copy="{{ contact.telegram }}">{{ contact.telegram }}</button>
+                                {% endif %}
+                            </div>
+
+                            {% if contact.notes %}
+                            <div class="helper-text">{{ contact.notes }}</div>
+                            {% endif %}
+                        </article>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="panel empty-state">
+                        <strong>Контакты не найдены</strong>
+                        Измените запрос или выберите другой отдел.
+                    </div>
+                    {% endif %}
+                </section>
+            </main>
+        </div>
+    </main>
+</div>
+
+<div class="image-viewer" id="imageViewer">
+    <div class="image-viewer-card">
+        <div class="image-viewer-bar">
+            <div id="imageViewerTitle"></div>
+            <button class="image-viewer-close" type="button" onclick="closeImageViewer()">Закрыть</button>
+        </div>
+        <img id="imageViewerImg" src="" alt="">
+    </div>
+</div>
+
+<script>
+const csrfToken = '{{ csrf_token() }}';
+
+document.addEventListener('click', async (event) => {
+    const photo = event.target.closest('[data-full-image]');
+    if (photo) {
+        openImageViewer(photo.dataset.fullImage, photo.dataset.imageTitle || '');
+        return;
+    }
+
+    const likeButton = event.target.closest('[data-like-contact]');
+    if (likeButton) {
+        await toggleLike(likeButton);
+        return;
+    }
+
+    const button = event.target.closest('[data-copy]');
+    if (!button) return;
+
+    const original = button.textContent;
+    const value = button.dataset.copy || '';
+    try {
+        await navigator.clipboard.writeText(value);
+        button.textContent = 'Скопировано';
+        setTimeout(() => { button.textContent = original; }, 1200);
+    } catch (e) {
+        button.textContent = value;
+        setTimeout(() => { button.textContent = original; }, 1200);
+    }
+});
+
+async function toggleLike(button) {
+    const contactId = button.dataset.likeContact;
+    if (!contactId || button.disabled) return;
+
+    button.disabled = true;
+    try {
+        const resp = await fetch(`/contacts_kc/${contactId}/like`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken}
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error || 'Не удалось поставить лайк');
+
+        button.classList.toggle('liked', data.liked);
+        button.setAttribute('aria-pressed', data.liked ? 'true' : 'false');
+        const icon = button.querySelector('.like-icon');
+        const count = button.querySelector('.like-count');
+        if (icon) icon.textContent = data.liked ? '♥' : '♡';
+        if (count) count.textContent = data.likes_count || 0;
+    } catch (e) {
+        alert(e.message || 'Не удалось поставить лайк');
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function openImageViewer(src, title) {
+    document.getElementById('imageViewerImg').src = src;
+    document.getElementById('imageViewerTitle').textContent = title;
+    document.getElementById('imageViewer').classList.add('show');
+}
+
+function closeImageViewer() {
+    document.getElementById('imageViewer').classList.remove('show');
+    document.getElementById('imageViewerImg').src = '';
+}
+
+document.getElementById('imageViewer').addEventListener('click', (event) => {
+    if (event.target.id === 'imageViewer') closeImageViewer();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeImageViewer();
+});
+</script>
+</body>
+</html>

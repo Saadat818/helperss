@@ -21,6 +21,8 @@ __pycache__/
 # Переменные окружения
 .env
 *.db
+*.db-shm
+*.db-wal
 topics.db
 # macOS
 .DS_Store
@@ -49,3 +51,5 @@ tz_content.txt
 app.log
 audit.log
 audit.log.*
+bot_polling.*.log
+flask.*.log

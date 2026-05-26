@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Заявка не отправлена</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --red: #d9534f;
+            --green: #00a651;
+            --greenHover: #009448;
+        }
+
+        body.light {
+            --bg: #dde2ea;
+            --card: #ffffff;
+            --card2: #f8f9fa;
+            --text: #1a1a2e;
+            --muted: #606070;
+            --border: #b8c4d0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 540px;
+            padding: 44px 38px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            text-align: center;
+        }
+
+        .mark {
+            width: 64px;
+            height: 64px;
+            display: grid;
+            place-items: center;
+            margin: 0 auto 22px;
+            border-radius: 18px;
+            background: rgba(217, 83, 79, 0.14);
+            color: var(--red);
+            font-size: 34px;
+            font-weight: 900;
+        }
+
+        h1 {
+            margin-bottom: 14px;
+            font-size: 28px;
+            line-height: 1.2;
+        }
+
+        p {
+            margin-bottom: 18px;
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.55;
+        }
+
+        .ticket-number {
+            display: inline-flex;
+            margin-bottom: 26px;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 44px;
+            padding: 0 22px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--card2);
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 800;
+            text-decoration: none;
+        }
+
+        .button.primary {
+            border-color: var(--green);
+            background: var(--green);
+            color: #fff;
+        }
+
+        .button.primary:hover {
+            background: var(--greenHover);
+        }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="mark">!</div>
+        <h1>Заявка не отправлена</h1>
+        <p>Helper не смог доставить сообщение в группу техподдержки. Попробуйте повторить отправку, когда связь с Telegram восстановится.</p>
+        {% if ticket_number %}
+        <div class="ticket-number">Попытка отправки: №{{ ticket_number }}</div>
+        {% endif %}
+        <div class="actions">
+            {% if retry_url %}
+            <a class="button primary" href="{{ retry_url }}">Повторить</a>
+            {% endif %}
+            <a class="button" href="{{ url_for('go_home') }}">На главную</a>
+        </div>
+    </div>
+    <script>
+        if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+    </script>
+</body>
+</html>

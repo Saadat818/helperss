@@ -3,247 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Укажите рабочее место</title>
+    <title>Рабочее место — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
     <style>
-        :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
+        .workplace-layout {
+            max-width: 720px;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
+        .workplace-form {
             display: grid;
-            place-items: center;
-            min-height: 100vh;
-            padding: 24px;
+            gap: 16px;
         }
 
-        .container {
-            width: 420px;
-            max-width: 92vw;
-            border-radius: 14px;
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid #151515;
-            box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
-            padding: 24px 26px 26px;
-        }
-
-        .logo-img {
-            height: 44px;
-            width: 44px;
-        }
-
-        .logo-text {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 800;
-            font-size: 34px;
-            letter-spacing: -0.2px;
-            background: linear-gradient(90deg, #00d4aa 0%, #00a651 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            margin-bottom: 12px;
-        }
-
-        h2 {
-            margin: 8px 0 8px;
-            color: var(--text);
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        .user-info {
-            background: rgba(0, 166, 81, 0.08);
-            border: 1px solid rgba(0, 166, 81, 0.2);
-            border-radius: 10px;
-            padding: 14px 16px;
-            margin: 16px 0 20px;
-        }
-
-        .user-info-item {
-            color: var(--muted);
-            font-size: 13px;
-            margin-bottom: 6px;
-        }
-
-        .user-info-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .user-info-item strong {
-            color: var(--text);
-            font-weight: 600;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        label {
-            display: block;
-            color: var(--muted);
-            font-size: 13px;
-            margin-bottom: 8px;
-            font-weight: 500;
-        }
-
-        input[type="text"] {
+        .workplace-input {
             width: 100%;
             height: 48px;
             padding: 0 16px;
-            border: 1px solid #2a2a2a;
-            background: #1a1a1a;
-            color: #7a7a7a;
-            border-radius: 10px;
-            font-size: 15px;
-            outline: none;
-            transition: border .15s ease, background .15s ease, color .15s ease;
-        }
-
-        input::placeholder {
-            color: #6a6a6a;
-        }
-
-        input[type="text"]:focus {
-            border-color: rgba(0, 166, 81, .5);
-            background: #202020;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
             color: var(--text);
+            font-size: var(--text-md);
+            outline: none;
+            transition: border-color .15s, box-shadow .15s;
         }
 
-        .btn-continue {
-            margin-top: 20px;
-            width: 100%;
-            height: 48px;
-            border-radius: 10px;
-            border: none;
-            background: var(--green);
-            color: #041a0f;
+        .workplace-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+
+        .workplace-meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin: 18px 0;
+        }
+
+        .meta-item {
+            padding: 14px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+        }
+
+        .meta-label {
+            color: var(--text-muted);
+            font-size: var(--text-xs);
             font-weight: 700;
-            font-size: 15px;
-            cursor: pointer;
-            transition: transform .06s ease, background .15s ease;
+            text-transform: uppercase;
+            margin-bottom: 6px;
         }
 
-        .btn-continue:hover {
-            background: var(--greenHover);
+        .meta-value {
+            color: var(--text);
+            font-size: var(--text-sm);
+            font-weight: 600;
         }
-
-        .btn-continue:active {
-            transform: translateY(1px);
-        }
-
-        .btn-continue:disabled {
-            background: rgba(0, 195, 106, 0.35);
-            color: rgba(6, 17, 11, 0.55);
-            cursor: not-allowed;
-        }
-
-        .hint {
-            color: var(--muted);
-            font-size: 12px;
-            margin-top: 8px;
-            line-height: 1.4;
-        }
-
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
-        }
-
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <div class="container">
-        <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
+{% set active_page = 'manuals' %}
+{% set user_name = user_info.get('display_name') or user_info.get('full_name') or user_info.get('name') or user_info.get('username') or 'Пользователь' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
 
-        <h2>Укажите рабочее место</h2>
+    <main class="main-content">
+        <div class="page workplace-layout">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Профиль заявки</div>
+                    <h1 class="page-title">Укажите рабочее место</h1>
+                    <p class="page-subtitle">Номер рабочего места нужен техподдержке, если инструкция не решит проблему.</p>
+                </div>
+            </header>
 
-        <div class="user-info">
-            <div class="user-info-item"><strong>Имя:</strong> {{ user_info.display_name }}</div>
-            {% if user_info.department %}
-            <div class="user-info-item"><strong>Отдел:</strong> {{ user_info.department }}</div>
-            {% endif %}
+            <section class="panel panel-pad">
+                <div class="workplace-meta">
+                    <div class="meta-item">
+                        <div class="meta-label">Имя</div>
+                        <div class="meta-value">{{ user_name }}</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Отдел</div>
+                        <div class="meta-value">{{ user_info.get('department') or 'Не указан' }}</div>
+                    </div>
+                </div>
+
+                <form method="POST" action="{{ url_for('enter_workplace') }}" class="workplace-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div>
+                        <label class="form-label" for="workplace">Номер рабочего места</label>
+                        <input
+                            class="workplace-input"
+                            type="text"
+                            id="workplace"
+                            name="workplace"
+                            required
+                            maxlength="50"
+                            placeholder="Например: 38"
+                            autocomplete="off"
+                        >
+                        <div class="helper-text">Укажите номер рабочего места или компьютера.</div>
+                    </div>
+
+                    <div>
+                        <button type="submit" class="btn btn-primary" id="submit-btn">
+                            <svg class="icon" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                            Продолжить
+                        </button>
+                    </div>
+                </form>
+            </section>
         </div>
+    </main>
+</div>
 
-        <form method="POST" action="{{ url_for('enter_workplace') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<script>
+    const workplaceInput = document.getElementById('workplace');
+    const submitBtn = document.getElementById('submit-btn');
 
-            <div class="form-group">
-                <label for="workplace">Номер рабочего места</label>
-                <input
-                    type="text"
-                    id="workplace"
-                    name="workplace"
-                    required
-                    maxlength="50"
-                    placeholder="Например: 38"
-                    autocomplete="off"
-                >
-                <p class="hint">Укажите номер вашего рабочего места или компьютера</p>
-            </div>
+    function validateForm() {
+        submitBtn.disabled = !workplaceInput.value.trim();
+    }
 
-            <button type="submit" class="btn-continue" id="submit-btn">Продолжить</button>
-        </form>
-    </div>
-
-    <script>
-        const workplaceInput = document.getElementById('workplace');
-        const submitBtn = document.getElementById('submit-btn');
-
-        function validateForm() {
-            const isValid = workplaceInput.value.trim();
-            submitBtn.disabled = !isValid;
-        }
-
-        workplaceInput.addEventListener('input', validateForm);
-        validateForm();
-    </script>
-    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    workplaceInput.addEventListener('input', validateForm);
+    validateForm();
+</script>
 </body>
 </html>

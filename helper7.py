@@ -1940,18 +1940,50 @@ def handle_channel_messages(message):
 # ТРЕНАЖЕР ОПЕРАТОРОВ
 # ============================================
 
+TRAINER_SEGMENTS = {
+    'kc': {'name': 'Контакт Центр', 'icon': '🎧', 'color': '#00a651'},
+    'branch': {'name': 'Филиалы', 'icon': '🏦', 'color': '#2196F3'},
+}
+
+
+def get_user_trainer_segment(user_info):
+    """Определяет сегмент тренажёра по отделу пользователя из AD.
+    Возвращает 'kc', 'branch' или None (если не определено — показываем оба).
+    Настраивается через KC_DEPARTMENTS и BRANCH_DEPARTMENTS в .env (через запятую).
+    """
+    if not user_info:
+        return None
+    department = (user_info.get('department') or '').strip().lower()
+    if not department:
+        return None
+
+    kc_deps = [d.strip().lower() for d in os.getenv('KC_DEPARTMENTS', '').split(',') if d.strip()]
+    branch_deps = [d.strip().lower() for d in os.getenv('BRANCH_DEPARTMENTS', '').split(',') if d.strip()]
+
+    for dep in kc_deps:
+        if dep in department or department in dep:
+            return 'kc'
+    for dep in branch_deps:
+        if dep in department or department in dep:
+            return 'branch'
+
+    return None
+
+
 @app.route('/trainer')
 def trainer_menu():
     """Страница выбора сегмента тренажера (КЦ / Филиалы)"""
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
-    return render_template('trainer_segments.html', is_admin=session.get('admin_logged_in', False))
 
+    user_segment = get_user_trainer_segment(session.get('user_info'))
+    # Если сегмент однозначно определён — сразу редиректим
+    if user_segment:
+        return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
-TRAINER_SEGMENTS = {
-    'kc': {'name': 'Контакт Центр', 'icon': '🎧', 'color': '#00a651'},
-    'branch': {'name': 'Филиалы', 'icon': '🏦', 'color': '#2196F3'},
-}
+    return render_template('trainer_segments.html',
+                           is_admin=session.get('admin_logged_in', False),
+                           user_segment=None)
 
 
 @app.route('/trainer/<segment>')
@@ -1963,9 +1995,11 @@ def trainer_segment_menu(segment):
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
 
-    # Филиалы в разработке — временно открыто для тестирования
-    # if segment == 'branch' and not session.get('admin_logged_in'):
-    #     return render_template('under_construction.html', segment_name='Филиалы')
+    # Проверяем, что пользователь относится к этому сегменту
+    user_segment = get_user_trainer_segment(session.get('user_info'))
+    if user_segment and user_segment != segment:
+        flash('У вас нет доступа к этому разделу тренажёра')
+        return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
@@ -1987,9 +2021,11 @@ def trainer_level(segment, level_code):
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
 
-    # Филиалы в разработке — временно открыто для тестирования
-    # if segment == 'branch' and not session.get('admin_logged_in'):
-    #     return render_template('under_construction.html', segment_name='Филиалы')
+    # Проверяем, что пользователь относится к этому сегменту
+    user_segment = get_user_trainer_segment(session.get('user_info'))
+    if user_segment and user_segment != segment:
+        flash('У вас нет доступа к этому разделу тренажёра')
+        return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
     user_id = session['user_info'].get('username', 'anonymous')
     level = trainer_mgr.get_level_by_code(level_code)
@@ -2078,6 +2114,13 @@ def trainer_play(scenario_id):
         if not scenario.get('is_active'):
             flash('Сценарий недоступен')
             return redirect(url_for('trainer_segment_menu', segment=play_segment))
+
+        # Проверяем, что сегмент сценария совпадает с сегментом пользователя
+        scenario_segment = scenario.get('segment', 'kc')
+        user_segment = get_user_trainer_segment(session.get('user_info'))
+        if user_segment and user_segment != scenario_segment:
+            flash('У вас нет доступа к этому сценарию')
+            return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
     # Check level access (skip in preview mode)
     if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code'], segment=play_segment):

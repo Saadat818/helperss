@@ -175,8 +175,9 @@
             <p class="subtitle">Выберите направление для прохождения сценариев</p>
         </div>
 
-        <div class="segments-grid">
+        <div class="segments-grid" style="{{ 'grid-template-columns: 1fr;' if user_segment else '' }}">
             <!-- Контакт Центр -->
+            {% if not user_segment or user_segment == 'kc' %}
             <a href="{{ url_for('trainer_segment_menu', segment='kc') }}" class="segment-card"
                style="--accent: #00a651;">
                 <div class="segment-icon">🎧</div>
@@ -184,8 +185,10 @@
                 <div class="segment-desc">Сценарии для специалистов контакт-центра: телефонные звонки, обработка обращений клиентов</div>
                 <div class="segment-btn">Перейти →</div>
             </a>
+            {% endif %}
 
             <!-- Филиалы -->
+            {% if not user_segment or user_segment == 'branch' %}
             <a href="{{ url_for('trainer_segment_menu', segment='branch') }}" class="segment-card"
                style="--accent: #2196F3;">
                 <div class="segment-icon">🏦</div>
@@ -193,6 +196,7 @@
                 <div class="segment-desc">Сценарии для сотрудников отделений: обслуживание клиентов в офисе, кассовые операции</div>
                 <div class="segment-btn">Перейти →</div>
             </a>
+            {% endif %}
         </div>
     </div>
 

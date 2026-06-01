@@ -327,6 +327,54 @@
             gap: 14px;
         }
         .form-grid .wide { grid-column: 1 / -1; }
+        .form-hint {
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 700;
+            line-height: 1.35;
+        }
+        .department-manager {
+            display: grid;
+            grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+            gap: 18px;
+            align-items: start;
+        }
+        .department-list {
+            max-height: 420px;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+        }
+        .department-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .department-row:last-child { border-bottom: none; }
+        .department-path {
+            color: var(--text);
+            font-size: var(--text-sm);
+            font-weight: 800;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+        .department-meta {
+            margin-top: 3px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 700;
+        }
+        .department-empty {
+            padding: 14px;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 700;
+        }
         .check-row {
             display: flex;
             align-items: center;
@@ -334,9 +382,19 @@
             color: var(--text);
             font-weight: 700;
         }
+        .clear-photo-row {
+            display: none;
+            margin-top: 10px;
+        }
+        .photo-upload-grid {
+            display: grid;
+            grid-template-columns: 112px minmax(0, 1fr);
+            gap: 12px;
+            align-items: stretch;
+        }
         .photo-preview {
             display: none;
-            width: 96px;
+            width: 112px;
             aspect-ratio: 1 / 1;
             border: 1px solid var(--border);
             border-radius: var(--radius-md);
@@ -345,12 +403,28 @@
             background: var(--bg-secondary);
         }
         img.photo-preview {
-            height: 96px;
+            height: 112px;
         }
         .photo-preview.show { display: block; }
+        .photo-preview-empty {
+            display: grid;
+            width: 112px;
+            aspect-ratio: 1 / 1;
+            place-items: center;
+            border: 1px dashed var(--border-hover);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 800;
+            text-align: center;
+            padding: 10px;
+        }
+        .photo-preview.show + .photo-preview-empty { display: none; }
         .photo-dropzone {
             display: grid;
             gap: 8px;
+            align-content: center;
             padding: 14px;
             border: 1px dashed var(--border-hover);
             border-radius: var(--radius-md);
@@ -369,6 +443,50 @@
         .photo-drop-title {
             color: var(--text);
             font-weight: 800;
+        }
+        .photo-input-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .photo-pick-btn {
+            width: fit-content;
+            min-height: 32px;
+            padding: 7px 11px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--card);
+            color: var(--text);
+            font-size: var(--text-sm);
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .photo-pick-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary-dark);
+        }
+        .photo-clear-btn {
+            display: none;
+            width: fit-content;
+            min-height: 32px;
+            padding: 7px 11px;
+            border: 1px solid rgba(220,38,38,.28);
+            border-radius: var(--radius-sm);
+            background: var(--red-light);
+            color: var(--red);
+            font-size: var(--text-sm);
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .photo-clear-btn.show {
+            display: inline-flex;
+            align-items: center;
+        }
+        .photo-clear-btn:hover {
+            border-color: var(--red);
+            background: var(--card);
         }
         .photo-file-name {
             min-height: 18px;
@@ -435,6 +553,7 @@
         </div>
         <div class="header-actions">
             <button class="btn btn-primary" type="button" onclick="openContactModal()">Добавить контакт</button>
+            <button class="btn btn-secondary" type="button" onclick="openDepartmentModal()">Группы и отделы</button>
             <a class="btn btn-secondary" href="{{ url_for('contacts_kc') }}">Справочник</a>
             <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Обзор</a>
         </div>
@@ -459,7 +578,7 @@
         </div>
         <div class="stat-box">
             <div class="stat-value">{{ stats.departments_total }}</div>
-            <div class="stat-label">Отделов</div>
+            <div class="stat-label">Групп/отделов</div>
         </div>
         <div class="stat-box">
             <div class="stat-value">{{ total }}</div>
@@ -468,9 +587,9 @@
     </section>
 
     <form class="filter-bar" method="get" action="{{ url_for('admin_contacts_kc') }}">
-        <input class="form-control" type="search" name="q" value="{{ q }}" placeholder="Поиск по ФИО, отделу, должности, телефону или Telegram">
+        <input class="form-control" type="search" name="q" value="{{ q }}" placeholder="Поиск по ФИО, группе, должности, нику, телефону или Telegram">
         <select class="form-control" name="department">
-            <option value="">Все отделы</option>
+            <option value="">Все группы</option>
             {% for department in departments %}
             <option value="{{ department.name }}" {% if selected_department|lower == department.name|lower %}selected{% endif %}>
                 {{ department.name }}
@@ -492,7 +611,7 @@
                     <thead>
                     <tr>
                         <th>Сотрудник</th>
-                        <th>Отдел</th>
+                        <th>Группа / отдел</th>
                         <th>Контакты</th>
                         <th>Лайки</th>
                         <th>Статус</th>
@@ -526,11 +645,16 @@
                                 {% else %}
                                 <span class="cell-sub">Без отдела</span>
                                 {% endif %}
-                                {% if contact.tags %}<div class="cell-sub">{{ contact.tags }}</div>{% endif %}
+                                {% if contact.group_role_label %}
+                                <div class="cell-sub">Роль: {{ contact.group_role_label }}</div>
+                                {% endif %}
+                                {% if contact.languages %}<div class="cell-sub">Язык: {{ contact.languages }}</div>{% endif %}
                             </td>
                             <td>
                                 {% if contact.phone %}<div>{{ contact.phone }}</div>{% endif %}
+                                {% if contact.mobile %}<div class="cell-sub">моб. {{ contact.mobile }}</div>{% endif %}
                                 {% if contact.extension %}<div class="cell-sub">вн. {{ contact.extension }}</div>{% endif %}
+                                {% if contact.nickname %}<div class="cell-sub">ник {{ contact.nickname }}</div>{% endif %}
                                 {% if contact.telegram %}<div class="cell-sub">{{ contact.telegram }}</div>{% endif %}
                             </td>
                             <td><span class="likes-pill">♥ {{ contact.likes_count or 0 }}</span></td>
@@ -551,11 +675,11 @@
                                             data-phone="{{ contact.phone|e }}"
                                             data-extension="{{ contact.extension|e }}"
                                             data-mobile="{{ contact.mobile|e }}"
-                                            data-email="{{ contact.email|e }}"
                                             data-telegram="{{ contact.telegram|e }}"
+                                            data-nickname="{{ contact.nickname|e }}"
+                                            data-languages="{{ contact.languages|e }}"
                                             data-workplace="{{ contact.workplace|e }}"
                                             data-schedule="{{ contact.schedule|e }}"
-                                            data-responsibilities="{{ contact.responsibilities|e }}"
                                             data-notes="{{ contact.notes|e }}"
                                             data-tags="{{ contact.tags|e }}"
                                             data-photo-path="{{ contact.photo_path|e }}"
@@ -625,11 +749,6 @@
                 <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
                 <input type="hidden" name="return_status" value="{{ status }}">
                 <input type="hidden" name="return_page" value="{{ page }}">
-                <input type="hidden" name="workplace" data-field="workplace">
-                <input type="hidden" name="mobile" data-field="mobile">
-                <input type="hidden" name="email" data-field="email">
-                <input type="hidden" name="schedule" data-field="schedule">
-                <input type="hidden" name="responsibilities" data-field="responsibilities">
 
                 <div class="form-grid">
                     <label>
@@ -638,16 +757,21 @@
                     </label>
                     <label>
                         <span class="form-label">Должность</span>
-                        <input class="form-control" name="position" data-field="position">
+                        <input class="form-control" name="position" data-field="position" list="contactPositionOptions">
+                        <datalist id="contactPositionOptions">
+                            {% for position in position_options %}
+                            <option value="{{ position }}"></option>
+                            {% endfor %}
+                        </datalist>
                     </label>
                     <label>
-                        <span class="form-label">Отдел</span>
+                        <span class="form-label">Группа / отдел</span>
                         <div class="autocomplete-field" data-department-combobox>
                             <input class="form-control"
                                    id="departmentSearch"
                                    data-department-input
                                    type="text"
-                                   placeholder="Выберите отдел"
+                                   placeholder="Выберите группу или отдел"
                                    autocomplete="off"
                                    aria-autocomplete="list"
                                    aria-controls="departmentDropdown"
@@ -655,11 +779,15 @@
                             <input type="hidden" name="department" data-field="department" data-department-value>
                             <div class="autocomplete-dropdown" id="departmentDropdown" data-department-dropdown role="listbox"></div>
                         </div>
-                        <div class="field-error" id="departmentError">Выберите отдел из списка</div>
+                        <div class="field-error" id="departmentError">Выберите группу или отдел из списка</div>
                     </label>
                     <label>
                         <span class="form-label">Телефон</span>
                         <input class="form-control" name="phone" data-field="phone">
+                    </label>
+                    <label>
+                        <span class="form-label">Мобильный</span>
+                        <input class="form-control" name="mobile" data-field="mobile">
                     </label>
                     <label>
                         <span class="form-label">Внутренний номер</span>
@@ -669,25 +797,53 @@
                         <span class="form-label">Telegram</span>
                         <input class="form-control" name="telegram" data-field="telegram">
                     </label>
+                    <label>
+                        <span class="form-label">Ник</span>
+                        <input class="form-control" name="nickname" data-field="nickname" autocomplete="off" autocapitalize="off" spellcheck="false">
+                    </label>
+                    <label>
+                        <span class="form-label">Язык</span>
+                        <input class="form-control" name="languages" data-field="languages" placeholder="RU, KG">
+                    </label>
+                    <label>
+                        <span class="form-label">Рабочее место</span>
+                        <input class="form-control" name="workplace" data-field="workplace">
+                    </label>
                     <div class="wide">
                         <span class="form-label">Фото или скрин</span>
-                        <div class="photo-dropzone" id="contactPhotoDropzone" tabindex="0">
-                            <div class="photo-drop-title">Перетащите изображение, выберите файл или вставьте Ctrl+V</div>
-                            <input class="form-control" id="contactPhotoInput" name="photo" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.jfif,.avif">
-                            <div class="photo-file-name" id="contactPhotoFileName">JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF</div>
+                        <div class="photo-upload-grid">
+                            <div>
+                                <img class="photo-preview" id="contactPhotoPreview" src="" alt="">
+                                <div class="photo-preview-empty">Нет фото</div>
+                            </div>
+                            <div>
+                                <div class="photo-dropzone" id="contactPhotoDropzone" tabindex="0">
+                                    <div class="photo-drop-title">Перетащите изображение, выберите файл или вставьте Ctrl+V</div>
+                                    <label class="photo-pick-btn" for="contactPhotoInput">Выбрать файл</label>
+                                    <button class="photo-clear-btn" id="clearSelectedPhotoBtn" type="button">Убрать выбранное фото</button>
+                                    <input class="photo-input-hidden" id="contactPhotoInput" name="photo" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.jfif,.avif">
+                                    <div class="photo-file-name" id="contactPhotoFileName">JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF до 10 МБ</div>
+                                </div>
+                                <label class="check-row clear-photo-row" id="clearPhotoRow">
+                                    <input type="checkbox" name="clear_photo">
+                                    Удалить сохранённое фото
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <label class="wide">
                         <span class="form-label">Заметки</span>
                         <textarea class="form-control" name="notes" data-field="notes"></textarea>
                     </label>
-                    <label>
+                    <label class="wide">
                         <span class="form-label">Теги</span>
-                        <input class="form-control" name="tags" data-field="tags">
+                        <input class="form-control" name="tags" data-field="tags" placeholder="Например: премиум, жалобы, обучение">
+                        <div class="form-hint">Теги участвуют в поиске, но не показываются как отдельное поле пользователям.</div>
                     </label>
                     <label>
-                        <span class="form-label">Сортировка</span>
+                        <span class="form-label">Порядок в группе</span>
                         <input class="form-control" name="sort_order" data-field="sort_order" type="number" value="0">
+                        <div class="form-hint">0 — обычный порядок. Меньшее число поднимает сотрудника выше внутри своей роли.</div>
                     </label>
                     <label class="check-row">
                         <input type="checkbox" name="is_active" data-field="is_active" checked>
@@ -699,6 +855,91 @@
                     <button class="btn btn-primary" type="submit">Сохранить</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="departmentModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2 class="modal-title">Группы и отделы</h2>
+            <button class="mini-btn" type="button" onclick="closeModal('departmentModal')">Закрыть</button>
+        </div>
+        <div class="modal-body">
+            <div class="department-manager">
+                <form method="post" action="{{ url_for('admin_contact_department_create') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="return_q" value="{{ q }}">
+                    <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                    <input type="hidden" name="return_status" value="{{ status }}">
+                    <input type="hidden" name="return_page" value="{{ page }}">
+
+                    <div class="form-grid">
+                        <label class="wide">
+                            <span class="form-label">Название *</span>
+                            <input class="form-control" name="name" required placeholder="Например: Группа онлайн обращений №5">
+                        </label>
+                        <label class="wide">
+                            <span class="form-label">Родительский отдел</span>
+                            <select class="form-control" name="parent_name">
+                                <option value="">Без родителя</option>
+                                {% for department in departments %}
+                                <option value="{{ department.name }}">
+                                    {{ department.path|join(' / ') if department.path else department.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-hint">Для новой группы выберите отдел, внутри которого она должна отображаться.</div>
+                        </label>
+                        <label>
+                            <span class="form-label">Тип</span>
+                            <select class="form-control" name="kind">
+                                <option value="group">Группа</option>
+                                <option value="department">Отдел</option>
+                                <option value="management">Управление</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span class="form-label">Порядок</span>
+                            <input class="form-control" name="sort_order" type="number" value="0">
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-primary" type="submit">Добавить</button>
+                    </div>
+                </form>
+
+                <div>
+                    <div class="cell-title">Добавленные вручную</div>
+                    <div class="form-hint">Базовую структуру удалить нельзя. Вручную добавленные группы удаляются, только если в них нет сотрудников и дочерних групп.</div>
+                    <div class="department-list">
+                        {% if custom_departments %}
+                            {% for department in custom_departments %}
+                            <div class="department-row">
+                                <div>
+                                    <div class="department-path">{{ department.path|join(' / ') }}</div>
+                                    <div class="department-meta">
+                                        {% if department.kind == 'management' %}Управление{% elif department.kind == 'department' %}Отдел{% else %}Группа{% endif %}
+                                        · сотрудников: {{ department.contacts_count }}
+                                        · дочерних: {{ department.children_count }}
+                                    </div>
+                                </div>
+                                <form method="post" action="{{ url_for('admin_contact_department_delete', department_id=department.id) }}" onsubmit="return confirm('Удалить подразделение?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="return_q" value="{{ q }}">
+                                    <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                                    <input type="hidden" name="return_status" value="{{ status }}">
+                                    <input type="hidden" name="return_page" value="{{ page }}">
+                                    <button class="mini-btn mini-danger" type="submit" {% if department.contacts_count or department.children_count %}disabled{% endif %}>Удалить</button>
+                                </form>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="department-empty">Пока нет подразделений, добавленных через админку.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -717,7 +958,9 @@
 const contactCreateUrl = "{{ url_for('admin_contact_create') }}";
 const departmentOptions = {{ departments|map(attribute='name')|list|tojson }};
 const initialSelectedDepartment = {{ (selected_department or '')|tojson }};
+const CONTACT_PHOTO_PREVIEW_SIZE = 224;
 let selectedPhotoObjectUrl = '';
+let photoPreviewToken = 0;
 let activeDepartmentIndex = -1;
 let renderedDepartmentOptions = [];
 
@@ -818,7 +1061,7 @@ function renderDepartmentDropdown(query = '') {
     if (!renderedDepartmentOptions.length) {
         const empty = document.createElement('div');
         empty.className = 'autocomplete-empty';
-        empty.textContent = 'Отдел не найден';
+        empty.textContent = 'Группа не найдена';
         dropdown.appendChild(empty);
     } else {
         renderedDepartmentOptions.forEach((name, index) => {
@@ -911,32 +1154,64 @@ function initDepartmentAutocomplete() {
     });
 }
 
+function setSelectedPhotoClearVisible(show) {
+    const clearSelectedBtn = document.getElementById('clearSelectedPhotoBtn');
+    if (clearSelectedBtn) clearSelectedBtn.classList.toggle('show', Boolean(show));
+}
+
 function setContactPhotoPreview(photoPath) {
     const preview = document.getElementById('contactPhotoPreview');
     const clearRow = document.getElementById('clearPhotoRow');
     const fileName = document.getElementById('contactPhotoFileName');
+    const dropzone = document.getElementById('contactPhotoDropzone');
+    const clearPhoto = clearRow ? clearRow.querySelector('input[name="clear_photo"]') : null;
+    photoPreviewToken += 1;
     if (selectedPhotoObjectUrl) {
         URL.revokeObjectURL(selectedPhotoObjectUrl);
         selectedPhotoObjectUrl = '';
     }
     const hasPhoto = Boolean(photoPath);
+    if (dropzone) dropzone.dataset.savedPhotoPath = photoPath || '';
     if (preview) {
         preview.classList.toggle('show', hasPhoto);
         preview.src = hasPhoto ? `/static/${photoPath}` : '';
     }
     if (clearRow) clearRow.style.display = hasPhoto ? 'flex' : 'none';
-    if (fileName) fileName.textContent = hasPhoto ? 'Фото уже сохранено. Можно загрузить новое.' : 'JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF';
+    if (clearPhoto) clearPhoto.checked = false;
+    setSelectedPhotoClearVisible(false);
+    if (fileName) fileName.textContent = hasPhoto ? 'Фото уже сохранено. Можно загрузить новое.' : 'JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF до 10 МБ';
+}
+
+function clearSelectedContactPhoto() {
+    const input = document.getElementById('contactPhotoInput');
+    const dropzone = document.getElementById('contactPhotoDropzone');
+    photoPreviewToken += 1;
+    if (input) input.value = '';
+    if (selectedPhotoObjectUrl) {
+        URL.revokeObjectURL(selectedPhotoObjectUrl);
+        selectedPhotoObjectUrl = '';
+    }
+    setContactPhotoPreview(dropzone?.dataset.savedPhotoPath || '');
 }
 
 function contactModalIsOpen() {
     return document.getElementById('contactModal').classList.contains('show');
 }
 
+function openDepartmentModal() {
+    document.getElementById('departmentModal').classList.add('show');
+}
+
 function normalizedImageFile(file) {
     if (!file) return null;
-    const isImage = file.type ? file.type.startsWith('image/') : /\.(jpe?g|png|webp|gif|bmp|jfif|avif)$/i.test(file.name || '');
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/avif'];
+    const isImage = allowedMimeTypes.includes(file.type || '') || /\.(jpe?g|png|webp|gif|bmp|jfif|avif)$/i.test(file.name || '');
     if (!isImage) {
         alert('Выберите изображение: JPG, PNG, WEBP, GIF, BMP, JFIF или AVIF.');
+        return null;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        alert('Фото должно быть не больше 10 МБ.');
         return null;
     }
     if (file.name) return file;
@@ -953,29 +1228,92 @@ function normalizedImageFile(file) {
     return new File([file], `clipboard-screenshot.${ext}`, {type: file.type || 'image/png'});
 }
 
-function setSelectedPhoto(file) {
+async function createContactPhotoPreviewUrl(file) {
+    if (!window.createImageBitmap) {
+        return URL.createObjectURL(file);
+    }
+
+    const bitmap = await createImageBitmap(file);
+    const side = CONTACT_PHOTO_PREVIEW_SIZE;
+    const canvas = document.createElement('canvas');
+    canvas.width = side;
+    canvas.height = side;
+
+    const sourceSize = Math.min(bitmap.width, bitmap.height);
+    const sourceX = Math.max(0, (bitmap.width - sourceSize) / 2);
+    const sourceY = Math.max(0, (bitmap.height - sourceSize) / 2);
+    const ctx = canvas.getContext('2d', {alpha: false});
+    ctx.drawImage(bitmap, sourceX, sourceY, sourceSize, sourceSize, 0, 0, side, side);
+    if (bitmap.close) bitmap.close();
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+    if (!blob) {
+        throw new Error('Preview blob was not created');
+    }
+    return URL.createObjectURL(blob);
+}
+
+async function setSelectedPhoto(file, syncInput = true) {
     const normalized = normalizedImageFile(file);
-    if (!normalized) return;
+    if (!normalized) return false;
 
     const input = document.getElementById('contactPhotoInput');
     const fileName = document.getElementById('contactPhotoFileName');
     const preview = document.getElementById('contactPhotoPreview');
+    const clearRow = document.getElementById('clearPhotoRow');
     const clearPhoto = document.querySelector('#clearPhotoRow input[name="clear_photo"]');
 
-    const dt = new DataTransfer();
-    dt.items.add(normalized);
-    input.files = dt.files;
+    if (syncInput && input) {
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(normalized);
+            input.files = dt.files;
+        } catch (e) {
+            console.warn('Не удалось программно назначить файл', e);
+            alert('Браузер не разрешил прикрепить этот файл. Нажмите "Выберите файл" и выберите изображение вручную.');
+            return false;
+        }
+    }
 
-    if (selectedPhotoObjectUrl) {
-        URL.revokeObjectURL(selectedPhotoObjectUrl);
-    }
-    selectedPhotoObjectUrl = URL.createObjectURL(normalized);
+    const token = photoPreviewToken + 1;
+    photoPreviewToken = token;
+    const previousObjectUrl = selectedPhotoObjectUrl;
+    selectedPhotoObjectUrl = '';
     if (preview) {
-        preview.src = selectedPhotoObjectUrl;
-        preview.classList.add('show');
+        preview.classList.remove('show');
+        preview.removeAttribute('src');
     }
-    if (fileName) fileName.textContent = normalized.name;
+    if (fileName) fileName.textContent = `${normalized.name} - готовим превью...`;
     if (clearPhoto) clearPhoto.checked = false;
+    if (clearRow) clearRow.style.display = 'none';
+    setSelectedPhotoClearVisible(true);
+
+    try {
+        const previewUrl = await createContactPhotoPreviewUrl(normalized);
+        if (token !== photoPreviewToken) {
+            URL.revokeObjectURL(previewUrl);
+            return false;
+        }
+        if (previousObjectUrl) {
+            URL.revokeObjectURL(previousObjectUrl);
+        }
+        selectedPhotoObjectUrl = previewUrl;
+        if (preview) {
+            preview.src = previewUrl;
+            preview.classList.add('show');
+        }
+        if (fileName) fileName.textContent = normalized.name;
+        return true;
+    } catch (e) {
+        console.warn('Не удалось построить превью', e);
+        if (previousObjectUrl) {
+            URL.revokeObjectURL(previousObjectUrl);
+        }
+        if (token === photoPreviewToken && fileName) {
+            fileName.textContent = `${normalized.name} выбран, превью недоступно`;
+        }
+        return true;
+    }
 }
 
 function initPhotoDropzone() {
@@ -983,18 +1321,39 @@ function initPhotoDropzone() {
     const input = document.getElementById('contactPhotoInput');
     if (!dropzone || !input) return;
 
-    dropzone.addEventListener('click', (event) => {
-        if (event.target !== input) input.click();
-    });
-    dropzone.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            input.click();
-        }
-    });
+    const clearSelectedBtn = document.getElementById('clearSelectedPhotoBtn');
+    if (clearSelectedBtn) {
+        clearSelectedBtn.addEventListener('click', clearSelectedContactPhoto);
+    }
+
     input.addEventListener('change', () => {
-        if (input.files && input.files[0]) setSelectedPhoto(input.files[0]);
+        if (input.files && input.files[0]) setSelectedPhoto(input.files[0], false);
+        else clearSelectedContactPhoto();
     });
+
+    const clearPhoto = document.querySelector('#clearPhotoRow input[name="clear_photo"]');
+    if (clearPhoto) {
+        clearPhoto.addEventListener('change', () => {
+            const preview = document.getElementById('contactPhotoPreview');
+            const fileName = document.getElementById('contactPhotoFileName');
+            if (clearPhoto.checked) {
+                photoPreviewToken += 1;
+                input.value = '';
+                if (selectedPhotoObjectUrl) {
+                    URL.revokeObjectURL(selectedPhotoObjectUrl);
+                    selectedPhotoObjectUrl = '';
+                }
+                if (preview) {
+                    preview.classList.remove('show');
+                    preview.src = '';
+                }
+                if (fileName) fileName.textContent = 'Фото будет удалено после сохранения';
+                setSelectedPhotoClearVisible(false);
+            } else {
+                setContactPhotoPreview(dropzone.dataset.savedPhotoPath || '');
+            }
+        });
+    }
 
     ['dragenter', 'dragover'].forEach(type => {
         dropzone.addEventListener(type, (event) => {
@@ -1028,6 +1387,7 @@ function openContactModal(button) {
     form.action = contactCreateUrl;
     document.getElementById('contactModalTitle').textContent = 'Добавить контакт';
     setField(form, 'is_active', '1');
+    setField(form, 'nickname', '');
     setField(form, 'sort_order', '0');
     setDepartmentValue(initialSelectedDepartment);
     setContactPhotoPreview('');
@@ -1038,7 +1398,7 @@ function openContactModal(button) {
         form.action = `/admin/contacts_kc/contacts/${d.contactId}/update`;
         document.getElementById('contactModalTitle').textContent = 'Изменить контакт';
         ['full_name', 'position', 'phone', 'extension', 'mobile',
-         'email', 'telegram', 'workplace', 'schedule', 'responsibilities', 'notes',
+         'telegram', 'nickname', 'languages', 'workplace', 'notes',
          'tags', 'sort_order'].forEach(field => setField(form, field, d[toCamel(field)]));
         setDepartmentValue(d.department || '');
         setField(form, 'is_active', d.active);

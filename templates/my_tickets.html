@@ -86,6 +86,7 @@
         .status-closed_auto { background: var(--primary-light); color: var(--primary-dark); }
         .status-rejected,
         .status-mass_incident { background: var(--red-light); color: var(--red); }
+        .status-transferred_up { background: var(--purple-light); color: var(--purple); }
 
         .feedback-panel {
             display: none;
@@ -104,6 +105,22 @@
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .resubmit-panel {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid var(--red-light);
+            border-radius: var(--radius-md);
+            background: color-mix(in srgb, var(--red-light) 55%, transparent);
+        }
+
+        .resubmit-panel .card-desc {
+            margin-top: 4px;
+        }
+
+        .resubmit-panel .btn {
             margin-top: 10px;
         }
 
@@ -163,7 +180,8 @@
         closed: 'status-closed',
         closed_auto: 'status-closed_auto',
         rejected: 'status-rejected',
-        mass_incident: 'status-mass_incident'
+        mass_incident: 'status-mass_incident',
+        transferred_up: 'status-transferred_up'
     };
 
     document.addEventListener('DOMContentLoaded', loadTickets);
@@ -196,14 +214,44 @@
         return `<span class="badge ${cls}">${escapeHtml(ticket.status_label || 'Неизвестно')}</span>`;
     }
 
+    function resubmitBadge(ticket) {
+        if (!ticket.resubmitted_from) return '';
+        return `<span class="badge badge-info">Повторная от №${escapeHtml(ticket.resubmitted_from)}</span>`;
+    }
+
+    function renderRejectedPanel(ticket) {
+        if (ticket.status !== 'rejected') return '';
+        if (ticket.resubmitted_ticket_number) {
+            return `
+                <div class="resubmit-panel">
+                    <div class="card-title" style="font-size:var(--text-base);">Заявка уже отправлена повторно</div>
+                    <div class="card-desc">Новая заявка: №${escapeHtml(ticket.resubmitted_ticket_number)}</div>
+                </div>
+            `;
+        }
+        if (!ticket.can_resubmit) return '';
+        return `
+            <div class="resubmit-panel">
+                <div class="card-title" style="font-size:var(--text-base);">Можно отправить повторно</div>
+                <div class="card-desc">Перед повторной отправкой будьте на рабочем месте. Иначе техподдержка может снова отклонить заявку.</div>
+                <button class="btn btn-danger" type="button" onclick="resubmitTicket(${Number(ticket.ticket_number)}, this)">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                    Отправить повторно
+                </button>
+            </div>
+        `;
+    }
+
     function renderSummary(tickets) {
         const open = tickets.filter(t => t.status === 'in_work').length;
         const ready = tickets.filter(t => t.status === 'ready_for_feedback').length;
         const closed = tickets.filter(t => ['closed', 'closed_auto'].includes(t.status)).length;
+        const transferred = tickets.filter(t => t.status === 'transferred_up').length;
         ticketsSummary.innerHTML = `
             <span>Всего: <strong>${tickets.length}</strong></span>
             <span>В работе: <strong>${open}</strong></span>
             <span>Ожидают подтверждения: <strong>${ready}</strong></span>
+            <span>Передано выше: <strong>${transferred}</strong></span>
             <span>Закрыто: <strong>${closed}</strong></span>
         `;
     }
@@ -221,6 +269,7 @@
                     <div class="ticket-head">
                         <div class="ticket-number">№${escapeHtml(ticket.ticket_number || '—')}</div>
                         ${statusBadge(ticket)}
+                        ${resubmitBadge(ticket)}
                         ${ticket.is_cisco ? '<span class="badge badge-info">Cisco</span>' : ''}
                     </div>
                     <div class="ticket-problem">${escapeHtml(ticket.problem || 'Без описания')}</div>
@@ -228,9 +277,11 @@
                         <span>Создана: ${escapeHtml(formatDate(ticket.created_at))}</span>
                         <span>Обновлена: ${escapeHtml(formatDate(ticket.updated_at || ticket.created_at))}</span>
                         ${ticket.assigned_name ? `<span>Ответственный: ${escapeHtml(ticket.assigned_name)}</span>` : ''}
-                        ${ticket.resolved_by ? `<span>Решил: ${escapeHtml(ticket.resolved_by)}</span>` : ''}
+                        ${ticket.resolved_by && ticket.status !== 'transferred_up' ? `<span>Решил: ${escapeHtml(ticket.resolved_by)}</span>` : ''}
+                        ${ticket.transferred_by ? `<span>Передал: ${escapeHtml(ticket.transferred_by)}</span>` : ''}
                     </div>
                     ${ticket.reject_reason ? `<div class="helper-text">Причина: ${escapeHtml(ticket.reject_reason)}</div>` : ''}
+                    ${renderRejectedPanel(ticket)}
                     <div class="feedback-panel ${ticket.can_feedback ? 'visible' : ''}">
                         <div class="card-title" style="font-size:var(--text-base);">Подтвердите результат</div>
                         <div class="card-desc">Техподдержка отметила заявку как готовую. Если вопрос не решён, заявка вернётся в работу.</div>
@@ -273,6 +324,39 @@
             await loadTickets();
         } catch (error) {
             alert(error.message || 'Не удалось обновить статус');
+        }
+    }
+
+    async function resubmitTicket(ticketNumber, button) {
+        const warning = 'Отправить заявку повторно?\\n\\nПеред повторной отправкой просьба быть на рабочем месте. Если специалист снова не сможет с вами связаться или проверить рабочее место, заявка может быть отклонена.';
+        if (!confirm(warning)) return;
+        const originalHtml = button ? button.innerHTML : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Отправляем...';
+        }
+        try {
+            const response = await fetch(`/api/ticket_resubmit/${ticketNumber}`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRFToken': csrfToken }
+            });
+            const payload = await response.json();
+            if (payload.redirect_url) {
+                window.location.href = payload.redirect_url;
+                return;
+            }
+            if (!payload.success) {
+                throw new Error(payload.error || 'Не удалось отправить повторно');
+            }
+            alert(payload.message || `Повторная заявка №${payload.new_ticket_number} отправлена`);
+            await loadTickets();
+        } catch (error) {
+            alert(error.message || 'Не удалось отправить повторно');
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+            }
         }
     }
 

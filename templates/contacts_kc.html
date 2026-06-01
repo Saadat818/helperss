@@ -13,6 +13,10 @@
                 var(--bg);
         }
 
+        .contacts-main .page {
+            max-width: 1320px;
+        }
+
         .contacts-toolbar {
             display: grid;
             grid-template-columns: minmax(320px, 1fr) auto;
@@ -23,23 +27,80 @@
 
         .contacts-layout {
             display: grid;
-            grid-template-columns: 260px minmax(0, 1fr);
-            gap: 16px;
+            grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+            grid-template-areas: "results departments";
+            gap: 20px;
             align-items: start;
+        }
+
+        .contacts-results {
+            grid-area: results;
+            min-width: 0;
         }
 
         .department-list {
             display: grid;
-            gap: 8px;
+            gap: 6px;
             min-width: 0;
+        }
+
+        .department-panel {
+            grid-area: departments;
+            position: sticky;
+            top: 28px;
+            max-height: calc(100vh - 56px);
+            overflow: auto;
+            padding: 12px !important;
+            scrollbar-gutter: stable;
+            color-scheme: light;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-hover) var(--bg-secondary);
+        }
+
+        body.dark .department-panel {
+            color-scheme: dark;
+            scrollbar-color: #64748b #0f172a;
+        }
+
+        .department-panel::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .department-panel::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 999px;
+        }
+
+        .department-panel::-webkit-scrollbar-thumb {
+            border: 2px solid var(--bg-secondary);
+            border-radius: 999px;
+            background: var(--border-hover);
+        }
+
+        .department-panel::-webkit-scrollbar-thumb:hover {
+            background: var(--text-hint);
+        }
+
+        body.dark .department-panel::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        body.dark .department-panel::-webkit-scrollbar-thumb {
+            border-color: #0f172a;
+            background: #64748b;
+        }
+
+        body.dark .department-panel::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
         }
 
         .department-link {
             display: flex;
+            align-items: flex-start;
             justify-content: space-between;
-            gap: 10px;
+            gap: 6px;
             min-width: 0;
-            padding: 11px 12px;
+            padding: 8px 9px;
             border: 1px solid var(--border);
             border-radius: var(--radius-md);
             background: var(--card);
@@ -58,34 +119,157 @@
             flex: 1 1 auto;
             min-width: 0;
             overflow: hidden;
+            font-size: 11px;
             font-weight: 700;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            line-height: 1.24;
+            overflow-wrap: anywhere;
+            white-space: normal;
         }
 
         .department-count {
-            flex: 0 0 auto;
-            color: var(--text-muted);
-            font-size: var(--text-sm);
-            font-weight: 700;
+            display: none;
+        }
+        .department-children {
+            display: grid;
+            gap: 6px;
+            padding-left: 12px;
+            border-left: 1px solid var(--border);
+        }
+        .department-link.dept-level-0 {
+            padding: 9px 10px;
+            border-color: var(--primary-mid);
+            background: color-mix(in srgb, var(--primary-light) 30%, var(--card));
+        }
+        .department-link.dept-level-1 {
+            margin-top: 2px;
+            background: var(--bg-secondary);
+        }
+        .department-link.dept-kind-group .department-name {
+            font-weight: 650;
         }
 
         .contacts-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
+            grid-template-columns: 1fr;
+            gap: 24px;
         }
         .contacts-grid > * { min-width: 0; }
 
-        .contact-card {
+        .hierarchy-unit {
             display: grid;
             gap: 12px;
             min-width: 0;
+        }
+
+        .hierarchy-children {
+            display: grid;
+            gap: 18px;
+            min-width: 0;
+        }
+
+        .hierarchy-level-0 {
             padding: 16px;
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             background: var(--card);
             box-shadow: var(--shadow-sm);
+        }
+
+        .hierarchy-level-0 > .hierarchy-children {
+            padding-left: 14px;
+            border-left: 2px solid var(--primary-mid);
+        }
+
+        .hierarchy-level-1 {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+        }
+
+        .hierarchy-level-2 {
+            padding: 12px 0 0 14px;
+            border-left: 2px solid var(--border);
+        }
+
+        .hierarchy-level-3 {
+            padding: 10px 0 0 14px;
+            border-left: 1px solid var(--border);
+        }
+
+        .hierarchy-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            padding: 0 2px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .hierarchy-title {
+            margin: 0;
+            color: var(--text);
+            font-size: 20px;
+            font-weight: 900;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+
+        .hierarchy-level-0 > .hierarchy-header .hierarchy-title {
+            font-size: 24px;
+        }
+
+        .hierarchy-level-1 > .hierarchy-header .hierarchy-title {
+            font-size: 20px;
+        }
+
+        .hierarchy-level-3 > .hierarchy-header .hierarchy-title {
+            font-size: 17px;
+        }
+
+        .hierarchy-kicker {
+            margin-bottom: 4px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .contact-group-label {
+            flex: 0 0 auto;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .contact-group-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+        .contact-group-grid > * { min-width: 0; }
+
+        .contact-card {
+            display: grid;
+            gap: 14px;
+            min-width: 0;
+            padding: 18px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .contact-card.is-role-lead,
+        .contact-card.is-role-head {
+            border-color: var(--primary-mid);
+            background: color-mix(in srgb, var(--primary-light) 34%, var(--card));
+        }
+
+        .contact-card.is-role-chief,
+        .contact-card.is-role-senior {
+            border-color: var(--blue-light);
         }
 
         .contact-head {
@@ -96,7 +280,7 @@
         }
         .contact-identity {
             display: flex;
-            gap: 12px;
+            gap: 14px;
             align-items: flex-start;
             min-width: 0;
         }
@@ -105,9 +289,9 @@
         }
         .contact-photo,
         .contact-photo-empty {
-            width: 92px;
+            width: 112px;
             aspect-ratio: 1 / 1;
-            flex: 0 0 92px;
+            flex: 0 0 112px;
             border-radius: 14px;
             overflow: hidden;
         }
@@ -121,7 +305,7 @@
             cursor: zoom-in;
         }
         img.contact-photo {
-            height: 92px;
+            height: 112px;
         }
         .contact-photo:hover { border-color: var(--primary); }
         .contact-photo-empty {
@@ -129,14 +313,14 @@
             place-items: center;
             background: var(--primary-light);
             color: var(--primary-dark);
-            font-size: 30px;
+            font-size: 36px;
             font-weight: 800;
         }
 
         .contact-name {
             margin: 0 0 5px;
             color: var(--text);
-            font-size: 18px;
+            font-size: 19px;
             font-weight: 800;
             line-height: 1.25;
             overflow-wrap: anywhere;
@@ -147,6 +331,32 @@
             font-size: var(--text-sm);
             line-height: 1.4;
             overflow-wrap: anywhere;
+        }
+
+        .role-badge {
+            flex: 0 0 auto;
+            padding: 6px 9px;
+            border-radius: var(--radius-sm);
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: var(--text-xs);
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .role-badge.head {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+        }
+
+        .role-badge.chief {
+            background: var(--yellow-light);
+            color: var(--yellow);
+        }
+
+        .role-badge.senior {
+            background: var(--blue-light);
+            color: var(--blue);
         }
 
         .contact-meta {
@@ -235,10 +445,33 @@
         }
 
         .results-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
             margin-bottom: 12px;
             color: var(--text-muted);
             font-size: var(--text-sm);
             font-weight: 700;
+        }
+        .contacts-load-state {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 56px;
+            margin-top: 16px;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 800;
+        }
+        .contacts-sentinel {
+            width: 100%;
+            height: 1px;
+        }
+        .load-more-btn {
+            display: none;
+            margin: 12px auto 0;
         }
         .image-viewer {
             display: none;
@@ -286,14 +519,151 @@
             html { min-width: 0; }
             .contacts-toolbar,
             .contacts-layout,
-            .contacts-grid {
+            .contacts-grid,
+            .contact-group-grid {
                 grid-template-columns: 1fr;
+            }
+            .contacts-layout {
+                grid-template-areas:
+                    "departments"
+                    "results";
+            }
+            .department-panel {
+                position: static;
+                max-height: none;
+            }
+            .hierarchy-level-0,
+            .hierarchy-level-1 {
+                padding: 12px;
+            }
+            .hierarchy-level-0 > .hierarchy-children,
+            .hierarchy-level-2,
+            .hierarchy-level-3 {
+                padding-left: 10px;
             }
         }
     </style>
 </head>
 <body>
 {% set active_page = 'contacts' %}
+{% macro department_nav(nodes) %}
+    {% for node in nodes %}
+    <a class="department-link dept-level-{{ node.level }} dept-kind-{{ node.kind }} {% if selected_department|lower == node.name|lower %}active{% endif %}"
+       href="{{ url_for('contacts_kc', department=node.name, q=q, per_page=per_page) }}">
+        <span class="department-name">{{ node.name }}</span>
+        <span class="department-count">{{ node.active_contacts_count or 0 }}</span>
+    </a>
+    {% if node.children %}
+    <div class="department-children">
+        {{ department_nav(node.children) }}
+    </div>
+    {% endif %}
+    {% endfor %}
+{% endmacro %}
+
+{% macro contact_card(contact) %}
+<article class="contact-card{% if contact.contact_role_class %} is-role-{{ contact.contact_role_class }}{% endif %}">
+    <div class="contact-head">
+        <div class="contact-identity">
+            {% if contact.photo_path %}
+            <img class="contact-photo"
+                 src="{{ url_for('static', filename=contact.photo_path) }}"
+                 alt=""
+                 loading="lazy"
+                 decoding="async"
+                 data-full-image="{{ url_for('static', filename=contact.photo_path) }}"
+                 data-image-title="{{ contact.full_name }}">
+            {% else %}
+            <div class="contact-photo-empty">{{ (contact.full_name or '?')[:1] }}</div>
+            {% endif %}
+            <div>
+                <h2 class="contact-name">{{ contact.full_name }}</h2>
+                {% if contact.position %}
+                <div class="contact-position">{{ contact.position }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% if contact.group_role_label %}
+        <span class="role-badge {{ contact.contact_role_class }}">{{ contact.group_role_label }}</span>
+        {% endif %}
+    </div>
+
+    <div class="contact-meta">
+        {% if contact.workplace %}<span class="contact-chip">{{ contact.workplace }}</span>{% endif %}
+        {% if contact.nickname %}<span class="contact-chip">Ник: {{ contact.nickname }}</span>{% endif %}
+        {% if contact.schedule %}<span class="contact-chip">{{ contact.schedule }}</span>{% endif %}
+        {% if contact.languages %}<span class="contact-chip">Язык: {{ contact.languages }}</span>{% endif %}
+    </div>
+
+    <div class="contact-social">
+        <button class="like-btn {% if contact.liked_by_user %}liked{% endif %}"
+                type="button"
+                data-like-contact="{{ contact.id }}"
+                aria-pressed="{{ 'true' if contact.liked_by_user else 'false' }}">
+            <span class="like-icon">{{ '♥' if contact.liked_by_user else '♡' }}</span>
+            <span>Лайк</span>
+            <span class="like-count">{{ contact.likes_count or 0 }}</span>
+        </button>
+    </div>
+
+    <div class="contact-actions">
+        {% if contact.phone %}
+        <button class="contact-action" type="button" data-copy="{{ contact.phone }}">☎ {{ contact.phone }}</button>
+        {% endif %}
+        {% if contact.mobile %}
+        <button class="contact-action" type="button" data-copy="{{ contact.mobile }}">моб. {{ contact.mobile }}</button>
+        {% endif %}
+        {% if contact.extension %}
+        <button class="contact-action" type="button" data-copy="{{ contact.extension }}">вн. {{ contact.extension }}</button>
+        {% endif %}
+        {% if contact.telegram %}
+        <button class="contact-action" type="button" data-copy="{{ contact.telegram }}">{{ contact.telegram }}</button>
+        {% endif %}
+        {% if contact.nickname %}
+        <button class="contact-action" type="button" data-copy="{{ contact.nickname }}">ник {{ contact.nickname }}</button>
+        {% endif %}
+    </div>
+
+    {% if contact.notes %}
+    <div class="helper-text">{{ contact.notes }}</div>
+    {% endif %}
+</article>
+{% endmacro %}
+
+{% macro hierarchy_kind_label(kind) -%}
+    {%- if kind == 'management' -%}Управление
+    {%- elif kind == 'group' -%}Группа
+    {%- else -%}Отдел / подразделение
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro render_hierarchy_unit(unit) %}
+<section class="hierarchy-unit hierarchy-level-{{ unit.level }} hierarchy-kind-{{ unit.kind }}" data-hierarchy-key="{{ unit.key }}">
+    <header class="hierarchy-header">
+        <div>
+            <div class="hierarchy-kicker">{{ hierarchy_kind_label(unit.kind) }}</div>
+            <h2 class="hierarchy-title">{{ unit.name }}</h2>
+        </div>
+        {% if unit.contacts %}
+        <div class="contact-group-label">Сначала руководитель</div>
+        {% endif %}
+    </header>
+    {% if unit.contacts %}
+    <div class="contact-group-grid">
+        {% for contact in unit.contacts %}
+        {{ contact_card(contact) }}
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if unit.children %}
+    <div class="hierarchy-children">
+        {% for child in unit.children %}
+        {{ render_hierarchy_unit(child) }}
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endmacro %}
 <div class="app-shell">
     {% include '_app_sidebar.html' %}
 
@@ -303,7 +673,7 @@
                 <div>
                     <div class="page-kicker">Справочник</div>
                     <h1 class="page-title">Контакты КЦ</h1>
-                    <p class="page-subtitle">Сотрудники, отделы и рабочие контакты для быстрых консультаций.</p>
+                    <p class="page-subtitle">Сотрудники разложены по группам: сначала руководитель или начальник, затем специалисты.</p>
                 </div>
                 {% set perms = session.get('admin_permissions', []) %}
                 {% if session.get('admin_logged_in') and ('super_admin' in perms or 'admin_manuals' in perms) %}
@@ -314,7 +684,7 @@
             <form class="contacts-toolbar" method="get" action="{{ url_for('contacts_kc') }}">
                 <div class="search-bar">
                     <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-                    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Поиск: ФИО, отдел, должность, телефон или Telegram">
+                    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Поиск: ФИО, группа, должность, ник, телефон или Telegram">
                 </div>
                 {% if selected_department %}
                 <input type="hidden" name="department" value="{{ selected_department }}">
@@ -323,102 +693,43 @@
             </form>
 
             <main class="contacts-layout">
-                <aside class="panel panel-pad">
-                    <div class="page-kicker">Отделы</div>
+                <aside class="panel panel-pad department-panel">
+                    <div class="page-kicker">Группы и отделы</div>
                     <div class="department-list">
-                        <a class="department-link {% if not selected_department %}active{% endif %}" href="{{ url_for('contacts_kc', q=q) }}">
-                            <span class="department-name">Все отделы</span>
+                        <a class="department-link {% if not selected_department %}active{% endif %}" href="{{ url_for('contacts_kc', q=q, per_page=per_page) }}">
+                            <span class="department-name">Все группы</span>
                             <span class="department-count">{{ stats.contacts_active }}</span>
                         </a>
-                        {% for department in departments %}
-                        <a class="department-link {% if selected_department|lower == department.name|lower %}active{% endif %}"
-                           href="{{ url_for('contacts_kc', department=department.name, q=q) }}">
-                            <span class="department-name">{{ department.name }}</span>
-                            <span class="department-count">{{ department.active_contacts_count or 0 }}</span>
-                        </a>
-                        {% endfor %}
+                        {{ department_nav(department_tree) }}
                     </div>
                 </aside>
 
-                <section>
+                <section class="contacts-results">
                     <div class="results-meta">
-                        Найдено: {{ contacts|length }}
-                        {% if q %}по запросу “{{ q }}”{% endif %}
+                        <span id="contactsResultText">
+                            Показано: {{ contacts|length }} из {{ total }}
+                            {% if q %}по запросу “{{ q }}”{% endif %}
+                        </span>
+                        <span id="contactsLoadHint">{{ 'Прокрутите вниз для загрузки следующих' if has_more else 'Все контакты загружены' }}</span>
                     </div>
 
-                    {% if contacts %}
-                    <div class="contacts-grid">
-                        {% for contact in contacts %}
-                        <article class="contact-card">
-                            <div class="contact-head">
-                                <div class="contact-identity">
-                                    {% if contact.photo_path %}
-                                    <img class="contact-photo"
-                                         src="{{ url_for('static', filename=contact.photo_path) }}"
-                                         alt=""
-                                         data-full-image="{{ url_for('static', filename=contact.photo_path) }}"
-                                         data-image-title="{{ contact.full_name }}">
-                                    {% else %}
-                                    <div class="contact-photo-empty">{{ (contact.full_name or '?')[:1] }}</div>
-                                    {% endif %}
-                                    <div>
-                                        <h2 class="contact-name">{{ contact.full_name }}</h2>
-                                        {% if contact.position or contact.department %}
-                                        <div class="contact-position">
-                                            {{ contact.position }}{% if contact.position and contact.department %}, {% endif %}{{ contact.department }}
-                                        </div>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="contact-meta">
-                                {% if contact.workplace %}<span class="contact-chip">{{ contact.workplace }}</span>{% endif %}
-                                {% if contact.schedule %}<span class="contact-chip">{{ contact.schedule }}</span>{% endif %}
-                                {% if contact.tags %}<span class="contact-chip">{{ contact.tags }}</span>{% endif %}
-                            </div>
-
-                            {% if contact.responsibilities %}
-                            <div class="contact-note">{{ contact.responsibilities }}</div>
-                            {% endif %}
-
-                            <div class="contact-social">
-                                <button class="like-btn {% if contact.liked_by_user %}liked{% endif %}"
-                                        type="button"
-                                        data-like-contact="{{ contact.id }}"
-                                        aria-pressed="{{ 'true' if contact.liked_by_user else 'false' }}">
-                                    <span class="like-icon">{{ '♥' if contact.liked_by_user else '♡' }}</span>
-                                    <span>Лайк</span>
-                                    <span class="like-count">{{ contact.likes_count or 0 }}</span>
-                                </button>
-                            </div>
-
-                            <div class="contact-actions">
-                                {% if contact.phone %}
-                                <button class="contact-action" type="button" data-copy="{{ contact.phone }}">☎ {{ contact.phone }}</button>
-                                {% endif %}
-                                {% if contact.extension %}
-                                <button class="contact-action" type="button" data-copy="{{ contact.extension }}">вн. {{ contact.extension }}</button>
-                                {% endif %}
-                                {% if contact.email %}
-                                <button class="contact-action" type="button" data-copy="{{ contact.email }}">{{ contact.email }}</button>
-                                {% endif %}
-                                {% if contact.telegram %}
-                                <button class="contact-action" type="button" data-copy="{{ contact.telegram }}">{{ contact.telegram }}</button>
-                                {% endif %}
-                            </div>
-
-                            {% if contact.notes %}
-                            <div class="helper-text">{{ contact.notes }}</div>
-                            {% endif %}
-                        </article>
+                    <div class="contacts-grid" id="contactsGrid">
+                        {% if contact_tree %}
+                        {% for unit in contact_tree %}
+                        {{ render_hierarchy_unit(unit) }}
                         {% endfor %}
+                        {% endif %}
                     </div>
-                    {% else %}
-                    <div class="panel empty-state">
+
+                    <div class="panel empty-state" id="contactsEmpty" {% if contacts %}style="display:none;"{% endif %}>
                         <strong>Контакты не найдены</strong>
                         Измените запрос или выберите другой отдел.
                     </div>
+
+                    {% if contacts %}
+                    <div class="contacts-load-state" id="contactsLoadState">{{ 'Прокрутите вниз, чтобы загрузить ещё' if has_more else 'Все контакты загружены' }}</div>
+                    <button class="btn btn-secondary load-more-btn" type="button" id="contactsLoadMore">Показать ещё</button>
+                    <div class="contacts-sentinel" id="contactsSentinel" aria-hidden="true"></div>
                     {% endif %}
                 </section>
             </main>
@@ -438,6 +749,206 @@
 
 <script>
 const csrfToken = '{{ csrf_token() }}';
+const contactsGrid = document.getElementById('contactsGrid');
+const contactsResultText = document.getElementById('contactsResultText');
+const contactsLoadHint = document.getElementById('contactsLoadHint');
+const contactsLoadState = document.getElementById('contactsLoadState');
+const contactsLoadMore = document.getElementById('contactsLoadMore');
+const contactsSentinel = document.getElementById('contactsSentinel');
+const contactsEmpty = document.getElementById('contactsEmpty');
+const contactsQuery = {{ q|tojson }};
+const contactsDepartment = {{ selected_department|tojson }};
+const contactsPerPage = {{ per_page|tojson }};
+let contactsPage = {{ page|tojson }};
+let contactsTotal = {{ total|tojson }};
+let contactsLoaded = {{ (contacts|length)|tojson }};
+let contactsHasMore = {{ has_more|tojson }};
+let contactsLoading = false;
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function contactInitial(name) {
+    return String(name || '?').trim().slice(0, 1) || '?';
+}
+
+function normalizeContactGroup(value) {
+    return String(value || 'Без отдела').trim().replace(/\s+/g, ' ').toLowerCase() || 'без отдела';
+}
+
+function contactGroupName(contact) {
+    return String(contact.department_group || contact.department || 'Без отдела').trim() || 'Без отдела';
+}
+
+function getOrCreateContactGroup(groupName) {
+    if (!contactsGrid) return null;
+    const name = String(groupName || 'Без отдела').trim() || 'Без отдела';
+    const key = normalizeContactGroup(name);
+    const existing = Array.from(contactsGrid.querySelectorAll('[data-contact-group-key]'))
+        .find(section => section.dataset.contactGroupKey === key);
+    if (existing) return existing.querySelector('.contact-group-grid');
+
+    contactsGrid.insertAdjacentHTML('beforeend', `
+        <section class="hierarchy-unit hierarchy-level-3 hierarchy-kind-group" data-contact-group-key="${escapeHtml(key)}">
+            <header class="hierarchy-header">
+                <div>
+                    <div class="hierarchy-kicker">Группа</div>
+                    <h2 class="hierarchy-title">${escapeHtml(name)}</h2>
+                </div>
+                <div class="contact-group-label">Сначала руководитель</div>
+            </header>
+            <div class="contact-group-grid"></div>
+        </section>
+    `);
+    const created = contactsGrid.lastElementChild;
+    return created ? created.querySelector('.contact-group-grid') : null;
+}
+
+function contactCardHtml(contact) {
+    const photo = contact.photo_url
+        ? `<img class="contact-photo"
+                src="${escapeHtml(contact.photo_url)}"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                data-full-image="${escapeHtml(contact.photo_url)}"
+                data-image-title="${escapeHtml(contact.full_name)}">`
+        : `<div class="contact-photo-empty">${escapeHtml(contactInitial(contact.full_name))}</div>`;
+
+    const roleClassName = String(contact.contact_role_class || '').trim();
+    const roleClass = roleClassName ? ` is-role-${escapeHtml(roleClassName)}` : '';
+    const roleBadge = contact.group_role_label
+        ? `<span class="role-badge ${escapeHtml(roleClassName)}">${escapeHtml(contact.group_role_label)}</span>`
+        : '';
+    const positionLine = contact.position
+        ? `<div class="contact-position">${escapeHtml(contact.position)}</div>`
+        : '';
+    const chips = [
+        contact.workplace,
+        contact.nickname ? `Ник: ${contact.nickname}` : '',
+        contact.schedule,
+        contact.languages ? `Язык: ${contact.languages}` : ''
+    ].filter(Boolean).map(value => `<span class="contact-chip">${escapeHtml(value)}</span>`).join('');
+    const notes = contact.notes
+        ? `<div class="helper-text">${escapeHtml(contact.notes)}</div>`
+        : '';
+    const actions = [
+        contact.phone ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.phone)}">☎ ${escapeHtml(contact.phone)}</button>` : '',
+        contact.mobile ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.mobile)}">моб. ${escapeHtml(contact.mobile)}</button>` : '',
+        contact.extension ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.extension)}">вн. ${escapeHtml(contact.extension)}</button>` : '',
+        contact.telegram ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.telegram)}">${escapeHtml(contact.telegram)}</button>` : '',
+        contact.nickname ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.nickname)}">ник ${escapeHtml(contact.nickname)}</button>` : ''
+    ].join('');
+
+    return `
+        <article class="contact-card${roleClass}">
+            <div class="contact-head">
+                <div class="contact-identity">
+                    ${photo}
+                    <div>
+                        <h2 class="contact-name">${escapeHtml(contact.full_name)}</h2>
+                        ${positionLine}
+                    </div>
+                </div>
+                ${roleBadge}
+            </div>
+            ${chips ? `<div class="contact-meta">${chips}</div>` : ''}
+            <div class="contact-social">
+                <button class="like-btn ${contact.liked_by_user ? 'liked' : ''}"
+                        type="button"
+                        data-like-contact="${Number(contact.id)}"
+                        aria-pressed="${contact.liked_by_user ? 'true' : 'false'}">
+                    <span class="like-icon">${contact.liked_by_user ? '♥' : '♡'}</span>
+                    <span>Лайк</span>
+                    <span class="like-count">${Number(contact.likes_count || 0)}</span>
+                </button>
+            </div>
+            ${actions ? `<div class="contact-actions">${actions}</div>` : ''}
+            ${notes}
+        </article>
+    `;
+}
+
+function appendContactCard(contact) {
+    const group = getOrCreateContactGroup(contactGroupName(contact));
+    if (!group) return;
+    group.insertAdjacentHTML('beforeend', contactCardHtml(contact));
+}
+
+function contactsApiUrl(page) {
+    const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(contactsPerPage)
+    });
+    if (contactsQuery) params.set('q', contactsQuery);
+    if (contactsDepartment) params.set('department', contactsDepartment);
+    return `/api/contacts_kc?${params.toString()}`;
+}
+
+function updateContactsStatus() {
+    if (contactsResultText) {
+        contactsResultText.textContent = `Показано: ${contactsLoaded} из ${contactsTotal}${contactsQuery ? ` по запросу “${contactsQuery}”` : ''}`;
+    }
+    if (contactsLoadHint) {
+        contactsLoadHint.textContent = contactsHasMore ? 'Ниже подгрузятся следующие сотрудники' : 'Все контакты загружены';
+    }
+    if (contactsLoadState) {
+        contactsLoadState.textContent = contactsHasMore ? 'Прокрутите вниз, чтобы загрузить ещё' : 'Все контакты загружены';
+    }
+    if (contactsLoadMore) {
+        contactsLoadMore.style.display = contactsHasMore && !('IntersectionObserver' in window) ? 'inline-flex' : 'none';
+    }
+}
+
+async function loadMoreContacts() {
+    if (contactsLoading || !contactsHasMore || !contactsGrid) return;
+    contactsLoading = true;
+    if (contactsLoadState) contactsLoadState.textContent = 'Загружаем...';
+    if (contactsLoadMore) contactsLoadMore.disabled = true;
+
+    try {
+        const response = await fetch(contactsApiUrl(contactsPage + 1), { credentials: 'same-origin' });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Не удалось загрузить контакты');
+
+        const rows = payload.contacts || [];
+        if (rows.length) {
+            rows.forEach(appendContactCard);
+            if (contactsEmpty) contactsEmpty.style.display = 'none';
+        }
+        contactsPage = Number(payload.page || contactsPage + 1);
+        contactsTotal = Number(payload.total || contactsTotal);
+        contactsHasMore = Boolean(payload.has_more);
+        contactsLoaded += rows.length;
+    } catch (e) {
+        if (contactsLoadState) contactsLoadState.textContent = e.message || 'Ошибка загрузки';
+    } finally {
+        contactsLoading = false;
+        if (contactsLoadMore) contactsLoadMore.disabled = false;
+        updateContactsStatus();
+    }
+}
+
+if (contactsLoadMore) {
+    contactsLoadMore.addEventListener('click', loadMoreContacts);
+}
+
+if (contactsSentinel && 'IntersectionObserver' in window) {
+    const contactsObserver = new IntersectionObserver((entries) => {
+        if (entries.some(entry => entry.isIntersecting)) {
+            loadMoreContacts();
+        }
+    }, { rootMargin: '520px 0px' });
+    contactsObserver.observe(contactsSentinel);
+}
+
+updateContactsStatus();
 
 document.addEventListener('click', async (event) => {
     const photo = event.target.closest('[data-full-image]');

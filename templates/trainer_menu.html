@@ -3,904 +3,655 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Тренажер - Helper</title>
+    <title>{{ seg_info.name if seg_info else 'Тренажёр' }} — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
     <style>
-        :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
-            --greenLight: #00d4aa;
+        .trainer-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 340px;
+            gap: 16px;
+            align-items: start;
         }
 
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
+        .trainer-progress {
+            display: grid;
+            gap: 16px;
         }
 
-        .theme-toggle {
-            position: fixed;
-            top: 20px;
-            right: 130px;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 1000;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-
-        .theme-toggle:hover { transform: scale(1.12); }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            min-height: 100vh;
-            padding: 24px;
-            color: var(--text);
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            animation: fadeIn 0.4s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .back-link {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
-            font-size: 13px;
-            font-weight: 600;
-            text-decoration: none;
-            color: var(--text);
-            background: rgba(0, 166, 81, 0.15);
-            border: 1px solid rgba(0, 166, 81, 0.3);
-            padding: 10px 18px;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .back-link:hover {
-            background: rgba(0, 166, 81, 0.25);
-            border-color: rgba(0, 166, 81, 0.5);
-            transform: translateY(-2px);
-        }
-
-        /* Кнопка Админ */
-        .admin-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            font-size: 13px;
-            font-weight: 600;
-            text-decoration: none;
-            color: #fff;
-            background: rgba(0, 166, 129, 0.8);
-            border: 1px solid rgba(0, 166, 129, 0.5);
-            padding: 10px 18px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .admin-btn:hover {
-            background: rgba(0, 166, 129, 1);
-            transform: translateY(-2px);
-        }
-
-        /* Модальное окно пароля */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.7);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 2000;
-        }
-
-        .modal-overlay.show {
-            display: flex;
-        }
-
-        .modal-box {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 30px;
-            width: 320px;
-            text-align: center;
-        }
-
-        .modal-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: var(--text);
-        }
-
-        .modal-input {
-            width: 100%;
-            padding: 12px 16px;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-size: 14px;
-            margin-bottom: 15px;
-        }
-
-        .modal-input:focus {
-            outline: none;
-            border-color: var(--green);
-        }
-
-        .modal-btn {
-            width: 100%;
-            padding: 12px;
-            background: var(--green);
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .modal-btn:hover {
-            background: var(--greenHover);
-        }
-
-        .modal-error {
-            color: #f44336;
-            font-size: 13px;
-            margin-top: 10px;
-            display: none;
-        }
-
-        .modal-close {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: none;
-            border: none;
-            color: var(--muted);
-            font-size: 20px;
-            cursor: pointer;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
-        .header-icon {
-            font-size: 64px;
-            margin-bottom: 16px;
-        }
-
-        h1 {
-            color: var(--text);
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-
-        .subtitle {
-            color: var(--muted);
-            font-size: 15px;
-            margin-bottom: 30px;
-        }
-
-        /* Progress Card */
-        .progress-card {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 24px;
-            margin-bottom: 35px;
-        }
-
-        .progress-header {
+        .progress-head {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
+            gap: 16px;
+            align-items: flex-start;
         }
 
         .progress-title {
-            font-size: 18px;
-            font-weight: 600;
+            margin: 0;
             color: var(--text);
-        }
-
-        .progress-stats {
-            display: flex;
-            gap: 24px;
-        }
-
-        .stat-item {
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 24px;
+            font-size: var(--text-lg);
             font-weight: 700;
-            color: var(--greenLight);
         }
 
-        .stat-label {
-            font-size: 12px;
-            color: var(--muted);
-            margin-top: 4px;
-        }
-
-        .progress-bar-container {
-            background: var(--border);
-            border-radius: 8px;
-            height: 8px;
-            overflow: hidden;
-        }
-
-        .progress-bar {
-            background: linear-gradient(90deg, var(--green), var(--greenLight));
-            height: 100%;
-            border-radius: 8px;
-            transition: width 0.5s ease;
-        }
-
-        /* Levels Grid - горизонтальная линия */
-        .levels-grid {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            gap: 16px;
-            overflow-x: auto;
-            padding-bottom: 10px;
-        }
-
-        .level-card {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 20px 16px;
-            text-decoration: none;
-            color: var(--text);
-            display: flex;
-            flex-direction: column;
-            transition: all 0.2s ease;
-            position: relative;
-            overflow: hidden;
-            flex: 1;
-            min-width: 0;
-        }
-
-        .level-card:not(.locked):hover {
-            transform: translateY(-4px);
-            border-color: rgba(0, 166, 81, 0.5);
-            box-shadow: 0 12px 30px rgba(0, 166, 81, 0.15);
-        }
-
-        .level-card.locked {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .level-card.locked::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: repeating-linear-gradient(
-                45deg,
-                transparent,
-                transparent 10px,
-                rgba(0,0,0,0.1) 10px,
-                rgba(0,0,0,0.1) 20px
-            );
-        }
-
-        .level-header {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 16px;
-        }
-
-        .level-icon {
-            font-size: 40px;
+        .progress-percent {
+            color: var(--primary);
+            font-size: 28px;
+            font-weight: 700;
             line-height: 1;
         }
 
-        .level-info {
-            flex: 1;
+        .progress-strip {
+            height: 8px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: var(--bg-secondary);
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--primary), var(--blue));
+        }
+
+        .progress-stats {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .stat-box {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+        }
+
+        .stat-value {
+            color: var(--text);
+            font-size: var(--text-xl);
+            font-weight: 700;
+        }
+
+        .stat-label {
+            margin-top: 4px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            line-height: 1.35;
+        }
+
+        .levels-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .level-card {
+            min-height: 220px;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--level-color, var(--primary));
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            color: var(--text);
+            text-decoration: none;
+            transition: border-color .15s, box-shadow .15s, transform .15s, background .15s;
+        }
+
+        a.level-card:hover {
+            border-color: var(--level-color, var(--primary));
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .level-card.locked {
+            background: var(--bg-secondary);
+            opacity: .72;
+        }
+
+        .level-top {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .level-icon {
+            width: 44px;
+            height: 44px;
+            display: grid;
+            place-items: center;
+            border-radius: 12px;
+            background: var(--primary-light);
+            font-size: 24px;
+            line-height: 1;
         }
 
         .level-name {
-            font-size: 20px;
+            color: var(--text);
+            font-size: var(--text-lg);
             font-weight: 700;
-            margin-bottom: 4px;
+            line-height: 1.25;
         }
 
         .level-status {
-            font-size: 12px;
-            color: var(--muted);
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
         }
 
         .level-status.unlocked {
-            color: var(--greenLight);
+            color: var(--primary);
         }
 
         .level-description {
-            font-size: 14px;
-            color: var(--muted);
-            line-height: 1.5;
-            margin-bottom: 20px;
             flex: 1;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            line-height: 1.45;
         }
 
         .level-footer {
             display: flex;
             justify-content: space-between;
+            gap: 10px;
             align-items: center;
-            padding-top: 16px;
+            margin-top: 16px;
+            padding-top: 12px;
             border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: var(--text-sm);
         }
 
-        .level-progress {
-            font-size: 13px;
-            color: var(--muted);
-        }
-
-        .level-progress strong {
+        .level-footer strong {
             color: var(--text);
         }
 
         .level-avg {
-            font-size: 13px;
-            padding: 4px 10px;
-            border-radius: 12px;
-            background: rgba(0, 166, 81, 0.15);
-            color: var(--greenLight);
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: var(--text-xs);
+            font-weight: 700;
         }
 
         .lock-info {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: var(--muted);
-            margin-top: 12px;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 8px;
+            margin-top: 14px;
+            padding: 10px 11px;
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            line-height: 1.4;
         }
 
-        .lock-icon {
-            font-size: 16px;
+        .leaderboard-panel {
+            position: sticky;
+            top: 28px;
         }
 
-        /* Leaderboard */
-        .leaderboard-card {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 20px 24px;
-            margin-bottom: 35px;
-        }
-
-        .leaderboard-header {
+        .leaderboard-head {
             display: flex;
             justify-content: space-between;
+            gap: 12px;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
 
         .leaderboard-title {
-            font-size: 18px;
-            font-weight: 600;
+            color: var(--text);
+            font-size: var(--text-lg);
+            font-weight: 700;
         }
 
         .leaderboard-subtitle {
-            font-size: 13px;
-            color: var(--muted);
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 600;
         }
 
         .leaderboard-list {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+            display: grid;
+            gap: 8px;
         }
 
         .leaderboard-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: 32px minmax(0, 1fr) auto;
+            gap: 10px;
             align-items: center;
-            gap: 12px;
-            padding: 10px 14px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.02);
-            transition: background 0.15s;
-        }
-
-        .leaderboard-row:hover {
-            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
         }
 
         .leaderboard-row.is-me {
-            background: rgba(0, 166, 81, 0.1);
-            border: 1px solid rgba(0, 166, 81, 0.25);
+            border-color: var(--primary-mid);
+            background: var(--primary-light);
         }
 
         .lb-rank {
-            width: 32px;
-            text-align: center;
+            color: var(--text-muted);
             font-weight: 700;
-            font-size: 15px;
-            color: var(--muted);
-            flex-shrink: 0;
+            text-align: center;
         }
 
-        .lb-rank.gold { color: #ffd700; }
-        .lb-rank.silver { color: #c0c0c0; }
-        .lb-rank.bronze { color: #cd7f32; }
+        .lb-rank.gold { color: #d97706; }
+        .lb-rank.silver { color: #64748b; }
+        .lb-rank.bronze { color: #b45309; }
 
         .lb-user {
-            font-weight: 600;
-            font-size: 14px;
-            min-width: 100px;
-        }
-
-        .lb-badges {
-            flex: 1;
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-
-        .lb-badge {
-            cursor: help;
-            display: inline-flex;
-            align-items: center;
-            gap: 3px;
-            font-size: 11px;
-            background: rgba(255,255,255,0.06);
-            padding: 2px 8px 2px 4px;
-            border-radius: 10px;
-            transition: all 0.15s;
+            min-width: 0;
+            overflow: hidden;
+            color: var(--text);
+            font-size: var(--text-sm);
+            font-weight: 700;
+            text-overflow: ellipsis;
             white-space: nowrap;
         }
 
-        .lb-badge-icon {
-            font-size: 1.1em;
-        }
-
-        .lb-badge-name {
-            color: var(--muted);
-            font-weight: 500;
-        }
-
-        .lb-badge:hover {
-            background: rgba(255,255,255,0.12);
-            transform: translateY(-1px);
-        }
-
         .lb-score {
+            color: var(--primary);
+            font-size: var(--text-sm);
             font-weight: 700;
-            font-size: 15px;
-            color: var(--greenLight);
-            min-width: 55px;
-            text-align: right;
+            white-space: nowrap;
         }
 
-        .lb-completions {
-            font-size: 12px;
-            color: var(--muted);
-            min-width: 30px;
-            text-align: center;
-        }
-
-        .lb-pagination {
+        .lb-meta {
+            grid-column: 2 / 4;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 6px;
-            margin-top: 14px;
             flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .lb-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            max-width: 100%;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 600;
+        }
+
+        .lb-page-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
         }
 
         .lb-page-btn {
-            width: 34px;
-            height: 34px;
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 8px;
-            background: rgba(255,255,255,0.03);
-            color: var(--muted);
-            font-size: 13px;
-            font-weight: 600;
+            min-width: 32px;
+            height: 32px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .lb-page-btn:hover {
-            background: rgba(255,255,255,0.08);
-            color: var(--text);
         }
 
         .lb-page-btn.active {
-            background: var(--green);
+            border-color: var(--primary);
+            background: var(--primary);
             color: #fff;
-            border-color: var(--green);
         }
 
-        .lb-page-btn.nav {
-            width: auto;
-            padding: 0 10px;
-            font-size: 12px;
+        .trainer-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(15, 23, 42, .55);
         }
 
-        .lb-me-row {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px dashed rgba(255,255,255,0.1);
+        .trainer-modal.show {
+            display: flex;
         }
 
-        @media (max-width: 1024px) {
-            .container {
-                padding: 20px;
+        .modal-box {
+            width: min(360px, 100%);
+            padding: 20px;
+            position: relative;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+        }
+
+        .modal-title {
+            margin: 0 34px 16px 0;
+            color: var(--text);
+            font-size: var(--text-lg);
+            font-weight: 700;
+        }
+
+        .modal-input {
+            width: 100%;
+            min-height: 42px;
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text);
+            outline: none;
+        }
+
+        .modal-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(22, 163, 74, .12);
+        }
+
+        .modal-error {
+            display: none;
+            margin-top: 10px;
+            color: var(--red);
+            font-size: var(--text-sm);
+        }
+
+        @media (max-width: 1120px) {
+            .trainer-layout {
+                grid-template-columns: 1fr;
             }
 
-            .levels-grid {
-                flex-wrap: wrap !important;
+            .leaderboard-panel {
+                position: static;
             }
+        }
 
-            .level-card {
-                min-width: calc(50% - 8px);
-            }
-
+        @media (max-width: 920px) {
+            .levels-grid,
             .progress-stats {
-                gap: 20px;
-            }
-        }
-
-        @media (max-width: 600px) {
-            .container {
-                padding: 16px;
-            }
-
-            h1 {
-                font-size: 22px;
-            }
-
-            .progress-stats {
-                gap: 16px;
-            }
-
-            .stat-value {
-                font-size: 20px;
-            }
-
-            .levels-grid {
-                flex-wrap: wrap;
-            }
-
-            .level-card {
-                min-width: 100%;
-            }
-
-            .back-link {
-                top: 16px;
-                left: 16px;
-                font-size: 12px;
-                padding: 8px 14px;
+                grid-template-columns: 1fr;
             }
         }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
-    <style>body.light .container { background: transparent !important; border: none !important; box-shadow: none !important; }</style>
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('trainer_menu') }}" class="back-link">
-        &larr; Назад
-    </a>
+{% set active_page = 'trainer' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
 
-    <button class="admin-btn" onclick="showAdminModal()">⚙️ Админ</button>
-
-    <!-- Модальное окно пароля -->
-    <div class="modal-overlay" id="adminModal">
-        <div class="modal-box" style="position: relative;">
-            <button class="modal-close" onclick="hideAdminModal()">×</button>
-            <div class="modal-title">🔐 Вход в админ-панель</div>
-            <input type="password" class="modal-input" id="adminPassword" placeholder="Введите пароль" onkeypress="if(event.key==='Enter')checkAdminPassword()">
-            <button class="modal-btn" onclick="checkAdminPassword()">Войти</button>
-            <div class="modal-error" id="adminError">Неверный пароль</div>
-        </div>
-    </div>
-
-    <div class="container">
-        <div class="header">
-            <div class="header-icon">{{ seg_info.icon if seg_info else '🎯' }}</div>
-            <h1>{{ seg_info.name if seg_info else 'Тренажер специалиста' }}</h1>
-            <p class="subtitle">Отработайте навыки работы с клиентами в интерактивных сценариях</p>
-        </div>
-
-        <!-- Общий прогресс -->
-        <div class="progress-card">
-            <div class="progress-header">
-                <div class="progress-title">Ваш прогресс</div>
-                <div class="progress-stats">
-                    {% for level in levels %}
-                    {% set lp = progress.levels.get(level.code, {}) %}
-                    <div class="stat-item">
-                        <div class="stat-value">{{ lp.get('completed', 0) }}/{{ lp.get('total', 0) }}</div>
-                        <div class="stat-label">{{ level.icon }} {{ level.name }}</div>
-                    </div>
-                    {% endfor %}
-                    <div class="stat-item">
-                        <div class="stat-value">{{ progress.average_score }}%</div>
-                        <div class="stat-label">Средний балл</div>
-                    </div>
+    <main class="main-content">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Тренажёр</div>
+                    <h1 class="page-title">{{ seg_info.name if seg_info else 'Тренажёр специалиста' }}</h1>
+                    <p class="page-subtitle">Отрабатывайте сценарии по уровням, отслеживайте прогресс и возвращайтесь к сложным кейсам.</p>
                 </div>
-            </div>
-            <div class="progress-bar-container">
-                {% set percent = (progress.total_completed / progress.total_scenarios * 100) if progress.total_scenarios > 0 else 0 %}
-                <div class="progress-bar" style="width: {{ percent }}%"></div>
-            </div>
-        </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                    <a class="btn btn-secondary" href="{{ url_for('trainer_menu') }}">
+                        <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+                        Направления
+                    </a>
+                    <button class="btn btn-secondary" type="button" onclick="showAdminModal()">
+                        <svg class="icon" viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7A2 2 0 0 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+                        Админ
+                    </button>
+                </div>
+            </header>
 
-        <!-- Уровни -->
-        <div class="levels-grid">
-            {% for level in levels %}
-                {% set level_progress = progress.levels.get(level.code, {}) %}
-                {% set is_unlocked = level_progress.get('is_unlocked', False) or not level.required_level %}
-
-                {% if is_unlocked %}
-                <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code) }}" class="level-card" style="border-left: 4px solid {{ level.color }}">
-                {% else %}
-                <div class="level-card locked" style="border-left: 4px solid {{ level.color }}">
-                {% endif %}
-
-                    <div class="level-header">
-                        <div class="level-icon">{{ level.icon }}</div>
-                        <div class="level-info">
-                            <div class="level-name">{{ level.name }}</div>
-                            <div class="level-status {% if is_unlocked %}unlocked{% endif %}">
-                                {% if is_unlocked %}
-                                    Доступен
-                                {% else %}
-                                    Заблокирован
-                                {% endif %}
+            {% set percent = (progress.total_completed / progress.total_scenarios * 100) if progress.total_scenarios > 0 else 0 %}
+            <div class="trainer-layout">
+                <div class="trainer-progress">
+                    <section class="panel panel-pad">
+                        <div class="progress-head">
+                            <div>
+                                <h2 class="progress-title">Ваш прогресс</h2>
+                                <p class="card-desc">Пройдено {{ progress.total_completed }} из {{ progress.total_scenarios }} сценариев.</p>
+                            </div>
+                            <div class="progress-percent">{{ percent|round(0, 'floor')|int }}%</div>
+                        </div>
+                        <div class="progress-strip" aria-label="Прогресс">
+                            <div class="progress-fill" style="width: {{ percent }}%"></div>
+                        </div>
+                        <div class="progress-stats">
+                            {% for level in levels %}
+                            {% set lp = progress.levels.get(level.code, {}) %}
+                            <div class="stat-box">
+                                <div class="stat-value">{{ lp.get('completed', 0) }}/{{ lp.get('total', 0) }}</div>
+                                <div class="stat-label">{{ level.icon }} {{ level.name }}</div>
+                            </div>
+                            {% endfor %}
+                            <div class="stat-box">
+                                <div class="stat-value">{{ progress.average_score }}%</div>
+                                <div class="stat-label">Средний балл</div>
                             </div>
                         </div>
-                    </div>
+                    </section>
 
-                    <div class="level-description">{{ level.description }}</div>
+                    <section class="levels-grid" aria-label="Уровни тренажёра">
+                        {% for level in levels %}
+                        {% set level_progress = progress.levels.get(level.code, {}) %}
+                        {% set is_unlocked = level_progress.get('is_unlocked', False) or not level.required_level %}
 
-                    {% if is_unlocked %}
-                    <div class="level-footer">
-                        <div class="level-progress">
-                            Пройдено: <strong>{{ level_progress.get('completed', 0) }}/{{ level_progress.get('total', 0) }}</strong>
-                        </div>
-                        {% if level_progress.get('avg_percent', 0) > 0 %}
-                        <div class="level-avg">{{ level_progress.get('avg_percent', 0) }}%</div>
+                        {% if is_unlocked %}
+                        <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code) }}" class="level-card" style="--level-color: {{ level.color }};">
+                        {% else %}
+                        <div class="level-card locked" style="--level-color: {{ level.color }};">
                         {% endif %}
-                    </div>
-                    {% else %}
-                    <div class="lock-info">
-                        <span class="lock-icon">🔒</span>
-                        <span>Пройдите уровень "{{ level_progress.get('required_level', 'предыдущий') }}" с результатом {{ level.required_percent }}%+</span>
-                    </div>
-                    {% endif %}
+                            <div class="level-top">
+                                <div class="level-icon">{{ level.icon }}</div>
+                                <div>
+                                    <div class="level-name">{{ level.name }}</div>
+                                    <div class="level-status {% if is_unlocked %}unlocked{% endif %}">
+                                        {{ 'Доступен' if is_unlocked else 'Заблокирован' }}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="level-description">{{ level.description }}</div>
 
-                {% if is_unlocked %}
-                </a>
-                {% else %}
+                            {% if is_unlocked %}
+                            <div class="level-footer">
+                                <span>Пройдено: <strong>{{ level_progress.get('completed', 0) }}/{{ level_progress.get('total', 0) }}</strong></span>
+                                {% if level_progress.get('avg_percent', 0) > 0 %}
+                                <span class="level-avg">{{ level_progress.get('avg_percent', 0) }}%</span>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <div class="lock-info">Нужно пройти уровень "{{ level_progress.get('required_level', 'предыдущий') }}" с результатом {{ level.required_percent }}%+.</div>
+                            {% endif %}
+                        {% if is_unlocked %}
+                        </a>
+                        {% else %}
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </section>
                 </div>
+
+                {% if top_users %}
+                <aside class="panel panel-pad leaderboard-panel">
+                    <div class="leaderboard-head">
+                        <div class="leaderboard-title">Рейтинг</div>
+                        <div class="leaderboard-subtitle" id="lbSubtitle">{{ top_users|length }} участников</div>
+                    </div>
+                    <div class="leaderboard-list" id="lbList"></div>
+                    <div class="lb-page-row" id="lbPagination"></div>
+                </aside>
                 {% endif %}
-            {% endfor %}
-        </div>
-
-        <!-- Лидерборд -->
-        {% if top_users %}
-        <div class="leaderboard-card">
-            <div class="leaderboard-header">
-                <span class="leaderboard-title">🏆 Рейтинг</span>
-                <span class="leaderboard-subtitle" id="lbSubtitle">{{ top_users|length }} участников</span>
             </div>
-            <div class="leaderboard-list" id="lbList"></div>
-            <div class="lb-pagination" id="lbPagination"></div>
         </div>
-        {% endif %}
+    </main>
+</div>
+
+<div class="trainer-modal" id="adminModal" aria-hidden="true">
+    <div class="panel modal-box">
+        <button class="icon-button modal-close" type="button" onclick="hideAdminModal()" aria-label="Закрыть">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+        <h2 class="modal-title">Вход в админ-панель</h2>
+        <input type="password" class="modal-input" id="adminPassword" placeholder="Введите пароль" onkeypress="if(event.key==='Enter')checkAdminPassword()">
+        <button class="btn btn-primary" style="width:100%;" type="button" onclick="checkAdminPassword()">Войти</button>
+        <div class="modal-error" id="adminError">Неверный пароль</div>
     </div>
+</div>
 
-    <script>
-        (function() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.body.classList.add('light');
-            }
-        })();
-        function toggleTheme() {
-            const isLight = document.body.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
-        }
-        document.addEventListener('DOMContentLoaded', function() {
-            if (document.body.classList.contains('light')) {
-                document.getElementById('themeToggle').textContent = '☀️';
-            }
-        });
-    </script>
-    <script>
-        function showAdminModal() {
-            document.getElementById('adminModal').classList.add('show');
-            document.getElementById('adminPassword').focus();
-        }
+<script>
+    function showAdminModal() {
+        const modal = document.getElementById('adminModal');
+        modal.classList.add('show');
+        modal.setAttribute('aria-hidden', 'false');
+        document.getElementById('adminPassword').focus();
+    }
 
-        function hideAdminModal() {
-            document.getElementById('adminModal').classList.remove('show');
-            document.getElementById('adminPassword').value = '';
-            document.getElementById('adminError').style.display = 'none';
-        }
+    function hideAdminModal() {
+        const modal = document.getElementById('adminModal');
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+        document.getElementById('adminPassword').value = '';
+        document.getElementById('adminError').style.display = 'none';
+    }
 
-        async function checkAdminPassword() {
-            const password = document.getElementById('adminPassword').value;
-            const csrfToken = '{{ csrf_token() }}';
+    async function checkAdminPassword() {
+        const password = document.getElementById('adminPassword').value;
+        const csrfToken = '{{ csrf_token() }}';
 
-            try {
-                const response = await fetch('/api/admin/check-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({ password: password, section: 'trainer' })
-                });
-                const result = await response.json();
-
-                if (result.success) {
-                    window.location.href = '{{ url_for("admin_trainer_segment", segment=segment) }}';
-                } else {
-                    document.getElementById('adminError').textContent = result.error || 'Неверный пароль';
-                    document.getElementById('adminError').style.display = 'block';
-                    document.getElementById('adminPassword').value = '';
-                }
-            } catch (e) {
-                document.getElementById('adminError').textContent = 'Ошибка проверки пароля';
-                document.getElementById('adminError').style.display = 'block';
-            }
-        }
-
-        // Закрытие по клику вне окна
-        document.getElementById('adminModal').addEventListener('click', function(e) {
-            if (e.target === this) hideAdminModal();
-        });
-
-        // Закрытие по Escape
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') hideAdminModal();
-        });
-
-        // === Лидерборд с пагинацией ===
-        const allUsers = {{ top_users | tojson }};
-        const currentUserId = {{ current_user_id | tojson }};
-        const PER_PAGE = 10;
-        let currentPage = 1;
-        const totalPages = Math.ceil(allUsers.length / PER_PAGE);
-
-        function getRankIcon(rank) {
-            if (rank === 1) return '🥇';
-            if (rank === 2) return '🥈';
-            if (rank === 3) return '🥉';
-            return rank;
-        }
-
-        function getRankClass(rank) {
-            if (rank === 1) return 'gold';
-            if (rank === 2) return 'silver';
-            if (rank === 3) return 'bronze';
-            return '';
-        }
-
-        function renderLeaderboard(page) {
-            currentPage = page;
-            const list = document.getElementById('lbList');
-            const start = (page - 1) * PER_PAGE;
-            const end = Math.min(start + PER_PAGE, allUsers.length);
-            const pageUsers = allUsers.slice(start, end);
-
-            let html = '';
-            pageUsers.forEach((user, i) => {
-                const rank = start + i + 1;
-                const isMe = user.user_id === currentUserId;
-                html += `<div class="leaderboard-row ${isMe ? 'is-me' : ''}">
-                    <div class="lb-rank ${getRankClass(rank)}">${getRankIcon(rank)}</div>
-                    <div class="lb-user">${user.user_id}</div>
-                    <div class="lb-badges">
-                        ${user.badges.map(b => `<span title="${b.description}" class="lb-badge"><span class="lb-badge-icon">${b.icon}</span><span class="lb-badge-name">${b.name}</span></span>`).join('')}
-                    </div>
-                    <div class="lb-completions" title="Пройдено сценариев">${user.completions} прох.</div>
-                    <div class="lb-score" title="Суммарные баллы">${user.total_score || 0} б.</div>
-                </div>`;
+        try {
+            const response = await fetch('/api/admin/check-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ password: password, section: 'trainer' })
             });
+            const result = await response.json();
 
-            // Показать "Вы" если текущий пользователь не на этой странице
-            const myIndex = allUsers.findIndex(u => u.user_id === currentUserId);
-            if (myIndex !== -1 && (myIndex < start || myIndex >= end)) {
-                const me = allUsers[myIndex];
-                const myRank = myIndex + 1;
-                html += `<div class="leaderboard-row is-me lb-me-row">
-                    <div class="lb-rank ${getRankClass(myRank)}">${getRankIcon(myRank)}</div>
-                    <div class="lb-user">${me.user_id} (вы)</div>
-                    <div class="lb-badges">
-                        ${me.badges.map(b => `<span title="${b.description}" class="lb-badge"><span class="lb-badge-icon">${b.icon}</span><span class="lb-badge-name">${b.name}</span></span>`).join('')}
-                    </div>
-                    <div class="lb-completions" title="Пройдено сценариев">${me.completions} прох.</div>
-                    <div class="lb-score" title="Суммарные баллы">${me.total_score || 0} б.</div>
-                </div>`;
+            if (result.success) {
+                window.location.href = '{{ url_for("admin_trainer_segment", segment=segment) }}';
+            } else {
+                document.getElementById('adminError').textContent = result.error || 'Неверный пароль';
+                document.getElementById('adminError').style.display = 'block';
+                document.getElementById('adminPassword').value = '';
             }
+        } catch (e) {
+            document.getElementById('adminError').textContent = 'Ошибка проверки пароля';
+            document.getElementById('adminError').style.display = 'block';
+        }
+    }
 
-            list.innerHTML = html;
-            renderPagination();
+    document.getElementById('adminModal').addEventListener('click', function(e) {
+        if (e.target === this) hideAdminModal();
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') hideAdminModal();
+    });
+
+    const allUsers = {{ top_users | tojson }};
+    const currentUserId = {{ current_user_id | tojson }};
+    const PER_PAGE = 10;
+    let currentPage = 1;
+    const totalPages = Math.ceil(allUsers.length / PER_PAGE);
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function getRankIcon(rank) {
+        if (rank === 1) return '1';
+        if (rank === 2) return '2';
+        if (rank === 3) return '3';
+        return rank;
+    }
+
+    function getRankClass(rank) {
+        if (rank === 1) return 'gold';
+        if (rank === 2) return 'silver';
+        if (rank === 3) return 'bronze';
+        return '';
+    }
+
+    function renderLeaderboard(page) {
+        const list = document.getElementById('lbList');
+        if (!list) return;
+        currentPage = page;
+        const start = (page - 1) * PER_PAGE;
+        const end = Math.min(start + PER_PAGE, allUsers.length);
+        const pageUsers = allUsers.slice(start, end);
+
+        let html = '';
+        pageUsers.forEach((user, i) => {
+            const rank = start + i + 1;
+            const isMe = user.user_id === currentUserId;
+            const badges = Array.isArray(user.badges) ? user.badges : [];
+            html += `<div class="leaderboard-row ${isMe ? 'is-me' : ''}">
+                <div class="lb-rank ${getRankClass(rank)}">${getRankIcon(rank)}</div>
+                <div class="lb-user">${escapeHtml(user.user_id)}</div>
+                <div class="lb-score">${escapeHtml(user.total_score || 0)} б.</div>
+                <div class="lb-meta">
+                    <span class="lb-badge">${escapeHtml(user.completions || 0)} прох.</span>
+                    ${badges.map(b => `<span title="${escapeHtml(b.description)}" class="lb-badge"><span>${escapeHtml(b.icon)}</span><span>${escapeHtml(b.name)}</span></span>`).join('')}
+                </div>
+            </div>`;
+        });
+
+        const myIndex = allUsers.findIndex(u => u.user_id === currentUserId);
+        if (myIndex !== -1 && (myIndex < start || myIndex >= end)) {
+            const me = allUsers[myIndex];
+            const myRank = myIndex + 1;
+            const badges = Array.isArray(me.badges) ? me.badges : [];
+            html += `<div class="leaderboard-row is-me">
+                <div class="lb-rank ${getRankClass(myRank)}">${getRankIcon(myRank)}</div>
+                <div class="lb-user">${escapeHtml(me.user_id)} (вы)</div>
+                <div class="lb-score">${escapeHtml(me.total_score || 0)} б.</div>
+                <div class="lb-meta">
+                    <span class="lb-badge">${escapeHtml(me.completions || 0)} прох.</span>
+                    ${badges.map(b => `<span title="${escapeHtml(b.description)}" class="lb-badge"><span>${escapeHtml(b.icon)}</span><span>${escapeHtml(b.name)}</span></span>`).join('')}
+                </div>
+            </div>`;
         }
 
-        function renderPagination() {
-            const pag = document.getElementById('lbPagination');
-            if (totalPages <= 1) { pag.innerHTML = ''; return; }
+        list.innerHTML = html;
+        renderPagination();
+    }
 
-            let html = '';
-            if (currentPage > 1) {
-                html += `<button class="lb-page-btn nav" onclick="renderLeaderboard(${currentPage - 1})">‹</button>`;
-            }
-            for (let p = 1; p <= totalPages; p++) {
-                html += `<button class="lb-page-btn ${p === currentPage ? 'active' : ''}" onclick="renderLeaderboard(${p})">${p}</button>`;
-            }
-            if (currentPage < totalPages) {
-                html += `<button class="lb-page-btn nav" onclick="renderLeaderboard(${currentPage + 1})">›</button>`;
-            }
-            pag.innerHTML = html;
+    function renderPagination() {
+        const pag = document.getElementById('lbPagination');
+        if (!pag) return;
+        if (totalPages <= 1) {
+            pag.innerHTML = '';
+            return;
         }
 
-        if (allUsers.length > 0) renderLeaderboard(1);
-    </script>
+        let html = '';
+        if (currentPage > 1) {
+            html += `<button class="lb-page-btn" type="button" onclick="renderLeaderboard(${currentPage - 1})">‹</button>`;
+        }
+        for (let p = 1; p <= totalPages; p++) {
+            html += `<button class="lb-page-btn ${p === currentPage ? 'active' : ''}" type="button" onclick="renderLeaderboard(${p})">${p}</button>`;
+        }
+        if (currentPage < totalPages) {
+            html += `<button class="lb-page-btn" type="button" onclick="renderLeaderboard(${currentPage + 1})">›</button>`;
+        }
+        pag.innerHTML = html;
+    }
+
+    if (allUsers.length > 0) renderLeaderboard(1);
+</script>
 </body>
 </html>

@@ -1562,7 +1562,7 @@
                 </div>
                 <div class="card kpi-card">
                     <div class="kpi-icon soft-purple">UP</div>
-                    <div><div class="kpi-label">Передано выше</div><div class="kpi-value" id="kpiEscalated">—</div><div class="kpi-note">новый статус в плане</div></div>
+                    <div><div class="kpi-label">Передано выше</div><div class="kpi-value" id="kpiEscalated">—</div><div class="kpi-note">за выбранный период</div></div>
                 </div>
                 <div class="card kpi-card">
                     <div class="kpi-icon soft-blue">OK</div>
@@ -2390,7 +2390,7 @@
         const ready = countStatus(journalRows, ['ready_for_feedback', 'closed', 'closed_auto']);
         const rejected = countStatus(journalRows, ['rejected']) || Number(summary.rejected || 0);
         const mass = countStatus(journalRows, ['mass_incident']);
-        const escalated = journalRows.filter(row => /передано/i.test(row.status_label || '') || row.status === 'escalated').length;
+        const escalated = countStatus(journalRows, ['transferred_up']);
 
         document.getElementById('kpiTotal').textContent = nf.format(Number(summary.total ?? breakdown.tickets_created ?? 0));
         document.getElementById('kpiAvg').textContent = avg.avg_time || '—';
@@ -2524,6 +2524,7 @@
         if (status === 'ready_for_feedback') return 'status-ready';
         if (status === 'rejected') return 'status-rejected';
         if (status === 'mass_incident') return 'status-danger';
+        if (status === 'transferred_up') return 'status-ready';
         return 'status-work';
     }
 
@@ -2559,6 +2560,7 @@
         if (row.status === 'ready_for_feedback') return `Заявка ${number} ожидает подтверждения`;
         if (row.status === 'rejected') return `Заявка ${number} отклонена`;
         if (row.status === 'mass_incident') return `Заявка ${number} отмечена как массовый инцидент`;
+        if (row.status === 'transferred_up') return `Заявка ${number} передана выше`;
         return `Заявка ${number} в работе`;
     }
 

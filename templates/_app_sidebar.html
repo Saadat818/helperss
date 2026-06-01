@@ -21,10 +21,12 @@
             <span class="nav-emoji" aria-hidden="true">📋</span>
             <span class="nav-label">Мои заявки</span>
         </a>
+        {% if session.get('admin_logged_in') %}
         <a href="{{ url_for('scenarios_list') }}" class="nav-item {% if active_page == 'scenarios' %}active{% endif %}" title="Сценарии" aria-label="Сценарии">
             <span class="nav-emoji" aria-hidden="true">🎬</span>
             <span class="nav-label">Сценарии</span>
         </a>
+        {% endif %}
         <a href="{{ url_for('show_problems') }}" class="nav-item {% if active_page == 'manuals' %}active{% endif %}" title="Мануалы" aria-label="Мануалы">
             <span class="nav-emoji" aria-hidden="true">📚</span>
             <span class="nav-label">Мануалы</span>

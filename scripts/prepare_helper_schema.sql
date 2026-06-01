@@ -1,0 +1,20 @@
+-- Run in database apo:
+-- psql -h 10.10.90.57 -p 5432 -U r_koledin -d apo -f scripts/prepare_helper_schema.sql
+
+CREATE SCHEMA IF NOT EXISTS helper AUTHORIZATION r_koledin;
+
+GRANT USAGE, CREATE ON SCHEMA helper TO r_koledin;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+ON ALL TABLES IN SCHEMA helper
+TO r_koledin;
+
+GRANT USAGE, SELECT, UPDATE
+ON ALL SEQUENCES IN SCHEMA helper
+TO r_koledin;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA helper
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO r_koledin;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA helper
+GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO r_koledin;

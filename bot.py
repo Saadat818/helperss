@@ -244,10 +244,36 @@ def _plain_rejection_reason(text: str) -> str:
         'решено',
         'в работе',
         'в процессе',
+        'передано выше',
+        'передан выше',
+        'передана выше',
+        'передал выше',
+        'передали выше',
+        'передать выше',
+        'эскалир',
+        '2 линия',
+        'вторая линия',
+        'l2',
     )
     if any(keyword in lowered for keyword in non_rejection_keywords):
         return ''
     return reason[:500]
+
+
+def _is_transfer_up_text(text: str) -> bool:
+    normalized = (text or '').strip().lower().replace('ё', 'е')
+    return any(keyword in normalized for keyword in (
+        'передано выше',
+        'передан выше',
+        'передана выше',
+        'передал выше',
+        'передали выше',
+        'передать выше',
+        'эскалир',
+        '2 линия',
+        'вторая линия',
+        'l2',
+    ))
 
 
 def _default_duty_settings():
@@ -298,11 +324,12 @@ TICKET_STATUS_LABELS = {
     'closed': 'Решено',
     'rejected': 'Отклонён',
     'mass_incident': 'Массовый инцидент',
+    'transferred_up': 'Передано выше',
     'closed_auto': 'Авто-закрыта',
     'unknown': 'Неизвестно',
 }
-HARD_FINAL_TICKET_STATUSES = {'rejected', 'mass_incident', 'closed_auto'}
-LOCKED_TICKET_ACTION_STATUSES = {'ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'}
+HARD_FINAL_TICKET_STATUSES = {'rejected', 'mass_incident', 'transferred_up', 'closed_auto'}
+LOCKED_TICKET_ACTION_STATUSES = {'ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'transferred_up', 'closed_auto'}
 
 
 def _get_ticket_status(ticket_number):
@@ -355,6 +382,8 @@ def _get_ticket_status(ticket_number):
             status = 'rejected'
         elif event_type == 'ticket_mass_incident':
             status = 'mass_incident'
+        elif event_type == 'ticket_transferred_up':
+            status = 'transferred_up'
         elif event_type == 'ticket_auto_closed_reset_call':
             status = 'closed_auto'
     return status
@@ -510,7 +539,7 @@ def _load_active_ticket_count(actor_username):
             state['status'] = 'in_work'
         elif event_type in ('ticket_assigned_to_duty', 'ticket_assigned_to_staff'):
             state['assigned_username'] = row.get('actor_username') or state['assigned_username']
-            if state['status'] not in ('ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'):
+            if state['status'] not in ('ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'transferred_up', 'closed_auto'):
                 state['status'] = 'in_work'
         elif event_type == 'ticket_reopened_by_user':
             if state['status'] not in HARD_FINAL_TICKET_STATUSES:
@@ -525,6 +554,8 @@ def _load_active_ticket_count(actor_username):
             state['status'] = 'rejected'
         elif event_type == 'ticket_mass_incident':
             state['status'] = 'mass_incident'
+        elif event_type == 'ticket_transferred_up':
+            state['status'] = 'transferred_up'
         elif event_type == 'ticket_auto_closed_reset_call':
             state['status'] = 'closed_auto'
 
@@ -770,6 +801,49 @@ def handle_ticket_mass_incident(call):
         bot.answer_callback_query(call.id, "❌ Ошибка при обработке")
 
 
+@bot.callback_query_handler(func=lambda call: call.data == "ticket_transferred_up")
+def handle_ticket_transferred_up(call):
+    """Обработка статуса 'Передано выше'."""
+    print(f"🔔 Получен callback 'Передано выше'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
+    try:
+        original_message = call.message.text or call.message.caption or ""
+        ticket_number = extract_ticket_number(original_message)
+        if ticket_number is None:
+            bot.answer_callback_query(call.id, "Не нашёл номер заявки")
+            return
+        parsed = parse_ticket_fields(original_message)
+        resolver_name = call.from_user.first_name or call.from_user.username or str(call.from_user.id)
+        resolver_username = call.from_user.username or str(call.from_user.id)
+        lock_reason = _ticket_action_lock_reason(ticket_number)
+        if lock_reason:
+            _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
+            bot.answer_callback_query(call.id, lock_reason)
+            print(f"⛔ [handle_ticket_transferred_up] {lock_reason}")
+            return
+        _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
+        log_ticket_event(
+            event_type='ticket_transferred_up',
+            ticket_number=ticket_number,
+            problem=parsed.get('problem', original_message),
+            department=parsed.get('department', ''),
+            user_name=parsed.get('name', ''),
+            workplace=parsed.get('workplace', ''),
+            actor_name=resolver_name,
+            actor_username=resolver_username,
+            details={'source': 'telegram', 'original_message': original_message[:500]}
+        )
+        bot.send_message(
+            TECH_SUPPORT_CHAT_ID,
+            f"⬆️ ЗАЯВКА ПЕРЕДАНА ВЫШЕ ⬆️\n\n{original_message}\n\n👤 Передал: {resolver_name}",
+            message_thread_id=IN_PROGRESS_THREAD_ID
+        )
+        bot.answer_callback_query(call.id, "⬆️ Заявка отмечена как переданная выше")
+    except Exception as e:
+        print(f"❌ Ошибка в handle_ticket_transferred_up: {e}")
+        traceback.print_exc()
+        bot.answer_callback_query(call.id, "❌ Ошибка при обработке")
+
+
 # ============================================================================
 # Обработчик фото (для получения file_id)
 # ============================================================================
@@ -876,6 +950,7 @@ def handle_channel_messages(message):
             )
             is_ticket_action = (
                 "массовый инцидент" in text or
+                _is_transfer_up_text(text) or
                 "отклон" in text or
                 is_rejection_reply or
                 "готово" in text or
@@ -907,6 +982,31 @@ def handle_channel_messages(message):
                     TECH_SUPPORT_CHAT_ID,
                     f"⚠️ Заявка №{ticket_number or '—'} отмечена как массовый инцидент.",
                     message_thread_id=IN_PROGRESS_THREAD_ID
+                )
+            elif _is_transfer_up_text(text):
+                lock_reason = _ticket_action_lock_reason(ticket_number)
+                if lock_reason:
+                    _remove_ticket_buttons(original_chat_id, original_message_id)
+                    bot.reply_to(message, lock_reason)
+                    return
+                log_ticket_event(
+                    'ticket_transferred_up',
+                    ticket_number=ticket_number,
+                    problem=problem,
+                    department=parsed.get('department', ''),
+                    user_name=parsed.get('name', ''),
+                    workplace=parsed.get('workplace', ''),
+                    actor_name=actor['name'],
+                    actor_username=actor['username'],
+                    details={'source': 'telegram_reply', 'original_message': original_ticket_text[:500]}
+                )
+                _remove_ticket_buttons(original_chat_id, original_message_id)
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"⬆️ Заявка №{ticket_number or '—'} передана выше.\n"
+                    f"Сотрудник: {html_escape(actor['name'])}",
+                    message_thread_id=IN_PROGRESS_THREAD_ID,
+                    parse_mode='HTML'
                 )
             elif "отклон" in text or is_rejection_reply:
                 if not rejection_reason:

@@ -199,6 +199,10 @@
             background: #d9534f;
         }
 
+        .feedback-button.resubmit {
+            background: #d9534f;
+        }
+
         .feedback-message {
             font-size: 13px;
             color: var(--muted);
@@ -239,6 +243,9 @@
                 <button class="feedback-button resolved" type="button" onclick="sendFeedback('resolved')">Решено</button>
                 <button class="feedback-button not-resolved" type="button" onclick="sendFeedback('not_resolved')">Не решено</button>
             </div>
+            <div class="feedback-actions" id="resubmitActions">
+                <button class="feedback-button resubmit" type="button" onclick="resubmitTicket(this)">Отправить повторно</button>
+            </div>
             <div class="feedback-message" id="feedbackMessage"></div>
         </div>
         <a href="{{ url_for('go_home') }}" class="home-button">На главную</a>
@@ -276,6 +283,7 @@
         const feedbackBox = document.getElementById('ticketFeedback');
         const statusText = document.getElementById('ticketStatusText');
         const feedbackActions = document.getElementById('feedbackActions');
+        const resubmitActions = document.getElementById('resubmitActions');
         const feedbackMessage = document.getElementById('feedbackMessage');
 
         function setFeedbackMessage(text) {
@@ -293,24 +301,76 @@
                 if (!data.success) {
                     statusText.textContent = data.error || 'Не удалось получить статус';
                     feedbackActions.classList.remove('visible');
+                    resubmitActions.classList.remove('visible');
                     return;
                 }
                 statusText.textContent = `Текущий статус: ${data.status_label || '—'}`;
                 if (data.can_feedback) {
                     feedbackActions.classList.add('visible');
+                    resubmitActions.classList.remove('visible');
                     setFeedbackMessage('Подтвердите, решена ли проблема. Если не ответить в течение 5 минут, заявка закроется автоматически.');
+                } else if (data.can_resubmit) {
+                    feedbackActions.classList.remove('visible');
+                    resubmitActions.classList.add('visible');
+                    setFeedbackMessage('Заявка отклонена. Можно отправить её повторно, но перед этим нужно быть на рабочем месте.');
+                } else if (data.resubmitted_ticket_number) {
+                    feedbackActions.classList.remove('visible');
+                    resubmitActions.classList.remove('visible');
+                    setFeedbackMessage(`Заявка уже отправлена повторно как №${data.resubmitted_ticket_number}.`);
                 } else {
                     feedbackActions.classList.remove('visible');
+                    resubmitActions.classList.remove('visible');
                 }
             } catch (e) {
                 statusText.textContent = 'Ошибка проверки статуса';
                 feedbackActions.classList.remove('visible');
+                resubmitActions.classList.remove('visible');
+            }
+        }
+
+        async function resubmitTicket(button) {
+            const warning = 'Отправить заявку повторно?\\n\\nПеред повторной отправкой просьба быть на рабочем месте. Если специалист снова не сможет с вами связаться или проверить рабочее место, заявка может быть отклонена.';
+            if (!confirm(warning)) return;
+            const originalText = button ? button.textContent : '';
+            if (button) {
+                button.disabled = true;
+                button.textContent = 'Отправляем...';
+            }
+            setFeedbackMessage('Отправляем повторную заявку...');
+            try {
+                const response = await fetch(`/api/ticket_resubmit/${ticketNumber}`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const data = await response.json();
+                if (data.redirect_url) {
+                    window.location.href = data.redirect_url;
+                    return;
+                }
+                if (!data.success) {
+                    setFeedbackMessage(data.error || 'Не удалось отправить повторно');
+                    await loadTicketStatus();
+                    return;
+                }
+                resubmitActions.classList.remove('visible');
+                statusText.textContent = `Повторная заявка №${data.new_ticket_number} отправлена`;
+                setFeedbackMessage('Специалисты получат повторную заявку со ссылкой на прошлое обращение.');
+            } catch (e) {
+                setFeedbackMessage('Ошибка сети');
+                await loadTicketStatus();
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = originalText || 'Отправить повторно';
+                }
             }
         }
 
         async function sendFeedback(action) {
             setFeedbackMessage('Сохраняем...');
             feedbackActions.classList.remove('visible');
+            resubmitActions.classList.remove('visible');
             try {
                 const response = await fetch(`/api/ticket_feedback/${ticketNumber}`, {
                     method: 'POST',

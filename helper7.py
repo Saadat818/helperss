@@ -441,7 +441,7 @@ def add_security_headers(response):
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' https://api.telegram.org data:; "
+        "img-src 'self' https://api.telegram.org data: blob:; "
         "media-src 'self' https://api.telegram.org; "
         "font-src 'self'; "
         "frame-ancestors 'none'; "  # Changed from 'self' to 'none'
@@ -1369,7 +1369,9 @@ def _parse_ticket_text_fields(text: str) -> dict:
 def log_ticket_event(event_type: str, ticket_number: int | None = None, problem: str = '',
                      channel: str = '', topic_name: str = '', is_cisco: bool = False,
                      actor_override: dict | None = None, user_info_override: dict | None = None,
-                     details: dict | None = None):
+                     details: dict | None = None,
+                     problem_id_override: str | None = None,
+                     subproblem_id_override: str | None = None):
     """Логирует событие по заявке для аналитики."""
     try:
         actor = actor_override or _current_actor()
@@ -1387,6 +1389,10 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
         if has_request_context():
             problem_id = str(session.get('problem_id', '') or '')[:100]
             subproblem_id = str(session.get('current_subproblem_id', '') or '')[:100]
+        if problem_id_override is not None:
+            problem_id = str(problem_id_override or '')[:100]
+        if subproblem_id_override is not None:
+            subproblem_id = str(subproblem_id_override or '')[:100]
         payload = (
             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             event_type,
@@ -1545,10 +1551,11 @@ TICKET_STATUS_LABELS = {
     'closed': 'Решено',
     'rejected': 'Отклонён',
     'mass_incident': 'Массовый инцидент',
+    'transferred_up': 'Передано выше',
     'closed_auto': 'Авто-закрыта',
     'unknown': 'Неизвестно',
 }
-HARD_FINAL_TICKET_STATUSES = {'rejected', 'mass_incident', 'closed_auto'}
+HARD_FINAL_TICKET_STATUSES = {'rejected', 'mass_incident', 'transferred_up', 'closed_auto'}
 
 
 def _parse_event_details(value: Any) -> dict:
@@ -1636,6 +1643,9 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             'creator_name': '',
             'creator_username': '',
             'reject_reason': '',
+            'transferred_by': '',
+            'resubmitted_from': None,
+            'resubmitted_ticket_number': None,
             'details': {},
         })
 
@@ -1661,10 +1671,15 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             state['status'] = 'in_work'
             state['creator_name'] = row.get('actor_name') or state['creator_name']
             state['creator_username'] = row.get('actor_username') or state['creator_username']
+            if details.get('resubmitted_from'):
+                try:
+                    state['resubmitted_from'] = int(details.get('resubmitted_from'))
+                except (TypeError, ValueError):
+                    state['resubmitted_from'] = details.get('resubmitted_from')
         elif event_type in ('ticket_assigned_to_duty', 'ticket_assigned_to_staff'):
             state['assigned_name'] = row.get('actor_name') or state['assigned_name']
             state['assigned_username'] = row.get('actor_username') or state['assigned_username']
-            if state['status'] not in ('ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'):
+            if state['status'] not in ('ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'transferred_up', 'closed_auto'):
                 state['status'] = 'in_work'
         elif event_type == 'ticket_reopened_by_user':
             if state['status'] in HARD_FINAL_TICKET_STATUSES:
@@ -1701,9 +1716,22 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
         elif event_type == 'ticket_mass_incident':
             state['status'] = 'mass_incident'
             state['details'] = details
+        elif event_type == 'ticket_transferred_up':
+            state['status'] = 'transferred_up'
+            state['closed_at'] = created_at
+            state['transferred_by'] = row.get('actor_name') or state['transferred_by']
+            state['details'] = details
         elif event_type == 'ticket_auto_closed_reset_call':
             state['status'] = 'closed_auto'
             state['closed_at'] = created_at
+            state['details'] = details
+        elif event_type == 'ticket_resubmitted_by_user':
+            new_ticket_number = details.get('new_ticket_number')
+            if new_ticket_number:
+                try:
+                    state['resubmitted_ticket_number'] = int(new_ticket_number)
+                except (TypeError, ValueError):
+                    state['resubmitted_ticket_number'] = new_ticket_number
             state['details'] = details
 
         state['status_label'] = TICKET_STATUS_LABELS.get(state['status'], TICKET_STATUS_LABELS['unknown'])
@@ -2275,9 +2303,10 @@ def create_ticket_buttons():
     markup = InlineKeyboardMarkup(row_width=2)
     button_done = InlineKeyboardButton("Готово ✅", callback_data="ticket_done")
     button_reject = InlineKeyboardButton("Отклонён ❌", callback_data="ticket_reject_prompt")
+    button_transfer = InlineKeyboardButton("Передано выше ⬆️", callback_data="ticket_transferred_up")
     button_mass = InlineKeyboardButton("Массовый инцидент ⚠️", callback_data="ticket_mass_incident")
     markup.add(button_done, button_reject)
-    markup.add(button_mass)
+    markup.add(button_transfer, button_mass)
     return markup
 
 # Функция для получения URL изображения
@@ -2362,8 +2391,15 @@ def _send_ticket_screenshots(screenshots, thread_id: int | None = None):
     return result
 
 
-def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_id=None):
-    user_info = session.get('user_info', {})
+def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_id=None,
+                *, resubmitted_from: int | None = None, resubmit_reason: str = '',
+                user_info_override: dict | None = None, extra_details: dict | None = None,
+                problem_id_override: str | None = None, subproblem_id_override: str | None = None):
+    user_info = dict(session.get('user_info', {}) or {})
+    if user_info_override:
+        for key in ('department', 'name', 'workplace'):
+            if user_info_override.get(key) is not None:
+                user_info[key] = user_info_override.get(key) or ''
     department = user_info.get('department', 'Неизвестно')
     name = user_info.get('name', 'Неизвестно')
     workplace = user_info.get('workplace', '')
@@ -2371,10 +2407,16 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
     ticket_number = get_next_ticket_number()
     session['current_ticket_number'] = ticket_number
     session.modified = True
+    is_resubmission = resubmitted_from is not None
 
     # Формируем сообщение (экранируем пользовательские данные для Markdown)
+    title = (
+        f"🔁 *ПОВТОРНАЯ ЗАЯВКА №{ticket_number}* 🔁"
+        if is_resubmission
+        else f"🚨 *НОВАЯ ЗАЯВКА №{ticket_number}* 🚨"
+    )
     support_message = (
-        f"🚨 *НОВАЯ ЗАЯВКА №{ticket_number}* 🚨\n"
+        f"{title}\n"
         f"Отдел: {escape_markdown(department)}\n"
         f"Имя: {escape_markdown(name)}\n"
     )
@@ -2382,11 +2424,24 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
     if telegram_username:
         support_message += f"Telegram: @{escape_markdown(telegram_username)}\n"
 
+    if is_resubmission:
+        support_message += f"Предыдущая заявка: №{escape_markdown(str(resubmitted_from))}\n"
+        support_message += "Важно: инициатору показано предупреждение быть на рабочем месте, иначе повторная заявка может быть отклонена.\n"
+        if resubmit_reason:
+            support_message += f"Причина прошлого отклонения: {escape_markdown(str(resubmit_reason)[:400])}\n"
+
     # Добавляем рабочее место если оно указано
     if workplace:
         support_message += f"Рабочее место: {escape_markdown(workplace)}\n"
 
     support_message += f"Проблема: {escape_markdown(problem)}\n"
+    event_details = dict(extra_details or {})
+    if telegram_username:
+        event_details['telegram_username'] = telegram_username
+    if is_resubmission:
+        event_details['resubmitted_from'] = resubmitted_from
+        if resubmit_reason:
+            event_details['reject_reason'] = str(resubmit_reason)[:500]
 
     # Тематика НЕ отправляется в Telegram - только для маркировки в CRM
     # topic_info используется только на стороне веб-приложения
@@ -2436,7 +2491,10 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
                 channel=topic_info.get('channel', '') if topic_info else '',
                 topic_name=topic_name or '',
                 is_cisco=is_cisco_ticket,
-                details={'telegram_username': telegram_username} if telegram_username else None
+                user_info_override=user_info,
+                details=event_details or None,
+                problem_id_override=problem_id_override,
+                subproblem_id_override=subproblem_id_override
             )
             system_actor = {'name': 'Helper', 'username': 'helper-system', 'role': 'system'}
             log_ticket_event(
@@ -2444,14 +2502,20 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
                 ticket_number=ticket_number,
                 problem=problem,
                 actor_override=system_actor,
-                details={'auto_close_reason': 'reset_call'}
+                user_info_override=user_info,
+                details={'auto_close_reason': 'reset_call'},
+                problem_id_override=problem_id_override,
+                subproblem_id_override=subproblem_id_override
             )
             log_ticket_event(
                 event_type='ticket_auto_closed_reset_call',
                 ticket_number=ticket_number,
                 problem=problem,
                 actor_override=system_actor,
-                details={'reason': 'сброс звонка'}
+                user_info_override=user_info,
+                details={'reason': 'сброс звонка'},
+                problem_id_override=problem_id_override,
+                subproblem_id_override=subproblem_id_override
             )
             return msg
 
@@ -2505,7 +2569,10 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
             channel=topic_info.get('channel', '') if topic_info else '',
             topic_name=topic_name or '',
             is_cisco=is_cisco_ticket,
-            details={'telegram_username': telegram_username} if telegram_username else None
+            user_info_override=user_info,
+            details=event_details or None,
+            problem_id_override=problem_id_override,
+            subproblem_id_override=subproblem_id_override
         )
         _assign_ticket_to_current_duty(ticket_number, problem)
 
@@ -2520,11 +2587,15 @@ def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_i
             channel=topic_info.get('channel', '') if topic_info else '',
             topic_name=topic_name or '',
             is_cisco=is_cisco_ticket,
+            user_info_override=user_info,
             details={
                 'error_type': type(e).__name__,
                 'thread_id': target_thread_id,
-                'telegram_username': telegram_username
-            }
+                'telegram_username': telegram_username,
+                **event_details
+            },
+            problem_id_override=problem_id_override,
+            subproblem_id_override=subproblem_id_override
         )
         return None
 
@@ -2567,10 +2638,36 @@ def _plain_rejection_reason(text: str) -> str:
         'решено',
         'в работе',
         'в процессе',
+        'передано выше',
+        'передан выше',
+        'передана выше',
+        'передал выше',
+        'передали выше',
+        'передать выше',
+        'эскалир',
+        '2 линия',
+        'вторая линия',
+        'l2',
     )
     if any(keyword in lowered for keyword in non_rejection_keywords):
         return ''
     return reason[:500]
+
+
+def _is_transfer_up_text(text: str) -> bool:
+    normalized = (text or '').strip().lower().replace('ё', 'е')
+    return any(keyword in normalized for keyword in (
+        'передано выше',
+        'передан выше',
+        'передана выше',
+        'передал выше',
+        'передали выше',
+        'передать выше',
+        'эскалир',
+        '2 линия',
+        'вторая линия',
+        'l2',
+    ))
 
 
 def _mark_ticket_ready_for_feedback(ticket_number: int | None, problem: str, original_message: str, actor: dict):
@@ -2625,7 +2722,22 @@ def _mark_ticket_mass_incident(ticket_number: int | None, problem: str, actor: d
     )
 
 
-LOCKED_TICKET_ACTION_STATUSES = {'ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'closed_auto'}
+def _mark_ticket_transferred_up(ticket_number: int | None, problem: str, actor: dict, original_message: str = ''):
+    if ticket_number is None:
+        return
+    log_ticket_event(
+        event_type='ticket_transferred_up',
+        ticket_number=ticket_number,
+        problem=problem,
+        actor_override=actor,
+        details={
+            'source': 'telegram',
+            'original_message': (original_message or '')[:500]
+        }
+    )
+
+
+LOCKED_TICKET_ACTION_STATUSES = {'ready_for_feedback', 'closed', 'rejected', 'mass_incident', 'transferred_up', 'closed_auto'}
 
 
 def _ticket_action_lock_reason(ticket_number: int | None) -> str:
@@ -2851,6 +2963,47 @@ def handle_ticket_mass_incident(call):
         print(f"❌ Ошибка при обработке массового инцидента: {e}")
         traceback.print_exc()
 
+
+@bot.callback_query_handler(func=lambda call: call.data == "ticket_transferred_up")
+def handle_ticket_transferred_up(call):
+    print(f"🔔 Получен callback от кнопки 'Передано выше'! User: {call.from_user.id}, Chat: {call.message.chat.id}")
+    try:
+        original_message = call.message.text or call.message.caption or "Детали заявки недоступны"
+        ticket_number = extract_ticket_number_from_text(original_message)
+        if ticket_number is None:
+            bot.answer_callback_query(call.id, "Не нашёл номер заявки")
+            return
+        parsed = _parse_ticket_text_fields(original_message)
+        actor_override = _staff_actor_from_call(call)
+
+        lock_reason = _ticket_action_lock_reason(ticket_number)
+        if lock_reason:
+            _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
+            bot.answer_callback_query(call.id, lock_reason)
+            print(f"⛔ [handle_ticket_transferred_up] {lock_reason}")
+            return
+
+        _remove_ticket_buttons(call.message.chat.id, call.message.message_id)
+        _mark_ticket_transferred_up(
+            ticket_number,
+            parsed.get('problem') or original_message,
+            actor_override,
+            original_message
+        )
+        bot.send_message(
+            TECH_SUPPORT_CHAT_ID,
+            f"⬆️ ЗАЯВКА ПЕРЕДАНА ВЫШЕ ⬆️\n\n"
+            f"{original_message}\n\n"
+            f"👤 Передал: {actor_override['name']}",
+            message_thread_id=IN_PROGRESS_THREAD_ID
+        )
+        bot.answer_callback_query(call.id, "⬆️ Заявка отмечена как переданная выше")
+        print(f"✅ Передача выше обработана ticket_number={ticket_number}")
+    except Exception as e:
+        print(f"❌ Ошибка при обработке передачи выше: {e}")
+        traceback.print_exc()
+
+
 def send_solved_ticket(problem):
     user_info = session.get('user_info')
     if user_info:
@@ -3065,27 +3218,120 @@ def contacts_kc():
     user_info = session.get('user_info') or {}
     q = request.args.get('q', '').strip()
     department = request.args.get('department', '').strip()
+    selected_department = contacts_mgr._canonical_department(department) if department else ''
+    per_page = 5000
+    page = 1
     departments = contacts_mgr.get_departments(include_inactive=False)
-    contacts = contacts_mgr.get_contacts(
-        q=q,
-        department=department,
-        status='active',
-        limit=800
-    )
-    actor_key = _contact_like_actor_key(user_info)
-    liked_ids = contacts_mgr.get_liked_contact_ids(actor_key, [c.get('id') for c in contacts])
-    for contact in contacts:
-        contact['liked_by_user'] = contact.get('id') in liked_ids
+    page_data = _contacts_page_data(q, department, page, per_page, user_info)
+    contact_tree = contacts_mgr.build_contact_hierarchy(page_data['contacts'])
+    department_tree = contacts_mgr.build_department_hierarchy(departments)
     stats = contacts_mgr.get_stats()
     return render_template(
         'contacts_kc.html',
         user_info=user_info,
         departments=departments,
-        contacts=contacts,
+        department_tree=department_tree,
+        contacts=page_data['contacts'],
+        contact_tree=contact_tree,
         stats=stats,
         q=q,
-        selected_department=department
+        selected_department=selected_department,
+        page=page_data['page'],
+        per_page=page_data['per_page'],
+        total=page_data['total'],
+        total_pages=page_data['total_pages'],
+        has_more=page_data['has_more']
     )
+
+
+def _contacts_page_args():
+    page = max(1, request.args.get('page', 1, type=int))
+    per_page = request.args.get('per_page', 48, type=int)
+    if per_page not in (24, 48, 96, 5000):
+        per_page = 48
+    return page, per_page
+
+
+def _contacts_page_data(q: str, department: str, page: int, per_page: int, user_info: dict):
+    total = contacts_mgr.count_contacts(q=q, department=department, status='active')
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(max(1, int(page or 1)), total_pages)
+    offset = (page - 1) * per_page
+    contacts = contacts_mgr.get_contacts(
+        q=q,
+        department=department,
+        status='active',
+        limit=per_page,
+        offset=offset
+    )
+    actor_key = _contact_like_actor_key(user_info)
+    liked_ids = contacts_mgr.get_liked_contact_ids(actor_key, [c.get('id') for c in contacts])
+    for contact in contacts:
+        contact['liked_by_user'] = contact.get('id') in liked_ids
+    return {
+        'contacts': contacts,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'total_pages': total_pages,
+        'has_more': page < total_pages,
+    }
+
+
+def _contact_api_row(contact: dict) -> dict:
+    photo_path = contact.get('photo_path') or ''
+    return {
+        'id': contact.get('id'),
+        'full_name': contact.get('full_name') or '',
+        'position': contact.get('position') or '',
+        'department': contact.get('department') or '',
+        'department_group': contact.get('department_group') or contact.get('department') or 'Без отдела',
+        'hierarchy_path': contact.get('hierarchy_path') or [],
+        'hierarchy_kinds': contact.get('hierarchy_kinds') or [],
+        'phone': contact.get('phone') or '',
+        'extension': contact.get('extension') or '',
+        'mobile': contact.get('mobile') or '',
+        'email': contact.get('email') or '',
+        'telegram': contact.get('telegram') or '',
+        'nickname': contact.get('nickname') or '',
+        'group_role': contact.get('group_role') or 'specialist',
+        'group_role_label': contact.get('group_role_label') or '',
+        'contact_role_class': contact.get('contact_role_class') or '',
+        'workplace': contact.get('workplace') or '',
+        'schedule': contact.get('schedule') or '',
+        'languages': contact.get('languages') or '',
+        'responsibilities': contact.get('responsibilities') or '',
+        'notes': contact.get('notes') or '',
+        'tags': contact.get('tags') or '',
+        'photo_url': url_for('static', filename=photo_path) if photo_path else '',
+        'liked_by_user': bool(contact.get('liked_by_user')),
+        'likes_count': int(contact.get('likes_count') or 0),
+        'is_group_lead': bool(contact.get('is_group_lead')),
+        'is_senior_contact': bool(contact.get('is_senior_contact')),
+    }
+
+
+@app.route('/api/contacts_kc')
+@rate_limit(max_requests=60, window=60)
+def api_contacts_kc():
+    """Порционная загрузка контактов для бесконечной прокрутки."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    user_info = session.get('user_info') or {}
+    q = request.args.get('q', '').strip()
+    department = request.args.get('department', '').strip()
+    page, per_page = _contacts_page_args()
+    data = _contacts_page_data(q, department, page, per_page, user_info)
+    return jsonify({
+        'success': True,
+        'contacts': [_contact_api_row(contact) for contact in data['contacts']],
+        'page': data['page'],
+        'per_page': data['per_page'],
+        'total': data['total'],
+        'total_pages': data['total_pages'],
+        'has_more': data['has_more'],
+    })
 
 
 def _contact_like_actor_key(user_info: dict | None = None) -> str:
@@ -3122,8 +3368,11 @@ def _contact_form_data() -> dict:
         'mobile': request.form.get('mobile', '').strip(),
         'email': request.form.get('email', '').strip(),
         'telegram': request.form.get('telegram', '').strip(),
+        'nickname': request.form.get('nickname', '').strip(),
+        'group_role': request.form.get('group_role', 'specialist').strip(),
         'workplace': request.form.get('workplace', '').strip(),
         'schedule': request.form.get('schedule', '').strip(),
+        'languages': request.form.get('languages', '').strip(),
         'responsibilities': request.form.get('responsibilities', '').strip(),
         'notes': request.form.get('notes', '').strip(),
         'tags': request.form.get('tags', '').strip(),
@@ -3159,6 +3408,7 @@ def _validated_contact_form_data():
 CONTACT_PHOTO_UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'uploads', 'contact_photos')
 CONTACT_PHOTO_URL_PREFIX = 'uploads/contact_photos'
 CONTACT_PHOTO_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'jfif', 'avif'}
+CONTACT_PHOTO_MAX_BYTES = 10 * 1024 * 1024
 CONTACT_PHOTO_MIME_EXTENSIONS = {
     'image/jpeg': 'jpg',
     'image/png': 'png',
@@ -3167,6 +3417,92 @@ CONTACT_PHOTO_MIME_EXTENSIONS = {
     'image/bmp': 'bmp',
     'image/avif': 'avif',
 }
+
+
+def _contact_photo_selected(file) -> bool:
+    return bool(file and (file.filename or (file.mimetype or '').lower().startswith('image/')))
+
+
+def _contact_photo_stream_size(file) -> int:
+    stream = getattr(file, 'stream', None)
+    if not stream:
+        return 0
+    try:
+        current = stream.tell()
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        stream.seek(current)
+        return int(size)
+    except (OSError, ValueError):
+        return int(request.content_length or 0)
+
+
+def _contact_photo_header(file, length: int = 64) -> bytes:
+    stream = getattr(file, 'stream', None)
+    if not stream:
+        return b''
+    try:
+        current = stream.tell()
+        stream.seek(0)
+        header = stream.read(length) or b''
+        stream.seek(current)
+        return header
+    except (OSError, ValueError):
+        return b''
+
+
+def _detect_contact_photo_extension(header: bytes) -> str:
+    if header.startswith(b'\xff\xd8\xff'):
+        return 'jpg'
+    if header.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if header.startswith((b'GIF87a', b'GIF89a')):
+        return 'gif'
+    if header.startswith(b'BM'):
+        return 'bmp'
+    if len(header) >= 12 and header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return 'webp'
+    if len(header) >= 12 and header[4:8] == b'ftyp' and (b'avif' in header[:32] or b'avis' in header[:32]):
+        return 'avif'
+    return ''
+
+
+def _validate_contact_photo(file) -> str:
+    if not _contact_photo_selected(file):
+        return ''
+
+    original_name = secure_filename(file.filename or 'screenshot')
+    filename_ext = original_name.rsplit('.', 1)[-1].lower() if '.' in original_name else ''
+    if filename_ext in ('jpeg', 'jfif'):
+        filename_ext = 'jpg'
+    if filename_ext and filename_ext not in CONTACT_PHOTO_EXTENSIONS:
+        raise ValueError('Фото должно быть в формате JPG, PNG, WEBP, GIF, BMP, JFIF или AVIF')
+
+    size = _contact_photo_stream_size(file)
+    if size > CONTACT_PHOTO_MAX_BYTES:
+        raise ValueError('Фото должно быть не больше 10 МБ')
+
+    detected_ext = _detect_contact_photo_extension(_contact_photo_header(file))
+    if not detected_ext:
+        raise ValueError('Файл не похож на изображение JPG, PNG, WEBP, GIF, BMP или AVIF')
+
+    if filename_ext and filename_ext != detected_ext:
+        # JFIF is a JPEG container, so it is already normalized to jpg above.
+        raise ValueError('Расширение файла не совпадает с фактическим форматом изображения')
+
+    try:
+        file.stream.seek(0)
+    except (OSError, ValueError, AttributeError):
+        pass
+    return detected_ext
+
+
+def _contact_photo_error() -> str:
+    try:
+        _validate_contact_photo(request.files.get('photo'))
+    except ValueError as e:
+        return str(e)
+    return ''
 
 
 def _safe_remove_contact_photo(photo_path: str):
@@ -3185,17 +3521,10 @@ def _safe_remove_contact_photo(photo_path: str):
 
 def _save_contact_photo(contact_id: int) -> str:
     file = request.files.get('photo')
-    if file is None:
-        return ''
-    if not file.filename and not (file.mimetype or '').lower().startswith('image/'):
+    if not _contact_photo_selected(file):
         return ''
 
-    original_name = secure_filename(file.filename or 'screenshot')
-    ext = original_name.rsplit('.', 1)[-1].lower() if '.' in original_name else ''
-    if not ext:
-        ext = CONTACT_PHOTO_MIME_EXTENSIONS.get((file.mimetype or '').lower(), '')
-    if ext not in CONTACT_PHOTO_EXTENSIONS:
-        raise ValueError('Фото должно быть в формате JPG, PNG, WEBP, GIF, BMP, JFIF или AVIF')
+    ext = _validate_contact_photo(file)
 
     os.makedirs(CONTACT_PHOTO_UPLOAD_DIR, exist_ok=True)
     filename = f"{contact_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.{ext}"
@@ -3210,11 +3539,6 @@ def _apply_contact_photo(contact_id: int):
     if not current:
         return
 
-    if request.form.get('clear_photo') == 'on':
-        _safe_remove_contact_photo(current.get('photo_path') or '')
-        contacts_mgr.update_contact_photo(contact_id, '', actor=actor)
-        return
-
     try:
         photo_path = _save_contact_photo(contact_id)
     except ValueError as e:
@@ -3224,6 +3548,11 @@ def _apply_contact_photo(contact_id: int):
     if photo_path:
         _safe_remove_contact_photo(current.get('photo_path') or '')
         contacts_mgr.update_contact_photo(contact_id, photo_path, actor=actor)
+        return
+
+    if request.form.get('clear_photo') == 'on':
+        _safe_remove_contact_photo(current.get('photo_path') or '')
+        contacts_mgr.update_contact_photo(contact_id, '', actor=actor)
 
 
 def _admin_contacts_return():
@@ -3258,12 +3587,16 @@ def admin_contacts_kc():
         offset=offset
     )
     departments = contacts_mgr.get_departments(include_inactive=True)
+    custom_departments = contacts_mgr.get_custom_departments()
+    position_options = contacts_mgr.get_position_options()
     stats = contacts_mgr.get_stats()
 
     return render_template(
         'admin_contacts_kc.html',
         contacts=contacts,
         departments=departments,
+        custom_departments=custom_departments,
+        position_options=position_options,
         stats=stats,
         q=q,
         selected_department=department,
@@ -3274,12 +3607,47 @@ def admin_contacts_kc():
     )
 
 
+@app.route('/admin/contacts_kc/departments/create', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_department_create():
+    data = {
+        'name': request.form.get('name', '').strip(),
+        'parent_name': request.form.get('parent_name', '').strip(),
+        'kind': request.form.get('kind', 'group').strip(),
+        'sort_order': request.form.get('sort_order', '0').strip(),
+    }
+    result = contacts_mgr.create_department(data, actor=session.get('admin_username', ''))
+    if result.get('success'):
+        flash('Группа или отдел добавлены', 'success')
+        write_audit_log('contact_department_created', 200, {'department_id': result.get('id')})
+    else:
+        flash(result.get('error', 'Не удалось добавить группу или отдел'), 'error')
+    return _admin_contacts_return()
+
+
+@app.route('/admin/contacts_kc/departments/<int:department_id>/delete', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_department_delete(department_id):
+    result = contacts_mgr.delete_department(department_id)
+    if result.get('success'):
+        flash('Группа или отдел удалены', 'success')
+        write_audit_log('contact_department_deleted', 200, {'department_id': department_id})
+    else:
+        flash(result.get('error', 'Не удалось удалить группу или отдел'), 'error')
+    return _admin_contacts_return()
+
+
 @app.route('/admin/contacts_kc/contacts/create', methods=['POST'])
 @AdminAuth.manuals_required
 def admin_contact_create():
     data, error = _validated_contact_form_data()
     if error:
         flash(error, 'error')
+        return _admin_contacts_return()
+
+    photo_error = _contact_photo_error()
+    if photo_error:
+        flash(photo_error, 'error')
         return _admin_contacts_return()
 
     result = contacts_mgr.create_contact(data, actor=session.get('admin_username', ''))
@@ -3298,6 +3666,11 @@ def admin_contact_update(contact_id):
     data, error = _validated_contact_form_data()
     if error:
         flash(error, 'error')
+        return _admin_contacts_return()
+
+    photo_error = _contact_photo_error()
+    if photo_error:
+        flash(photo_error, 'error')
         return _admin_contacts_return()
 
     result = contacts_mgr.update_contact(contact_id, data, actor=session.get('admin_username', ''))
@@ -3991,9 +4364,12 @@ def api_ticket_status(ticket_number: int):
             'status': state.get('status'),
             'status_label': state.get('status_label'),
             'can_feedback': state.get('status') == 'ready_for_feedback',
+            'can_resubmit': state.get('status') == 'rejected' and not state.get('resubmitted_ticket_number'),
+            'resubmitted_ticket_number': state.get('resubmitted_ticket_number'),
             'ready_at': state.get('ready_at') or '',
             'assigned_name': state.get('assigned_name') or '',
             'assigned_username': state.get('assigned_username') or '',
+            'transferred_by': state.get('transferred_by') or '',
         })
     except Exception as e:
         print(f"[api_ticket_status] Ошибка: {e}")
@@ -4027,9 +4403,13 @@ def api_my_tickets():
                 'assigned_name': state.get('assigned_name') or '',
                 'assigned_username': state.get('assigned_username') or '',
                 'resolved_by': state.get('resolved_by') or '',
+                'transferred_by': state.get('transferred_by') or '',
                 'reject_reason': state.get('reject_reason') or '',
+                'resubmitted_from': state.get('resubmitted_from'),
+                'resubmitted_ticket_number': state.get('resubmitted_ticket_number'),
                 'is_cisco': bool(state.get('is_cisco')),
-                'can_feedback': state.get('status') == 'ready_for_feedback'
+                'can_feedback': state.get('status') == 'ready_for_feedback',
+                'can_resubmit': state.get('status') == 'rejected' and not state.get('resubmitted_ticket_number')
             })
         rows.sort(key=lambda item: item.get('created_at') or item.get('updated_at') or '', reverse=True)
         return jsonify({'success': True, 'data': rows, 'total': len(rows)})
@@ -4037,6 +4417,105 @@ def api_my_tickets():
         print(f"[api_my_tickets] Ошибка: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Ошибка получения заявок'}), 500
+
+
+@app.route('/api/ticket_resubmit/<int:ticket_number>', methods=['POST'])
+@rate_limit(max_requests=5, window=60)
+def api_ticket_resubmit(ticket_number: int):
+    if 'user_info' not in session or not session.get('authenticated') or not _session_owns_ticket(ticket_number):
+        return jsonify({'success': False, 'error': 'Недоступно'}), 403
+    try:
+        state = _get_ticket_state(ticket_number)
+        if not state:
+            return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        if state.get('status') != 'rejected':
+            return jsonify({'success': False, 'error': 'Повторно можно отправить только отклонённую заявку'}), 409
+
+        existing_resubmission = state.get('resubmitted_ticket_number')
+        if existing_resubmission:
+            return jsonify({
+                'success': True,
+                'ticket_number': ticket_number,
+                'new_ticket_number': existing_resubmission,
+                'status': state.get('status'),
+                'status_label': state.get('status_label'),
+                'message': f'Заявка уже отправлена повторно как №{existing_resubmission}'
+            })
+
+        working, off_hours_msg = is_working_hours()
+        if not working:
+            return jsonify({'success': False, 'error': off_hours_msg or 'Сейчас заявки не принимаются'}), 409
+
+        telegram_redirect = _require_telegram_username_for_ticket('my_tickets')
+        if telegram_redirect:
+            return jsonify({
+                'success': False,
+                'error': 'Перед повторной отправкой укажите Telegram username',
+                'redirect_url': url_for('enter_telegram_username')
+            }), 409
+
+        user_info = session.get('user_info', {}) or {}
+        actor = {
+            'name': user_info.get('name') or user_info.get('username') or 'Инициатор',
+            'username': user_info.get('username') or '',
+            'role': 'user'
+        }
+        original_user_info = {
+            'department': state.get('department') or user_info.get('department') or '',
+            'name': state.get('user_name') or user_info.get('name') or user_info.get('username') or '',
+            'workplace': state.get('workplace') or user_info.get('workplace') or '',
+        }
+        problem = state.get('problem') or 'Повторная заявка'
+        target_thread_id = CISCO_TICKETS_THREAD_ID if state.get('is_cisco') and CISCO_TICKETS_THREAD_ID else NEW_TICKETS_THREAD_ID
+
+        msg = send_ticket(
+            problem,
+            thread_id=target_thread_id,
+            resubmitted_from=ticket_number,
+            resubmit_reason=state.get('reject_reason') or '',
+            user_info_override=original_user_info,
+            extra_details={'source': 'rejected_ticket_resubmit'},
+            problem_id_override=state.get('problem_id') or '',
+            subproblem_id_override=state.get('subproblem_id') or ''
+        )
+        new_ticket_number = int(session.get('current_ticket_number') or 0)
+        if msg is None or not new_ticket_number:
+            return jsonify({
+                'success': False,
+                'error': 'Не удалось отправить повторную заявку'
+            }), 503
+
+        log_ticket_event(
+            event_type='ticket_resubmitted_by_user',
+            ticket_number=ticket_number,
+            problem=problem,
+            is_cisco=bool(state.get('is_cisco')),
+            actor_override=actor,
+            user_info_override=original_user_info,
+            details={
+                'new_ticket_number': new_ticket_number,
+                'source': 'my_tickets',
+                'warning_acknowledged': True,
+                'old_status': state.get('status') or ''
+            },
+            problem_id_override=state.get('problem_id') or '',
+            subproblem_id_override=state.get('subproblem_id') or ''
+        )
+        write_audit_log('ticket_resubmitted', 200, {
+            'ticket_number': ticket_number,
+            'new_ticket_number': new_ticket_number
+        })
+
+        return jsonify({
+            'success': True,
+            'ticket_number': ticket_number,
+            'new_ticket_number': new_ticket_number,
+            'message': f'Повторная заявка №{new_ticket_number} отправлена'
+        })
+    except Exception as e:
+        print(f"[api_ticket_resubmit] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Ошибка повторной отправки заявки'}), 500
 
 
 @app.route('/api/ticket_feedback/<int:ticket_number>', methods=['POST'])
@@ -4595,6 +5074,7 @@ def handle_channel_messages(message):
             )
             is_ticket_action = (
                 "массовый инцидент" in text or
+                _is_transfer_up_text(text) or
                 "отклон" in text or
                 is_rejection_reply or
                 "готово" in text or
@@ -4616,6 +5096,21 @@ def handle_channel_messages(message):
                     TECH_SUPPORT_CHAT_ID,
                     f"⚠️ Заявка №{ticket_number or '—'} отмечена как массовый инцидент.",
                     message_thread_id=IN_PROGRESS_THREAD_ID
+                )
+            elif _is_transfer_up_text(text):
+                lock_reason = _ticket_action_lock_reason(ticket_number)
+                if lock_reason:
+                    _remove_ticket_buttons(original_chat_id, original_message_id)
+                    bot.reply_to(message, lock_reason)
+                    return
+                _mark_ticket_transferred_up(ticket_number, problem, actor_override, original_ticket_text)
+                _remove_ticket_buttons(original_chat_id, original_message_id)
+                bot.send_message(
+                    TECH_SUPPORT_CHAT_ID,
+                    f"⬆️ Заявка №{ticket_number or '—'} передана выше.\n"
+                    f"Сотрудник: {html_escape(actor_override['name'])}",
+                    message_thread_id=IN_PROGRESS_THREAD_ID,
+                    parse_mode='HTML'
                 )
             elif "отклон" in text or is_rejection_reply:
                 if not rejection_reason:
@@ -6969,6 +7464,10 @@ def user_login():
         error_message = 'Некорректные учётные данные'
 
     if request.method == 'POST':
+        def failed_login(error_code: str):
+            session['login_failed_attempts'] = int(session.get('login_failed_attempts') or 0) + 1
+            return redirect(url_for('user_login', error=error_code))
+
         # Rate limiting для защиты от brute force
         ip = get_client_ip()
         if not rate_limiter.check_login_attempt(ip, max_attempts=10, window=300):
@@ -6979,7 +7478,7 @@ def user_login():
 
         # Валидация длины
         if len(username) > 100 or len(password) > 128:
-            return redirect(url_for('user_login', error='credentials'))
+            return failed_login('credentials')
 
         # Тестовый режим (без AD) - для локальной разработки
         # По умолчанию включен если нет AD_SERVER в .env
@@ -7023,10 +7522,10 @@ def user_login():
                     session['trainer_segments'] = trainer_segments
                     session['admin_token'] = AdminAuth.generate_session_token()
 
-                session.permanent = True
+                session.pop('login_failed_attempts', None)
                 return redirect(url_for('choose_help_type'))
             else:
-                return redirect(url_for('user_login', error='invalid'))
+                return failed_login('invalid')
 
         # Аутентификация через AD (продакшен)
         from ad_auth import ad_auth
@@ -7055,14 +7554,15 @@ def user_login():
                 session['admin_permissions'] = ad_permissions
                 session['trainer_segments'] = trainer_segments
                 session['admin_token'] = AdminAuth.generate_session_token()
-            session.permanent = True
+            session.pop('login_failed_attempts', None)
 
             # Переходим к выбору типа помощи
             return redirect(url_for('choose_help_type'))
         else:
-            return redirect(url_for('user_login', error='invalid'))
+            return failed_login('invalid')
 
-    return render_template('user_login.html', error_message=error_message)
+    failed_attempts = int(session.get('login_failed_attempts') or 0)
+    return render_template('user_login.html', error_message=error_message, failed_attempts=failed_attempts)
 
 @app.route('/enter_workplace', methods=['GET', 'POST'])
 def enter_workplace():
@@ -10587,7 +11087,11 @@ def api_stats_tickets_journal():
                 'created_at': str(state.get('created_at', ''))[:19],
                 'status': state.get('status') or 'unknown',
                 'status_label': state.get('status_label') or 'Неизвестно',
-                'resolved_by': state.get('resolved_by') or state.get('assigned_name') or None,
+                'resolved_by': (
+                    state.get('transferred_by')
+                    if state.get('status') == 'transferred_up'
+                    else state.get('resolved_by') or state.get('assigned_name') or None
+                ),
                 'resolved_at': resolved_at or None,
                 'resolution_time': None,
                 'resolution_minutes': None
@@ -11143,11 +11647,25 @@ def admin_delete_user(username):
 
 # ─── Пользовательская часть ────────────────────────────────────
 
+def _require_scenarios_admin_access(api: bool = False):
+    if not session.get('authenticated'):
+        if api:
+            return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+        return redirect(url_for('user_login'))
+    if not session.get('admin_logged_in'):
+        if api:
+            return jsonify({'success': False, 'error': 'Сценарии доступны только администраторам'}), 403
+        flash('Сценарии временно доступны только администраторам.', 'error')
+        return redirect(url_for('choose_help_type'))
+    return None
+
+
 @app.route('/scenarios')
 def scenarios_list():
     """Список активных сценариев для операторов"""
-    if not session.get('authenticated'):
-        return redirect(url_for('user_login'))
+    access_response = _require_scenarios_admin_access()
+    if access_response:
+        return access_response
     user = session.get('user_info', {})
     category_id = request.args.get('category_id', type=int)
     search = request.args.get('q', '').strip()
@@ -11170,8 +11688,9 @@ def scenarios_list():
 @app.route('/scenarios/<int:scenario_id>')
 def scenario_play(scenario_id):
     """Прохождение сценария оператором"""
-    if not session.get('authenticated'):
-        return redirect(url_for('user_login'))
+    access_response = _require_scenarios_admin_access()
+    if access_response:
+        return access_response
     user = session.get('user_info', {})
 
     scenario = scenario_mgr.get_scenario(scenario_id)
@@ -11195,8 +11714,9 @@ def scenario_play(scenario_id):
 @app.route('/api/scenarios/<int:scenario_id>/node/<int:node_id>')
 def scenario_get_node(scenario_id, node_id):
     """API: получить узел с вариантами выбора"""
-    if not session.get('authenticated'):
-        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+    access_response = _require_scenarios_admin_access(api=True)
+    if access_response:
+        return access_response
 
     # Проверяем, что сценарий активен (не черновик и не архив)
     scenario = scenario_mgr.get_scenario(scenario_id)

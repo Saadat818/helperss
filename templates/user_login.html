@@ -3,390 +3,686 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вход - Помощник МБанк</title>
+    <title>Вход в Helper</title>
     <style>
         :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
-            --yellow: #f2b705;
-            --teal: #2bb6b6;
+            --bg: #07111F;
+            --bg-top: #08111F;
+            --bg-mid: #091428;
+            --card: rgba(18,28,45,.85);
+            --card-strong: rgba(15, 24, 39, .92);
+            --border: rgba(255,255,255,.08);
+            --border-strong: rgba(255,255,255,.13);
+            --green: #22C55E;
+            --green-dark: #16A34A;
+            --text: #FFFFFF;
+            --muted: #94A3B8;
+            --muted-soft: #64748B;
+            --danger: #F87171;
+            --danger-bg: rgba(248, 113, 113, .09);
+            --shadow: 0 24px 80px rgba(0, 0, 0, .34);
         }
 
         * {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
         }
 
+        html,
         body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            display: grid;
-            place-items: center;
+            min-height: 100%;
+            margin: 0;
+        }
+
+        body {
+            min-width: 1180px;
             min-height: 100vh;
-            padding: 24px;
-            position: relative;
+            font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at 10% 0%, rgba(34,197,94,.10), transparent 35%),
+                linear-gradient(180deg, #08111F 0%, #091428 50%, #07111F 100%);
             overflow: hidden;
         }
 
-        .login-container {
-            width: 380px;
-            max-width: 92vw;
-            border-radius: 14px;
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid #151515;
-            box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
-            padding: 20px 22px 22px;
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,.024) 1px, transparent 1px);
+            background-size: 64px 64px;
+            mask-image: linear-gradient(180deg, rgba(0,0,0,.45), transparent 74%);
+        }
+
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: .05;
+            background-image:
+                radial-gradient(circle at 20% 30%, #fff 0 1px, transparent 1px),
+                radial-gradient(circle at 80% 20%, #fff 0 1px, transparent 1px);
+            background-size: 3px 3px, 4px 4px;
+        }
+
+        .auth-shell {
             position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: minmax(470px, 45%) minmax(620px, 55%);
+            min-height: 100vh;
         }
 
-        .logo {
+        .brand-panel {
+            position: relative;
             display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            margin-bottom: 8px;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 34px;
+            padding: 54px 54px 44px;
+            border-right: 1px solid var(--border);
         }
 
-        .logo-wrap {
-            height: 54px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .brand-panel::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 12% 7%, rgba(34,197,94,.16), transparent 34%),
+                linear-gradient(90deg, rgba(34,197,94,.055), transparent 58%);
         }
 
-        .logo-img {
-            height: 44px;
-            width: 44px;
+        .brand-content,
+        .updates-card {
+            position: relative;
+            z-index: 1;
         }
 
-        .logo-text {
+        .brand-mark {
             display: inline-flex;
             align-items: center;
+            gap: 12px;
+            margin-bottom: 58px;
+        }
+
+        .brand-logo {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            border: 1px solid var(--border-strong);
+            background: rgba(255,255,255,.06);
+            padding: 6px;
+        }
+
+        .brand-name {
+            font-size: 28px;
             font-weight: 800;
-            font-size: 34px;
-            letter-spacing: -0.2px;
-            background: linear-gradient(90deg, #00d4aa 0%, #00a651 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+            letter-spacing: 0;
         }
 
-        h2 {
-            margin: 6px 0 6px;
+        .eyebrow {
+            margin: 0 0 14px;
+            color: var(--green);
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            max-width: 620px;
+            margin: 0;
             color: var(--text);
-            font-size: 20px;
-            font-weight: 700;
+            font-size: 54px;
+            line-height: 1.02;
+            font-weight: 820;
+            letter-spacing: 0;
         }
 
-        .subtitle {
+        .lead {
+            max-width: 560px;
+            margin: 20px 0 34px;
+            color: var(--muted);
+            font-size: 18px;
+            line-height: 1.62;
+        }
+
+        .feature-list {
+            display: grid;
+            gap: 14px;
+            max-width: 580px;
+        }
+
+        .feature-item {
+            display: grid;
+            grid-template-columns: 38px minmax(0, 1fr);
+            gap: 12px;
+            align-items: start;
+            padding: 12px 0;
+        }
+
+        .feature-icon {
+            display: grid;
+            place-items: center;
+            width: 38px;
+            height: 38px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(18,28,45,.62);
+            color: var(--green);
+        }
+
+        .feature-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .feature-title {
+            margin: 0 0 4px;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 780;
+        }
+
+        .feature-desc {
+            margin: 0;
             color: var(--muted);
             font-size: 13px;
-            margin-bottom: 18px;
+            line-height: 1.45;
         }
 
-        .form-group {
+        .updates-card {
+            width: min(100%, 620px);
+            padding: 18px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(18,28,45,.62);
+            box-shadow: 0 18px 50px rgba(0,0,0,.18);
+        }
+
+        .updates-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
             margin-bottom: 12px;
         }
 
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
+        .updates-title {
+            margin: 0;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 800;
         }
 
-        input[type="text"],
-        input[type="password"] {
+        .updates-date {
+            flex: 0 0 auto;
+            color: var(--muted-soft);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .updates-list {
+            display: grid;
+            gap: 9px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .updates-list li {
+            display: flex;
+            gap: 9px;
+            align-items: baseline;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .updates-list li::before {
+            content: "";
+            flex: 0 0 auto;
+            width: 5px;
+            height: 5px;
+            margin-top: 6px;
+            border-radius: 999px;
+            background: var(--green);
+            opacity: .86;
+        }
+
+        .login-panel {
+            display: grid;
+            place-items: center;
+            padding: 46px 72px;
+        }
+
+        .login-card {
+            width: min(560px, 100%);
+            padding: 34px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--card);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(18px);
+        }
+
+        .login-kicker {
+            margin: 0 0 8px;
+            color: var(--green);
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+
+        h2 {
+            margin: 0;
+            color: var(--text);
+            font-size: 30px;
+            line-height: 1.15;
+            font-weight: 820;
+            letter-spacing: 0;
+        }
+
+        .login-subtitle {
+            margin: 10px 0 28px;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .form-group {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        label {
+            color: #DCE7F5;
+            font-size: 13px;
+            font-weight: 760;
+        }
+
+        .input-control {
             width: 100%;
             height: 48px;
-            padding: 0 16px;
-            border: 1px solid #2a2a2a;
-            background: #1a1a1a;
-            color: #7a7a7a;
-            border-radius: 10px;
+            padding: 0 14px;
+            border: 1px solid var(--border);
+            border-radius: 11px;
+            background: rgba(7, 17, 31, .72);
+            color: var(--text);
             font-size: 15px;
             outline: none;
-            transition: border .15s ease, background .15s ease, color .15s ease;
         }
 
-        input::placeholder {
-            color: #6a6a6a;
+        .input-control::placeholder {
+            color: #5E6F85;
         }
 
-        input[type="text"]:focus,
-        input[type="password"]:focus {
-            border-color: rgba(0, 166, 81, .5);
-            background: #202020;
-            color: var(--text);
+        .input-control:focus {
+            border-color: rgba(34,197,94,.58);
+            background: rgba(7, 17, 31, .92);
+            box-shadow: 0 0 0 4px rgba(34,197,94,.10);
         }
 
-        .password-wrapper {
+        .password-field {
             position: relative;
-            display: flex;
-            align-items: center;
         }
 
-        .password-wrapper input {
-            padding-left: 16px;
+        .password-field .input-control {
             padding-right: 48px;
         }
 
         .toggle-password {
             position: absolute;
-            right: 12px;
+            top: 50%;
+            right: 10px;
+            margin-top: -17px;
+            display: grid;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: 0;
+            border-radius: 9px;
             background: transparent;
-            border: none;
-            color: rgba(122, 122, 122, .85);
+            color: var(--muted);
             cursor: pointer;
-            font-size: 16px;
-            line-height: 1;
-            padding: 6px;
+        }
+
+        .toggle-password:hover,
+        .toggle-password:focus-visible {
+            color: var(--text);
+            background: rgba(255,255,255,.06);
+            outline: none;
         }
 
         .toggle-password svg {
-            width: 20px;
-            height: 20px;
+            width: 19px;
+            height: 19px;
         }
 
-        .btn-login {
-            margin-top: 20px;
-            width: 100%;
-            height: 48px;
-            border-radius: 10px;
-            border: none;
-            background: var(--green);
-            color: #041a0f;
-            font-weight: 700;
-            font-size: 15px;
-            cursor: pointer;
-            transition: transform .06s ease, background .15s ease;
-        }
-
-        .btn-login:hover {
-            background: var(--greenHover);
-        }
-
-        .btn-login:active {
-            transform: translateY(1px);
-        }
-
-        .btn-login:disabled {
-            background: rgba(0, 195, 106, 0.35);
-            color: rgba(6, 17, 11, 0.55);
-            cursor: not-allowed;
-        }
-
-        .error-modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.6);
+        .error-message {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 50;
-        }
-
-        .error-card {
-            width: 320px;
-            max-width: 88vw;
-            background: #1f1f1f;
-            border: 1px solid #2c2c2c;
-            border-radius: 12px;
-            box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
-            padding: 16px;
-            color: #eaeaea;
-        }
-
-        .error-title {
-            display: flex;
-            align-items: center;
             gap: 10px;
-            font-weight: 700;
-            font-size: 14px;
-            margin-bottom: 6px;
+            align-items: flex-start;
+            margin: -4px 0 16px;
+            padding: 12px 13px;
+            border: 1px solid rgba(248,113,113,.25);
+            border-radius: 11px;
+            background: var(--danger-bg);
+            color: #FCA5A5;
+            font-size: 13px;
+            line-height: 1.42;
+            font-weight: 720;
         }
 
-        .error-icon {
-            width: 22px;
-            height: 22px;
-            border-radius: 999px;
-            background: #ff4d4f;
-            color: #0b0b0b;
+        .error-message svg {
+            flex: 0 0 auto;
+            width: 18px;
+            height: 18px;
+            margin-top: 1px;
+        }
+
+        .error-hint {
+            margin-top: 4px;
+            color: #FECACA;
+            font-weight: 650;
+        }
+
+        .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-weight: 800;
+            gap: 9px;
+            width: 100%;
+            height: 48px;
+            border-radius: 11px;
+            font-size: 15px;
+            font-weight: 820;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            border: 1px solid rgba(34,197,94,.78);
+            background: var(--green-dark);
+            color: #FFFFFF;
+            box-shadow: 0 16px 40px rgba(34,197,94,.18);
+        }
+
+        .btn-primary:hover,
+        .btn-primary:focus-visible {
+            background: #15803D;
+            outline: none;
+        }
+
+        .btn-primary:disabled {
+            border-color: rgba(34,197,94,.20);
+            background: rgba(22, 163, 74, .42);
+            color: rgba(255, 255, 255, .72);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .help-card {
+            margin-top: 20px;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(7,17,31,.42);
+        }
+
+        .help-title {
+            margin: 0 0 5px;
+            color: var(--text);
             font-size: 14px;
+            font-weight: 800;
         }
 
-        .error-text {
-            color: #bfbfbf;
-            font-size: 12px;
+        .help-text {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
         }
 
-        .error-actions {
-            margin-top: 12px;
-            display: flex;
-            justify-content: flex-end;
+        @media (max-width: 1279px) {
+            body {
+                min-width: 0;
+                overflow: auto;
+            }
+
+            .auth-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .brand-panel {
+                min-height: auto;
+                padding: 32px 28px 26px;
+                border-right: 0;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .brand-mark {
+                margin-bottom: 28px;
+            }
+
+            h1 {
+                font-size: clamp(36px, 8vw, 48px);
+            }
+
+            .lead {
+                margin-bottom: 22px;
+            }
+
+            .feature-list {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                max-width: none;
+            }
+
+            .login-panel {
+                padding: 34px 24px 44px;
+            }
         }
 
-        .error-btn {
-            background: #2b6de5;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            padding: 6px 14px;
-            font-size: 12px;
-            cursor: pointer;
-        }
+        @media (max-width: 720px) {
+            .feature-list {
+                grid-template-columns: 1fr;
+            }
 
+            .updates-head {
+                align-items: flex-start;
+                flex-direction: column;
+            }
 
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
+            .login-card {
+                padding: 24px;
+            }
         }
-
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <div class="login-container">
-        <div class="logo">
-            <div class="logo-wrap">
-                <img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">
-                <span class="logo-text">Helper</span>
-            </div>
-        </div>
+    <main class="auth-shell">
+        <section class="brand-panel" aria-label="Helper">
+            <div class="brand-content">
+                <div class="brand-mark">
+                    <img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="" class="brand-logo">
+                    <div class="brand-name">Helper</div>
+                </div>
 
-        <h2>Вход в систему помощи</h2>
-        <p class="subtitle">Введите логин и пароль от Windows</p>
+                <p class="eyebrow">Корпоративная платформа</p>
+                <h1>Система поддержки сотрудников</h1>
+                <p class="lead">Все инструменты для эффективной работы при обслуживании и поддержке пользователей.</p>
 
-        {% if error_message %}
-            <div class="error-modal" id="error-modal">
-                <div class="error-card" role="dialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-text">
-                    <div class="error-title" id="error-title">
-                        <span class="error-icon">×</span>
-                        Произошла ошибка
+                <div class="feature-list">
+                    <div class="feature-item">
+                        <div class="feature-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="feature-title">Инструкции и руководства</p>
+                            <p class="feature-desc">Мануалы по тех проблемам</p>
+                        </div>
                     </div>
-                    <div class="error-text" id="error-text">
-                        {{ error_message }}
+                    <div class="feature-item">
+                        <div class="feature-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
+                                <path d="M8 9h8M8 13h5"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="feature-title">Сценарии консультаций</p>
+                            <p class="feature-desc">Готовые сценарии и ответы</p>
+                        </div>
                     </div>
-                    <div class="error-actions">
-                        <button type="button" class="error-btn" onclick="closeErrorModal()">Ок</button>
+                    <div class="feature-item">
+                        <div class="feature-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="7"></circle>
+                                <path d="m20 20-3.5-3.5"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="feature-title">Тематики обращений</p>
+                            <p class="feature-desc">Поиск по тематикам и категориям</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 3v18"></path>
+                                <path d="M6 8h12"></path>
+                                <path d="M8 14h8"></path>
+                                <path d="M10 20h4"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="feature-title">Тренажёр</p>
+                            <p class="feature-desc">Практика и развитие навыков</p>
+                        </div>
                     </div>
                 </div>
             </div>
-        {% endif %}
 
-        <form method="POST" action="{{ url_for('user_login') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <aside class="updates-card">
+                <div class="updates-head">
+                    <p class="updates-title">Последние обновления</p>
+                    <span class="updates-date">29 мая</span>
+                </div>
+                <ul class="updates-list">
+                    <li>Обновленный визуальный функционал</li>
+                    <li>Добавлены новые разделы</li>
+                </ul>
+            </aside>
+        </section>
 
-            <div class="form-group">
-                <label class="sr-only" for="username">Учетная запись</label>
-                <input type="text" id="username" name="username" required maxlength="100" autocomplete="username" placeholder="Учетная запись (r_koledin)">
-            </div>
+        <section class="login-panel" aria-label="Авторизация">
+            <div class="login-card">
+                <p class="login-kicker">Авторизация</p>
+                <h2>Вход в систему</h2>
+                <p class="login-subtitle">Введите логин и пароль от Windows (AD)</p>
 
-            <div class="form-group">
-                <div class="password-wrapper">
-                    <label class="sr-only" for="password">Пароль</label>
-                    <input type="password" id="password" name="password" required maxlength="128" autocomplete="current-password" placeholder="Пароль">
-                    <button type="button" class="toggle-password" onclick="togglePassword()" aria-label="Показать пароль">
-                        <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                <form method="POST" action="{{ url_for('user_login') }}" id="loginForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="form-group">
+                        <label for="username">Логин (учётная запись)</label>
+                        <input class="input-control" type="text" id="username" name="username" required maxlength="100" autocomplete="username" placeholder="например, r_koledin" autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Пароль</label>
+                        <div class="password-field">
+                            <input class="input-control" type="password" id="password" name="password" required maxlength="128" autocomplete="current-password" placeholder="Пароль">
+                            <button type="button" class="toggle-password" onclick="togglePassword()" aria-label="Показать пароль" title="Показать пароль">
+                                <svg id="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M2.1 12S5.7 5 12 5s9.9 7 9.9 7-3.6 7-9.9 7-9.9-7-9.9-7Z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    {% if error_message %}
+                    <div class="error-message" role="alert">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 8v5"></path>
+                            <path d="M12 16h.01"></path>
                         </svg>
-                    </button>
+                        <div>
+                            <div>{{ error_message }}</div>
+                            {% if failed_attempts >= 3 %}
+                            <div class="error-hint">Проверьте раскладку клавиатуры и доступность учётной записи.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <button type="submit" class="btn btn-primary" id="submit-btn">Войти</button>
+                </form>
+
+                <div class="help-card">
+                    <p class="help-title">Нужна помощь?</p>
+                    <p class="help-text">Обратитесь в службу поддержки или к вашему руководителю.</p>
                 </div>
             </div>
-
-            <button type="submit" class="btn-login" id="submit-btn">Войти</button>
-        </form>
-    </div>
+        </section>
+    </main>
 
     <script>
         function togglePassword() {
             const passwordInput = document.getElementById('password');
             const eyeIcon = document.getElementById('eye-icon');
+            const button = document.querySelector('.toggle-password');
 
             if (passwordInput.type === 'password') {
                 passwordInput.type = 'text';
+                button.setAttribute('aria-label', 'Скрыть пароль');
+                button.setAttribute('title', 'Скрыть пароль');
                 eyeIcon.innerHTML = `
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    <path d="M3 3l18 18"></path>
+                    <path d="M10.6 10.6A3 3 0 0 0 13.4 13.4"></path>
+                    <path d="M9.9 5.4A9.2 9.2 0 0 1 12 5c6.3 0 9.9 7 9.9 7a16.7 16.7 0 0 1-3.1 4.2"></path>
+                    <path d="M6.2 6.8A16.7 16.7 0 0 0 2.1 12S5.7 19 12 19a9.7 9.7 0 0 0 4.2-.9"></path>
                 `;
             } else {
                 passwordInput.type = 'password';
+                button.setAttribute('aria-label', 'Показать пароль');
+                button.setAttribute('title', 'Показать пароль');
                 eyeIcon.innerHTML = `
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    <path d="M2.1 12S5.7 5 12 5s9.9 7 9.9 7-3.6 7-9.9 7-9.9-7-9.9-7Z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
                 `;
             }
         }
 
-        // Валидация формы
-        const form = document.querySelector('form');
+        const form = document.getElementById('loginForm');
         const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
         const submitBtn = document.getElementById('submit-btn');
 
         function validateForm() {
-            const isValid = usernameInput.value.trim() && passwordInput.value;
-            submitBtn.disabled = !isValid;
-        }
-
-        function closeErrorModal() {
-            const modal = document.getElementById('error-modal');
-            if (modal) {
-                modal.remove();
-            }
+            submitBtn.disabled = !(usernameInput.value.trim() && passwordInput.value);
         }
 
         usernameInput.addEventListener('input', validateForm);
         passwordInput.addEventListener('input', validateForm);
+        form.addEventListener('submit', () => {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Вход...';
+        });
 
-        // Начальная проверка
         validateForm();
     </script>
-    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

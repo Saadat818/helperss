@@ -182,15 +182,33 @@ def truncate_table(cur, schema: str, table: str) -> None:
     )
 
 
+def normalize_value(value, target_type: str):
+    if target_type != "BOOLEAN" or value is None:
+        return value
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n", "off", ""}:
+            return False
+    return bool(value)
+
+
 def copy_table(
     sqlite_conn: sqlite3.Connection,
     pg_conn,
     schema: str,
     table: str,
     batch_size: int,
+    columns_info: list[ColumnInfo],
 ) -> int:
     source_cur = sqlite_conn.execute(f"SELECT * FROM {sqlite_ident(table)}")
     columns = [desc[0] for desc in source_cur.description or []]
+    target_types = {col.name: pg_type(col.sqlite_type) for col in columns_info}
     if not columns:
         return 0
 
@@ -207,7 +225,10 @@ def copy_table(
             rows = source_cur.fetchmany(batch_size)
             if not rows:
                 break
-            values = [tuple(row[col] for col in columns) for row in rows]
+            values = [
+                tuple(normalize_value(row[col], target_types.get(col, "TEXT")) for col in columns)
+                for row in rows
+            ]
             execute_values(cur, query, values, page_size=batch_size)
             total += len(values)
     return total
@@ -252,7 +273,7 @@ def create_indexes(sqlite_conn: sqlite3.Connection, cur, schema: str, table: str
             continue
         create = sql.SQL("CREATE {} INDEX IF NOT EXISTS {} ON {}.{} ({})").format(
             sql.SQL("UNIQUE") if int(index["unique"] or 0) else sql.SQL(""),
-            sql.Identifier(schema, name),
+            sql.Identifier(name),
             sql.Identifier(schema),
             sql.Identifier(table),
             sql.SQL(", ").join(sql.Identifier(col) for col in columns),
@@ -326,7 +347,7 @@ def main(argv: Iterable[str] = sys.argv[1:]) -> int:
                         "Use --truncate, --drop-existing, or --append."
                     )
                 if not args.schema_only:
-                    copied = copy_table(sqlite_conn, pg_conn, args.schema, table, args.batch_size)
+                    copied = copy_table(sqlite_conn, pg_conn, args.schema, table, args.batch_size, columns)
                     reset_identity(cur, args.schema, table, columns)
                 else:
                     copied = 0

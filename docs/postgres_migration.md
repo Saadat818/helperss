@@ -28,6 +28,16 @@ WHERE schema_name = 'helper';
 
 Если приложение работает, у SQLite могут быть файлы `topics.db-wal` и `topics.db-shm`. Для точной копии лучше либо остановить Helper на минуту, либо сделать SQLite backup.
 
+Предпочтительный live-вариант без остановки приложения:
+
+```bash
+BACKUP_DIR=~/helper_db_backup_$(date +%Y%m%d_%H%M%S)
+mkdir -p "$BACKUP_DIR"
+sqlite3 topics.db ".backup '$BACKUP_DIR/topics.db'"
+sqlite3 "$BACKUP_DIR/topics.db" "PRAGMA integrity_check;"
+ls -lh "$BACKUP_DIR"
+```
+
 Минимальный вариант при остановленном приложении:
 
 ```bash
@@ -91,7 +101,29 @@ SELECT COUNT(*) FROM helper.trainer_scenarios;
 SELECT COUNT(*) FROM helper.topics;
 ```
 
-## 5. Что останется отдельной задачей
+## 5. Результат пробного переноса 2026-06-01
+
+Пробный перенос с backup-файла `/home/fudo/helper_db_backup_20260601_105535/topics.db` завершился успешно:
+
+```text
+Done. Schema: helper
+```
+
+Проверенные значения:
+
+```text
+helper.topics              36572
+helper.trainer_answers       500
+helper.trainer_results     31757
+helper.trainer_scenarios      36
+helper.trainer_visits      33603
+helper.search_cache          685
+helper.ticket_sequence       280
+```
+
+В схеме `helper` создано 22 таблицы. Приложение не переключалось, `.env` не менялся, сервис не перезапускался.
+
+## 6. Что останется отдельной задачей
 
 После копирования данных приложение все еще будет читать `topics.db`. Для полного перехода нужно отдельно перевести менеджеры с SQLite на PostgreSQL:
 
@@ -103,3 +135,17 @@ SELECT COUNT(*) FROM helper.topics;
 - часть логов/аналитики в `helper7.py` и `bot.py`
 
 До этого этапа PostgreSQL-схема `helper` используется как подготовленная копия и место для проверки миграции.
+
+## 7. Финальное окно перехода
+
+Финальный переход нужно делать отдельным maintenance-окном:
+
+1. Включить maintenance-страницу/отбойник на `helper.mbank.kg`.
+2. Убедиться, что пользователи больше не пишут в SQLite.
+3. Сделать свежий SQLite backup через `.backup` и проверить `PRAGMA integrity_check`.
+4. Повторить миграцию в `apo.helper` с `--drop-existing`.
+5. Сверить ключевые counts и выборочные записи.
+6. Переключить приложение на PostgreSQL только после готовности кода.
+7. Перезапустить сервис.
+8. Выполнить smoke-test: логин, темы, тренажер, сценарии, контакты, создание/редактирование.
+9. При проблемах вернуть SQLite-конфиг/код, перезапустить сервис, снять maintenance.

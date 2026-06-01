@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои заявки — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        .tickets-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .ticket-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .ticket-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            padding: 16px 18px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+        }
+
+        .ticket-card:hover {
+            border-color: var(--primary-mid);
+            background: var(--card-hover);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .ticket-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+
+        .ticket-number {
+            color: var(--text);
+            font-size: var(--text-lg);
+            font-weight: 700;
+        }
+
+        .ticket-problem {
+            color: var(--text);
+            font-size: var(--text-base);
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .ticket-meta {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+        }
+
+        .ticket-actions {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .tickets-summary {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+        }
+
+        .status-in_work { background: var(--blue-light); color: var(--blue); }
+        .status-ready_for_feedback { background: var(--yellow-light); color: var(--yellow); }
+        .status-closed,
+        .status-closed_auto { background: var(--primary-light); color: var(--primary-dark); }
+        .status-rejected,
+        .status-mass_incident { background: var(--red-light); color: var(--red); }
+
+        .feedback-panel {
+            display: none;
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid var(--primary-mid);
+            border-radius: var(--radius-md);
+            background: var(--primary-light);
+        }
+
+        .feedback-panel.visible {
+            display: block;
+        }
+
+        .feedback-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 860px) {
+            .ticket-card {
+                grid-template-columns: 1fr;
+            }
+
+            .ticket-actions {
+                justify-content: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'tickets' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
+
+    <main class="main-content">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Рабочее пространство</div>
+                    <h1 class="page-title">Мои заявки</h1>
+                    <p class="page-subtitle">Здесь отображаются обращения, созданные от вашего имени. Статусы обновляются из журнала техподдержки.</p>
+                </div>
+                <button class="btn btn-secondary" type="button" onclick="loadTickets()">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                    Обновить
+                </button>
+            </header>
+
+            <section class="panel panel-pad">
+                <div class="tickets-toolbar">
+                    <div class="tickets-summary" id="ticketsSummary">Загрузка заявок...</div>
+                    <a class="btn btn-primary" href="{{ url_for('show_problems') }}">
+                        <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                        Новая заявка
+                    </a>
+                </div>
+                <div class="ticket-list" id="ticketList">
+                    <div class="empty-state">Загрузка...</div>
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<script>
+    const ticketList = document.getElementById('ticketList');
+    const ticketsSummary = document.getElementById('ticketsSummary');
+    const csrfToken = '{{ csrf_token() }}';
+    const statusClassMap = {
+        in_work: 'status-in_work',
+        ready_for_feedback: 'status-ready_for_feedback',
+        closed: 'status-closed',
+        closed_auto: 'status-closed_auto',
+        rejected: 'status-rejected',
+        mass_incident: 'status-mass_incident'
+    };
+
+    document.addEventListener('DOMContentLoaded', loadTickets);
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatDate(value) {
+        if (!value) return '—';
+        const normalized = String(value).replace(' ', 'T');
+        const date = new Date(normalized);
+        if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+        return date.toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    function statusBadge(ticket) {
+        const cls = statusClassMap[ticket.status] || 'badge-info';
+        return `<span class="badge ${cls}">${escapeHtml(ticket.status_label || 'Неизвестно')}</span>`;
+    }
+
+    function renderSummary(tickets) {
+        const open = tickets.filter(t => t.status === 'in_work').length;
+        const ready = tickets.filter(t => t.status === 'ready_for_feedback').length;
+        const closed = tickets.filter(t => ['closed', 'closed_auto'].includes(t.status)).length;
+        ticketsSummary.innerHTML = `
+            <span>Всего: <strong>${tickets.length}</strong></span>
+            <span>В работе: <strong>${open}</strong></span>
+            <span>Ожидают подтверждения: <strong>${ready}</strong></span>
+            <span>Закрыто: <strong>${closed}</strong></span>
+        `;
+    }
+
+    function renderTickets(tickets) {
+        renderSummary(tickets);
+        if (!tickets.length) {
+            ticketList.innerHTML = '<div class="empty-state"><strong>Заявок пока нет</strong><br>Созданные вами обращения появятся здесь автоматически.</div>';
+            return;
+        }
+
+        ticketList.innerHTML = tickets.map(ticket => `
+            <article class="ticket-card" data-ticket="${escapeHtml(ticket.ticket_number)}">
+                <div>
+                    <div class="ticket-head">
+                        <div class="ticket-number">№${escapeHtml(ticket.ticket_number || '—')}</div>
+                        ${statusBadge(ticket)}
+                        ${ticket.is_cisco ? '<span class="badge badge-info">Cisco</span>' : ''}
+                    </div>
+                    <div class="ticket-problem">${escapeHtml(ticket.problem || 'Без описания')}</div>
+                    <div class="ticket-meta">
+                        <span>Создана: ${escapeHtml(formatDate(ticket.created_at))}</span>
+                        <span>Обновлена: ${escapeHtml(formatDate(ticket.updated_at || ticket.created_at))}</span>
+                        ${ticket.assigned_name ? `<span>Ответственный: ${escapeHtml(ticket.assigned_name)}</span>` : ''}
+                        ${ticket.resolved_by ? `<span>Решил: ${escapeHtml(ticket.resolved_by)}</span>` : ''}
+                    </div>
+                    ${ticket.reject_reason ? `<div class="helper-text">Причина: ${escapeHtml(ticket.reject_reason)}</div>` : ''}
+                    <div class="feedback-panel ${ticket.can_feedback ? 'visible' : ''}">
+                        <div class="card-title" style="font-size:var(--text-base);">Подтвердите результат</div>
+                        <div class="card-desc">Техподдержка отметила заявку как готовую. Если вопрос не решён, заявка вернётся в работу.</div>
+                        <div class="feedback-actions">
+                            <button class="btn btn-primary" type="button" onclick="sendFeedback(${Number(ticket.ticket_number)}, 'resolved')">Решено</button>
+                            <button class="btn btn-danger" type="button" onclick="sendFeedback(${Number(ticket.ticket_number)}, 'not_resolved')">Не решено</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="ticket-actions">
+                    <button class="btn btn-secondary" type="button" onclick="refreshTicket(${Number(ticket.ticket_number)})">Статус</button>
+                </div>
+            </article>
+        `).join('');
+    }
+
+    async function loadTickets() {
+        ticketsSummary.textContent = 'Загрузка заявок...';
+        ticketList.innerHTML = '<div class="empty-state">Загрузка...</div>';
+        try {
+            const response = await fetch('/api/my_tickets', { credentials: 'same-origin' });
+            const payload = await response.json();
+            if (!payload.success) {
+                throw new Error(payload.error || 'Ошибка загрузки');
+            }
+            renderTickets(payload.data || []);
+        } catch (error) {
+            ticketsSummary.textContent = 'Не удалось загрузить заявки';
+            ticketList.innerHTML = `<div class="empty-state"><strong>Ошибка загрузки</strong><br>${escapeHtml(error.message || 'Попробуйте обновить страницу')}</div>`;
+        }
+    }
+
+    async function refreshTicket(ticketNumber) {
+        try {
+            const response = await fetch(`/api/ticket_status/${ticketNumber}`, { credentials: 'same-origin' });
+            const payload = await response.json();
+            if (!payload.success) {
+                throw new Error(payload.error || 'Статус недоступен');
+            }
+            await loadTickets();
+        } catch (error) {
+            alert(error.message || 'Не удалось обновить статус');
+        }
+    }
+
+    async function sendFeedback(ticketNumber, action) {
+        try {
+            const response = await fetch(`/api/ticket_feedback/${ticketNumber}`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ action })
+            });
+            const payload = await response.json();
+            if (!payload.success) {
+                throw new Error(payload.error || 'Не удалось отправить ответ');
+            }
+            await loadTickets();
+        } catch (error) {
+            alert(error.message || 'Не удалось отправить ответ');
+        }
+    }
+</script>
+</body>
+</html>

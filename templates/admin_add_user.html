@@ -3,436 +3,259 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Добавить администратора</title>
+    <title>Добавить администратора — Helper Admin</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0c0c0c;
-            background-attachment: fixed;
-            min-height: 100vh;
-            padding: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .container {
-            max-width: 500px;
-            width: 100%;
-            background-color: #ffffff;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
-        }
-
-        h1 {
-            color: #007b7e;
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #495057;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        input[type="text"],
-        input[type="password"],
-        select {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-
-        input[type="text"]:focus,
-        input[type="password"]:focus,
-        select:focus {
-            outline: none;
-            border-color: #007b7e;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s;
-            width: 100%;
-            text-align: center;
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-            color: white;
-            margin-bottom: 10px;
-        }
-
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
-        }
-
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .alert-danger {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .info-text {
-            font-size: 12px;
-            color: #6c757d;
-            margin-top: 5px;
-        }
-
-        .role-description {
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            color: #495057;
-            margin-top: 5px;
-        }
-    
-        /* Admin Dark Theme */
         :root {
-            --bg: #0c0c0c;
-            --panel: #1a1a1a;
-            --panel-2: #202020;
-            --panel-3: #141414;
-            --text: #e8e8e8;
-            --muted: #b5b5b5;
-            --border: #242424;
-            --accent: #00a651;
-            --accent-2: #009448;
-            --danger: #e94b5a;
-            --warning: #f2b705;
-        }
-
-        body {
-            background: var(--bg) !important;
-            color: var(--text);
-        }
-
-        .container {
-            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
-            border: 1px solid #151515;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        }
-
-        .header,
-        .form-actions {
-            border-bottom: 1px solid #2a2a2a !important;
-            border-top: 1px solid #2a2a2a !important;
-        }
-
-        h1, h2, h3, h4 {
-            color: var(--text) !important;
-        }
-
-        .subtitle,
-        .stat-label,
-        .subproblems-count,
-        .helper-text,
-        .help-text,
-        .info-text,
-        .warning-text,
-        .error-text,
-        .role-description,
-        label {
-            color: var(--muted) !important;
-        }
-
-        .stat-card,
-        .manual-card,
-        .form-section,
-        .info-box,
-        .warning-box,
-        .error-card,
-        .subproblem-card,
-        .problem-item,
-        .upload-form,
-        .modal-content,
-        .preview-container,
-        .photo-item,
-        .video-item,
-        .stats-summary,
-        .stat-item {
-            background: var(--panel-3) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 14px;
-            color: var(--text);
-        }
-
-        .warning-box {
-            border-color: rgba(242, 183, 5, 0.4) !important;
-            background: rgba(242, 183, 5, 0.08) !important;
-        }
-
-        .error-card {
-            border-color: rgba(233, 75, 90, 0.4) !important;
-            background: rgba(233, 75, 90, 0.08) !important;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="password"],
-        input[type="email"],
-        textarea,
-        select {
-            background: #111 !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-        }
-
-        input:focus,
-        textarea:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent) !important;
-            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
-        }
-
-        table {
-            color: var(--text);
-        }
-
-        th {
-            background: #1f1f1f !important;
-            color: var(--text) !important;
-            border-bottom: 1px solid #2a2a2a !important;
-        }
-
-        td {
-            background: #141414 !important;
-            border-bottom: 1px solid #242424 !important;
-        }
-
-        tr:nth-child(even) td {
-            background: #171717 !important;
-        }
-
-        .btn {
-            border-radius: 12px !important;
-        }
-
-        .btn-primary,
-        .btn-success {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
-        }
-
-        .btn-primary:hover,
-        .btn-success:hover {
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-        }
-
-        .btn-secondary,
-        .btn-logout {
-            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
-        }
-
-        .btn-danger,
-        .btn-delete {
-            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
-            color: #1b1b1b !important;
-            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
-        }
-
-        .alert-success {
-            background-color: rgba(0, 166, 81, 0.12) !important;
-            color: #bfe8d1 !important;
-            border: 1px solid rgba(0, 166, 81, 0.25) !important;
-        }
-
-        .alert-danger,
-        .danger {
-            background-color: rgba(233, 75, 90, 0.12) !important;
-            color: #f3c0c6 !important;
-            border: 1px solid rgba(233, 75, 90, 0.25) !important;
-        }
-
-        .back-link {
-            background: rgba(26, 26, 26, 0.95) !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        .back-link:hover {
-            border-color: var(--accent) !important;
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
-        }
-
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
+            --bg: #f6f8fb;
             --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
+            --panel-soft: #f9fbfd;
+            --line: #e8edf3;
+            --text: #172033;
+            --muted: #6f7a8d;
+            --green: #12a66a;
+            --green-dark: #0b8756;
+            --green-soft: #e7f7ef;
+            --red: #e5485d;
+            --red-soft: #ffecef;
+            --shadow: 0 12px 28px rgba(28, 39, 60, .07);
         }
 
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        body.dark {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --panel-soft: #263347;
+            --line: #334155;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --green-dark: #86efac;
+            --red: #fca5a5;
+            --green-soft: #052e16;
+            --red-soft: #450a0a;
+            --shadow: 0 18px 42px rgba(0, 0, 0, .28);
         }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-width: 1024px;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 28px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Inter", "Segoe UI", system-ui, Arial, sans-serif;
+            font-size: 14px;
+        }
+
+        .card {
+            width: min(620px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+            padding: 26px;
+        }
+
+        .topbar { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:22px; }
+        .kicker { color: var(--green); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        h1 { margin: 6px 0 8px; font-size: 26px; line-height: 1.12; }
+        .subtitle { margin:0; color:var(--muted); line-height:1.5; }
+        .theme-toggle {
+            min-width:128px;
+            height:38px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            gap:8px;
+            padding:0 12px;
+            border:1px solid var(--line);
+            border-radius:12px;
+            background:var(--panel-soft);
+            color:var(--text);
+            cursor:pointer;
+            font-weight:800;
+            font-size:13px;
+        }
+        .theme-icon { width:18px; text-align:center; font-size:16px; line-height:1; }
+        .theme-label { white-space:nowrap; }
+
+        .alert { margin-bottom:14px; padding:12px 14px; border-radius:12px; color:var(--red); background:var(--red-soft); border:1px solid rgba(229,72,93,.28); font-weight:700; }
+        .form-grid { display:grid; gap:16px; }
+        .field label { display:block; margin-bottom:7px; color:var(--text); font-weight:800; }
+        .hint { margin-top:6px; color:var(--muted); font-size:12px; line-height:1.45; }
+        input[type="text"], input[type="password"], select {
+            width:100%;
+            min-height:42px;
+            border:1px solid var(--line);
+            border-radius:12px;
+            background:var(--panel-soft);
+            color:var(--text);
+            padding:9px 12px;
+            font:inherit;
+            outline:none;
+        }
+        input:focus, select:focus { border-color:var(--green); box-shadow:0 0 0 3px rgba(18,166,106,.12); }
+
+        .auth-options, .check-grid { display:grid; gap:10px; }
+        .option, .check-item {
+            display:flex;
+            align-items:flex-start;
+            gap:10px;
+            padding:12px;
+            border:1px solid var(--line);
+            border-radius:14px;
+            background:var(--panel-soft);
+            cursor:pointer;
+        }
+        .option strong, .check-item strong { display:block; color:var(--text); }
+        .option span, .check-item span { display:block; margin-top:3px; color:var(--muted); font-size:12px; line-height:1.35; }
+        input[type="radio"], input[type="checkbox"] { width:16px; height:16px; margin-top:1px; accent-color:var(--green); }
+
+        .password-fields.hidden { display:none; }
+        .buttons { display:grid; gap:10px; margin-top:6px; }
+        .btn {
+            min-height:42px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            border:1px solid var(--line);
+            border-radius:12px;
+            background:var(--panel-soft);
+            color:var(--text);
+            font-weight:900;
+            text-decoration:none;
+            cursor:pointer;
+        }
+        .btn-primary { border-color:var(--green); background:var(--green); color:#fff; box-shadow:0 10px 24px rgba(18,166,106,.18); }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <div class="container">
-        <div class="header">
-            <h1>➕ Добавить администратора</h1>
+<script>
+    if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
+    function updateThemeToggle() {
+        const btn = document.getElementById('themeToggle');
+        if (!btn) return;
+        const isDark = document.body.classList.contains('dark');
+        btn.innerHTML = `<span class="theme-icon">${isDark ? '☀' : '☾'}</span><span class="theme-label">${isDark ? 'Светлая тема' : 'Тёмная тема'}</span>`;
+        btn.setAttribute('title', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+        btn.setAttribute('aria-label', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+    }
+    function toggleTheme() {
+        document.body.classList.toggle('dark');
+        localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+        updateThemeToggle();
+    }
+</script>
+
+<main class="card">
+    <header class="topbar">
+        <div>
+            <div class="kicker">Роли и права</div>
+            <h1>Добавить администратора</h1>
+            <p class="subtitle">Для AD-логина укажите только учётку и права. Пароль проверит Active Directory при входе.</p>
+        </div>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Включить тёмную тему" aria-label="Включить тёмную тему">
+            <span class="theme-icon">☾</span>
+            <span class="theme-label">Тёмная тема</span>
+        </button>
+    </header>
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="form-grid" id="adminForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="field">
+            <label>Тип учётки</label>
+            <div class="auth-options">
+                <label class="option">
+                    <input type="radio" name="auth_type" value="ad" checked onchange="updateAuthType()">
+                    <div><strong>AD-логин</strong><span>Пользователь входит своим доменным паролем. Helper хранит только права.</span></div>
+                </label>
+                <label class="option">
+                    <input type="radio" name="auth_type" value="local" onchange="updateAuthType()">
+                    <div><strong>Локальный админ</strong><span>Отдельная учётка и пароль внутри Helper, на случай отсутствия AD.</span></div>
+                </label>
+            </div>
         </div>
 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-danger">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+        <div class="field">
+            <label for="username">Логин</label>
+            <input type="text" id="username" name="username" required pattern="[a-zA-Z0-9_.-]{2,64}" placeholder="r_koledin">
+            <div class="hint">Используйте AD sAMAccountName без домена: например, r_koledin или b_bob.</div>
+        </div>
 
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <div class="form-group">
-                <label for="username">Логин</label>
-                <input type="text" id="username" name="username" required
-                       pattern="[a-zA-Z0-9_]{3,30}"
-                       placeholder="Введите логин">
-                <div class="info-text">Только латинские буквы, цифры и подчеркивание (3-30 символов)</div>
-            </div>
-
-            <div class="form-group">
+        <div class="password-fields hidden" id="passwordFields">
+            <div class="field">
                 <label for="password">Пароль</label>
-                <input type="password" id="password" name="password" required
-                       minlength="6" maxlength="128"
-                       placeholder="Введите пароль">
-                <div class="info-text">Минимум 6 символов</div>
+                <input type="password" id="password" name="password" minlength="6" maxlength="128" placeholder="Пароль локального админа">
             </div>
-
-            <div class="form-group">
+            <div class="field" style="margin-top:16px;">
                 <label for="password_confirm">Подтверждение пароля</label>
-                <input type="password" id="password_confirm" name="password_confirm" required
-                       minlength="6" maxlength="128"
-                       placeholder="Повторите пароль">
+                <input type="password" id="password_confirm" name="password_confirm" minlength="6" maxlength="128" placeholder="Повторите пароль">
             </div>
+        </div>
 
-            <div class="form-group">
-                <label for="role">Роль</label>
-                <select id="role" name="role" required onchange="updateRoleDescription()">
-                    <option value="{{ roles.editor }}">{{ role_names.get('editor', 'Редактор') }}</option>
-                    <option value="{{ roles.super_admin }}">{{ role_names.get('super_admin', 'Супер-администратор') }}</option>
-                </select>
-                <div class="role-description" id="role-description">
-                    Может редактировать мануалы и тематики
-                </div>
+        <div class="field">
+            <label>Права</label>
+            <div class="check-grid">
+                {% for value, label in permission_choices %}
+                <label class="check-item">
+                    <input type="checkbox" name="permissions" value="{{ value }}">
+                    <div><strong>{{ label }}</strong><span>{{ value }}</span></div>
+                </label>
+                {% endfor %}
             </div>
+            <div class="hint">Например: r_koledin только для тренажёра, b_bob только для мануалов.</div>
+        </div>
 
-            <button type="submit" class="btn btn-success">✅ Создать администратора</button>
-            <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">❌ Отмена</a>
-        </form>
-    </div>
+        <div class="buttons">
+            <button class="btn btn-primary" type="submit">Создать</button>
+            <a class="btn" href="{{ url_for('admin_users') }}">Отмена</a>
+        </div>
+    </form>
+</main>
 
-    <script>
-        function updateRoleDescription() {
-            const role = document.getElementById('role').value;
-            const description = document.getElementById('role-description');
+<script>
+    updateThemeToggle();
 
-            if (role === 'super_admin') {
-                description.textContent = 'Полный доступ ко всем функциям, включая управление учетными записями администраторов';
-            } else {
-                description.textContent = 'Может редактировать мануалы и тематики';
+    function updateAuthType() {
+        const authType = document.querySelector('input[name="auth_type"]:checked').value;
+        const fields = document.getElementById('passwordFields');
+        const password = document.getElementById('password');
+        const confirm = document.getElementById('password_confirm');
+        const isLocal = authType === 'local';
+        fields.classList.toggle('hidden', !isLocal);
+        password.required = isLocal;
+        confirm.required = isLocal;
+    }
+
+    document.getElementById('adminForm').addEventListener('submit', function(e) {
+        const authType = document.querySelector('input[name="auth_type"]:checked').value;
+        const permissions = document.querySelectorAll('input[name="permissions"]:checked');
+        if (!permissions.length) {
+            e.preventDefault();
+            alert('Выберите хотя бы одно право');
+            return;
+        }
+        if (authType === 'local') {
+            const password = document.getElementById('password').value;
+            const confirm = document.getElementById('password_confirm').value;
+            if (password !== confirm) {
+                e.preventDefault();
+                alert('Пароли не совпадают');
             }
         }
+    });
 
-        // Проверка совпадения паролей
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const password = document.getElementById('password').value;
-            const passwordConfirm = document.getElementById('password_confirm').value;
-
-            if (password !== passwordConfirm) {
-                e.preventDefault();
-                alert('Пароли не совпадают!');
-            }
-        });
-    </script>
-    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    updateAuthType();
+</script>
 </body>
 </html>

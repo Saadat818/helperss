@@ -1,0 +1,87 @@
+groups:
+  - name: service-health
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Prometheus cannot scrape {{ $labels.job }} on {{ $labels.instance }}."
+
+      - alert: HighHttp5xx
+        expr: sum by (job) (rate(http_requests_total{status=~"5.."}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} returns more than 0.1 5xx responses per second."
+
+      - alert: HighHttpLatencyP95
+        expr: histogram_quantile(0.95, sum by (le, job) (rate(http_request_duration_seconds_bucket[5m]))) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on {{ $labels.job }}"
+          description: "p95 latency is above 2 seconds for {{ $labels.job }}."
+
+  - name: server-health
+    rules:
+      - alert: HighCpuUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 85% for 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "RAM usage is above 85% for 5 minutes."
+
+      - alert: DiskAlmostFull
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk almost full on {{ $labels.instance }}"
+          description: "Filesystem {{ $labels.mountpoint }} is above 85% usage."
+
+  - name: bot-health
+    rules:
+      - alert: BotPollingDown
+        expr: bot_polling_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Bot polling is down"
+          description: "Bot polling loop reports down for {{ $labels.service }}."
+
+      - alert: BotStale
+        expr: time() - bot_last_update_timestamp > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bot updates are stale"
+          description: "{{ $labels.service }} has not processed updates for more than 5 minutes."
+
+      - alert: BotExternalApiErrors
+        expr: sum by (service) (rate(bot_external_api_errors_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bot external API errors on {{ $labels.service }}"
+          description: "{{ $labels.service }} has Telegram/external API errors."

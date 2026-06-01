@@ -564,7 +564,7 @@
     <div class="container">
         <div class="header">
             <h1>✏️ Редактирование мануала</h1>
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Назад к списку</a>
+            <a href="{{ url_for('admin_manuals') }}" class="btn btn-secondary">Назад к списку</a>
         </div>
 
         <form method="POST" action="{{ url_for('admin_update_manual', manual_id=manual_id) }}">

@@ -3,345 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Выберите подпроблему</title>
+    <title>Уточнение проблемы — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
     <style>
-        :root {
-            --bg: #0c0c0c;
-            --card: #1a1a1a;
-            --card2: #202020;
-            --text: #e8e8e8;
-            --muted: #a8a8a8;
-            --border: #2a2a2a;
-            --green: #00a651;
-            --greenHover: #009448;
-            --greenLight: #00d4aa;
-        }
-
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-        }
-
-        .theme-toggle {
-            position: absolute;
-            top: 0;
-            right: 0;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 1000;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-
-        .theme-toggle:hover { transform: scale(1.12); }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "Segoe UI", system-ui, -apple-system, Arial;
-            background: var(--bg);
-            min-height: 100vh;
-            padding: 24px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: var(--text);
-        }
-
-        .container {
-            background: linear-gradient(180deg, var(--card), var(--card2));
-            border: 1px solid var(--border);
-            padding: 45px;
-            border-radius: 14px;
-            width: 100%;
-            max-width: 650px;
-            text-align: center;
-            position: relative;
-            animation: fadeIn 0.4s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .logo-img {
-            height: 40px;
-            width: 40px;
-        }
-
-        .logo-text {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 800;
-            font-size: 32px;
-            letter-spacing: -0.3px;
-            background: linear-gradient(90deg, var(--greenLight) 0%, var(--green) 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+        .hint-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
             margin-bottom: 16px;
         }
 
-        h2 {
-            color: var(--text);
-            margin-bottom: 35px;
-            font-size: 22px;
-            font-weight: 700;
-        }
-
-        ul {
-            list-style-type: none;
-            padding: 0;
-        }
-
-        li {
-            margin-bottom: 14px;
-        }
-
-        a {
-            display: block;
-            padding: 18px 24px;
-            background: var(--green);
-            color: #ffffff;
-            text-decoration: none;
-            border-radius: 10px;
-            transition: all 0.2s ease;
-            font-size: 16px;
-            font-weight: 600;
-            border: 1px solid var(--green);
-        }
-
-        a:hover {
-            background: var(--greenHover);
-            border-color: var(--greenHover);
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(0, 166, 81, 0.3);
-        }
-
-        a:active {
-            transform: translateY(-1px);
-        }
-
-        .back-link {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
-            font-size: 13px;
-            text-decoration: none;
-            color: var(--text);
-            font-weight: 600;
-            background: rgba(0, 166, 81, 0.15);
-            border: 1px solid rgba(0, 166, 81, 0.3);
-            padding: 10px 18px;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .back-link:hover {
-            background: rgba(0, 166, 81, 0.25);
-            border-color: rgba(0, 166, 81, 0.5);
-            transform: translateY(-2px);
-            text-decoration: none;
-        }
-
-        .version-hints {
-            margin-bottom: 35px;
-        }
-
-        .version-hints h3 {
-            color: var(--greenLight);
-            font-size: 19px;
-            margin-bottom: 20px;
-            font-weight: 700;
-        }
-
-        .hints-container {
-            display: flex;
-            gap: 16px;
-            margin-bottom: 25px;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: stretch;
-        }
-
         .hint-card {
-            background: linear-gradient(180deg, var(--card2), var(--card));
+            padding: 16px;
             border: 1px solid var(--border);
-            border-left: 3px solid var(--green);
-            border-radius: 10px;
-            padding: 20px;
-            flex: 1;
-            min-width: 220px;
-            max-width: 280px;
-            transition: all 0.2s ease;
-            display: flex;
-            flex-direction: column;
+            border-left: 4px solid var(--primary);
+            border-radius: var(--radius-md);
+            background: var(--card);
         }
 
-        .hint-card:hover {
-            transform: translateY(-3px);
-            border-left-color: var(--greenLight);
-            box-shadow: 0 8px 20px rgba(0, 166, 81, 0.2);
-        }
-
-        .hint-version {
-            font-weight: 700;
-            font-size: 17px;
-            color: var(--greenLight);
-            margin-bottom: 10px;
-        }
-
-        .hint-description {
-            color: var(--muted);
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 15px;
-        }
-
-        .hint-photo {
+        .hint-card img {
+            display: block;
             max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-            margin-top: 15px;
+            margin-top: 12px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
         }
 
-        .hint-photo-placeholder {
-            color: var(--muted);
-            margin-top: 10px;
-            padding: 12px;
-            background: rgba(255, 193, 7, 0.1);
-            border: 1px solid rgba(255, 193, 7, 0.3);
-            border-radius: 6px;
-            text-align: center;
-            font-size: 12px;
+        .manual-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
         }
 
-        .separator {
-            height: 1px;
-            background: linear-gradient(90deg, transparent, var(--border), transparent);
-            margin: 25px 0;
+        .manual-index {
+            width: 34px;
+            height: 34px;
+            display: grid;
+            place-items: center;
+            border-radius: var(--radius-md);
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-weight: 700;
+            flex: 0 0 auto;
         }
 
-        @media (max-width: 600px) {
-            .container {
-                padding: 32px 24px;
-            }
+        body.dark .manual-grid .section-card {
+            background: #1e293b;
+            border-color: #475569;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035);
+        }
 
-            .logo-text {
-                font-size: 26px;
-            }
+        body.dark .manual-grid .section-card:hover {
+            background: #273449;
+            border-color: var(--primary-mid);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .05);
+        }
 
-            h2 {
-                font-size: 19px;
-            }
+        body.dark .manual-grid .card-title {
+            color: #f8fafc;
+        }
 
-            a {
-                padding: 16px 20px;
-                font-size: 15px;
-            }
+        body.dark .manual-grid .card-desc {
+            color: #cbd5e1;
+        }
 
-            .back-link {
-                top: 16px;
-                left: 16px;
-                font-size: 12px;
-                padding: 8px 14px;
-            }
+        body.dark .manual-grid .manual-index {
+            background: #14532d;
+            color: #bbf7d0;
+            border: 1px solid #166534;
+        }
 
-            .hints-container {
-                flex-direction: column;
-            }
+        .manual-grid .card-arrow {
+            width: 22px;
+            height: 22px;
+            color: var(--text-muted);
+            opacity: .85;
+            stroke: currentColor;
+            stroke-width: 2.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
 
-            .hint-card {
-                max-width: 100%;
-            }
+        body.dark .manual-grid .card-arrow {
+            color: #e2e8f0;
+            opacity: .95;
+        }
+
+        body.dark .manual-grid .section-card:hover .card-arrow {
+            color: #bbf7d0;
+            opacity: 1;
         }
     </style>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
-    <!-- Кнопки навигации -->
-    <a href="{{ url_for('show_problems') }}" class="back-link">
-        ⬅️ Назад
-    </a>
+{% set active_page = 'manuals' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
 
-    <!-- Основное содержимое -->
-    <div class="container">
-        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-        <div class="logo-text"><img src="{{ url_for('static', filename='images/helper_logo.svg') }}" alt="Helper" class="logo-img">Helper</div>
-        <h2>Пожалуйста, уточните проблему:</h2>
-
-        {% if version_hints %}
-        <div class="version-hints">
-            <h3>{{ version_hints.title | e }}</h3>
-            <div class="hints-container">
-                {% for hint in version_hints.hints %}
-                <div class="hint-card">
-                    <div class="hint-version">{{ hint.version | e }}</div>
-                    <div class="hint-description">{{ hint.description | e }}</div>
-                    {% if hint.photo %}
-                        {% if hint.photo.url %}
-                            <img src="{{ hint.photo.url }}" alt="{{ hint.photo.caption }}" class="hint-photo">
-                        {% else %}
-                            <div class="hint-photo-placeholder">📷 Место для фото: {{ hint.photo.caption }}</div>
-                        {% endif %}
-                    {% endif %}
+    <main class="main-content">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Уточнение</div>
+                    <h1 class="page-title">Выберите вариант проблемы</h1>
+                    <p class="page-subtitle">Если у проблемы есть несколько сценариев решения, выберите наиболее подходящий вариант.</p>
                 </div>
-                {% endfor %}
-            </div>
-            <div class="separator"></div>
+                <a class="btn btn-secondary" href="{{ url_for('show_problems') }}">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+                    Назад
+                </a>
+            </header>
+
+            {% if version_hints %}
+            <section class="panel panel-pad" style="margin-bottom:16px;">
+                <div class="page-kicker">Подсказка по версии</div>
+                <h2 class="card-title" style="margin-bottom:14px;">{{ version_hints.title | e }}</h2>
+                <div class="hint-grid">
+                    {% for hint in version_hints.hints %}
+                    <div class="hint-card">
+                        <div class="card-title">{{ hint.version | e }}</div>
+                        <div class="card-desc">{{ hint.description | e }}</div>
+                        {% if hint.photo %}
+                            {% if hint.photo.url %}
+                            <img src="{{ hint.photo.url }}" alt="{{ hint.photo.caption }}">
+                            {% else %}
+                            <div class="badge badge-warning" style="margin-top:12px;">Фото: {{ hint.photo.caption }}</div>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <section class="panel panel-pad">
+                {% if subproblems %}
+                <div class="manual-grid">
+                    {% for subproblem_id, subproblem in subproblems.items() %}
+                    <a class="section-card" href="{{ url_for('show_manual', subproblem_id=subproblem_id) }}">
+                        <div class="manual-index">{{ loop.index }}</div>
+                        <div class="card-body">
+                            <div class="card-title">{{ subproblem.title | e }}</div>
+                            <div class="card-desc">Открыть инструкцию по этому варианту.</div>
+                        </div>
+                        <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <strong>Варианты не найдены</strong>
+                    Вернитесь назад и выберите другую проблему.
+                </div>
+                {% endif %}
+            </section>
         </div>
-        {% endif %}
-
-        <ul>
-            {% for subproblem_id, subproblem in subproblems.items() %}
-                <li><a href="{{ url_for('show_manual', subproblem_id=subproblem_id) }}">{{ subproblem.title | e }}</a></li>
-            {% endfor %}
-        </ul>
-    </div>
-
-    <script>
-        (function() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.body.classList.add('light');
-            }
-        })();
-        function toggleTheme() {
-            const isLight = document.body.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
-        }
-        document.addEventListener('DOMContentLoaded', function() {
-            if (document.body.classList.contains('light')) {
-                document.getElementById('themeToggle').textContent = '☀️';
-            }
-        });
-    </script>
+    </main>
+</div>
 </body>
 </html>

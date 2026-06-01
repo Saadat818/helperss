@@ -1,0 +1,62 @@
+{% set _user = user_info if user_info is defined else (user if user is defined else session.get('user_info', {})) %}
+{% set _name = _user.name if _user.name is defined else _user.get('name', _user.get('username', 'Оператор')) %}
+{% set _dept = _user.department if _user.department is defined else _user.get('department', 'Оператор поддержки') %}
+{% set _initials = (_name or 'О')[:2].upper() %}
+
+<aside class="sidebar">
+    <div class="sidebar-logo">
+        <div class="logo-icon">H</div>
+        <span class="logo-text">Helper</span>
+        <button class="sidebar-toggle" type="button" data-sidebar-toggle title="Свернуть меню" aria-label="Свернуть меню" aria-expanded="true">
+            <svg class="sidebar-toggle-icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Навигация Helper">
+        <a href="{{ url_for('choose_help_type') }}" class="nav-item {% if active_page == 'home' %}active{% endif %}" title="Главная" aria-label="Главная">
+            <span class="nav-emoji" aria-hidden="true">🏠</span>
+            <span class="nav-label">Главная</span>
+        </a>
+        <a href="{{ url_for('my_tickets') }}" class="nav-item {% if active_page == 'tickets' %}active{% endif %}" title="Мои заявки" aria-label="Мои заявки">
+            <span class="nav-emoji" aria-hidden="true">📋</span>
+            <span class="nav-label">Мои заявки</span>
+        </a>
+        <a href="{{ url_for('scenarios_list') }}" class="nav-item {% if active_page == 'scenarios' %}active{% endif %}" title="Сценарии" aria-label="Сценарии">
+            <span class="nav-emoji" aria-hidden="true">🎬</span>
+            <span class="nav-label">Сценарии</span>
+        </a>
+        <a href="{{ url_for('show_problems') }}" class="nav-item {% if active_page == 'manuals' %}active{% endif %}" title="Мануалы" aria-label="Мануалы">
+            <span class="nav-emoji" aria-hidden="true">📚</span>
+            <span class="nav-label">Мануалы</span>
+        </a>
+        <a href="{{ url_for('search_topics') }}" class="nav-item {% if active_page == 'topics' %}active{% endif %}" title="Тематики" aria-label="Тематики">
+            <span class="nav-emoji" aria-hidden="true">🏷️</span>
+            <span class="nav-label">Тематики</span>
+        </a>
+        <a href="{{ url_for('contacts_kc') }}" class="nav-item {% if active_page == 'contacts' %}active{% endif %}" title="Контакты и направления КЦ" aria-label="Контакты и направления КЦ">
+            <span class="nav-emoji" aria-hidden="true">☎️</span>
+            <span class="nav-label">Контакты и направления КЦ</span>
+        </a>
+        <a href="{{ url_for('trainer_menu') }}" class="nav-item {% if active_page == 'trainer' %}active{% endif %}" title="Тренажёр" aria-label="Тренажёр">
+            <span class="nav-emoji" aria-hidden="true">🎯</span>
+            <span class="nav-label">Тренажёр</span>
+        </a>
+    </nav>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="sidebar-user">
+        <div class="user-avatar">{{ _initials }}</div>
+        <div class="user-info">
+            <div class="user-name">{{ _name }}</div>
+            <div class="user-role">{{ _dept }}</div>
+        </div>
+        <button class="theme-toggle" type="button" onclick="toggleTheme()" title="Сменить тему" aria-label="Сменить тему">
+            <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+            <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3 6.5 6.5 0 0 0 21 12.8z"/></svg>
+        </button>
+        <a class="icon-button" href="{{ url_for('user_logout') }}" title="Выйти" aria-label="Выйти">
+            <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg>
+        </a>
+    </div>
+</aside>

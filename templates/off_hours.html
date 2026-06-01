@@ -141,9 +141,8 @@
         <h2>Нерабочее время</h2>
         <p class="message">{{ message }}</p>
         <div class="schedule">
-            <strong>График работы ОПО:</strong><br>
-            Понедельник - Пятница<br>
-            с 8:30 до 17:30
+            <strong>График приёма заявок:</strong><br>
+            {{ schedule_info or 'Уточните актуальный график у руководителя' }}
         </div>
         <a href="{{ url_for('go_home') }}" class="home-button">На главную</a>
     </div>

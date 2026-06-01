@@ -2106,32 +2106,34 @@ def trainer_play(scenario_id):
         flash('Сценарий не найден')
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
 
+    # Используем сегмент из самого сценария — URL-параметр не доверяем
+    scenario_segment = scenario.get('segment', 'kc')
+
     # Черновики и скрытые сценарии недоступны для обычных пользователей
     if not preview_mode:
         if scenario.get('is_draft'):
             flash('Сценарий недоступен')
-            return redirect(url_for('trainer_segment_menu', segment=play_segment))
+            return redirect(url_for('trainer_segment_menu', segment=scenario_segment))
         if not scenario.get('is_active'):
             flash('Сценарий недоступен')
-            return redirect(url_for('trainer_segment_menu', segment=play_segment))
+            return redirect(url_for('trainer_segment_menu', segment=scenario_segment))
 
         # Проверяем, что сегмент сценария совпадает с сегментом пользователя
-        scenario_segment = scenario.get('segment', 'kc')
         user_segment = get_user_trainer_segment(session.get('user_info'))
         if user_segment and user_segment != scenario_segment:
             flash('У вас нет доступа к этому сценарию')
             return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
     # Check level access (skip in preview mode)
-    if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code'], segment=play_segment):
+    if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code'], segment=scenario_segment):
         flash('Этот уровень ещё заблокирован')
-        return redirect(url_for('trainer_segment_menu', segment=play_segment))
+        return redirect(url_for('trainer_segment_menu', segment=scenario_segment))
 
     total_steps = trainer_mgr.get_steps_count(scenario_id)
 
     if total_steps == 0:
         flash('В этом сценарии пока нет шагов')
-        return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id) if preview_mode else url_for('trainer_level', segment=play_segment, level_code=scenario['level_code']))
+        return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id) if preview_mode else url_for('trainer_level', segment=scenario_segment, level_code=scenario['level_code']))
 
     # Парсим эталонные тематики для пост-обработки
     correct_topics = []
@@ -2176,7 +2178,7 @@ def trainer_play(scenario_id):
                          correct_topics=correct_topics,
                          avatar_images=avatar_images,
                          client_name=client_name,
-                         segment=play_segment)
+                         segment=scenario_segment)
 
 
 @app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
@@ -2371,6 +2373,14 @@ def trainer_complete():
 
         user_id = session['user_info'].get('username', 'anonymous')
 
+        # Проверяем, что сценарий существует и доступен пользователю по сегменту
+        _sc = trainer_mgr.get_scenario(scenario_id)
+        if not _sc:
+            return jsonify({'success': False, 'error': 'Сценарий не найден'})
+        _user_seg = get_user_trainer_segment(session.get('user_info'))
+        if _user_seg and _sc.get('segment', 'kc') != _user_seg:
+            return jsonify({'success': False, 'error': 'Доступ запрещён'}), 403
+
         # Извлекаем время начала из сессии
         started_at = session.pop(f'scenario_start_{scenario_id}', None)
 
@@ -2467,8 +2477,11 @@ def trainer_results(result_id):
                         })
                         break
 
-    # Сегмент берём из данных сценария
-    result_segment = scenario_data.get('segment', 'kc') if scenario_data else 'kc'
+    # Сегмент берём из данных сценария; если сценарий удалён — определяем по пользователю
+    if scenario_data:
+        result_segment = scenario_data.get('segment', 'kc')
+    else:
+        result_segment = get_user_trainer_segment(session.get('user_info')) or 'kc'
 
     # Находим следующий сценарий (в том же сегменте)
     scenarios = trainer_mgr.get_scenarios_by_level(result['level_code'], segment=result_segment)

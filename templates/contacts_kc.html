@@ -261,17 +261,6 @@
             box-shadow: var(--shadow-sm);
         }
 
-        .contact-card.is-role-lead,
-        .contact-card.is-role-head {
-            border-color: var(--primary-mid);
-            background: color-mix(in srgb, var(--primary-light) 34%, var(--card));
-        }
-
-        .contact-card.is-role-chief,
-        .contact-card.is-role-senior {
-            border-color: var(--blue-light);
-        }
-
         .contact-head {
             display: flex;
             justify-content: space-between;
@@ -536,7 +525,7 @@
 {% endmacro %}
 
 {% macro contact_card(contact) %}
-<article class="contact-card{% if contact.contact_role_class %} is-role-{{ contact.contact_role_class }}{% endif %}">
+<article class="contact-card">
     <div class="contact-head">
         <div class="contact-identity">
             {% if contact.photo_path %}
@@ -783,8 +772,6 @@ function contactCardHtml(contact) {
                 data-image-title="${escapeHtml(contact.full_name)}">`
         : `<div class="contact-photo-empty">${escapeHtml(contactInitial(contact.full_name))}</div>`;
 
-    const roleClassName = String(contact.contact_role_class || '').trim();
-    const roleClass = roleClassName ? ` is-role-${escapeHtml(roleClassName)}` : '';
     const positionLine = contact.position
         ? `<div class="contact-position">${escapeHtml(contact.position)}</div>`
         : '';
@@ -809,7 +796,7 @@ function contactCardHtml(contact) {
     ].join('');
 
     return `
-        <article class="contact-card${roleClass}">
+        <article class="contact-card">
             <div class="contact-head">
                 <div class="contact-identity">
                     ${photo}

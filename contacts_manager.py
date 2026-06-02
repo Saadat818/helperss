@@ -582,8 +582,10 @@ class ContactsManager:
         name = self._canonical_department(department, context) or "Без отдела"
         record = self._department_record(name, context)
         if record:
-            return (*record["sort_key"],)
-        return (len(context["records"]), self._department_key(name))
+            sort_path = tuple((0, int(part)) for part in (record.get("sort_key") or ()))
+        else:
+            sort_path = ((1, len(context["records"])),)
+        return (sort_path, self._department_key(name))
 
     @staticmethod
     def _role_from_position(position: str) -> str:

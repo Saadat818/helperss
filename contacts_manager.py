@@ -1031,14 +1031,15 @@ class ContactsManager:
             sort_order = int(data.get("sort_order") or 0)
         except (TypeError, ValueError):
             sort_order = 0
+        phone = self._clean(data.get("phone") or data.get("mobile"), 100)
         payload = {
             "direction_id": None,
             "full_name": self._clean(data.get("full_name"), 220),
             "position": self._clean(data.get("position"), 220),
             "department": self._clean(data.get("department"), 220),
-            "phone": self._clean(data.get("phone"), 100),
+            "phone": phone,
             "extension": self._clean(data.get("extension"), 50),
-            "mobile": self._clean(data.get("mobile"), 100),
+            "mobile": "",
             "email": self._clean(data.get("email"), 180),
             "telegram": self._clean(data.get("telegram"), 100),
             "nickname": self._clean(data.get("nickname"), 100),

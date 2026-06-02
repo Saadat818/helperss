@@ -651,8 +651,8 @@
                                 {% if contact.languages %}<div class="cell-sub">Язык: {{ contact.languages }}</div>{% endif %}
                             </td>
                             <td>
-                                {% if contact.phone %}<div>{{ contact.phone }}</div>{% endif %}
-                                {% if contact.mobile %}<div class="cell-sub">моб. {{ contact.mobile }}</div>{% endif %}
+                                {% set contact_phone = contact.phone or contact.mobile %}
+                                {% if contact_phone %}<div>{{ contact_phone }}</div>{% endif %}
                                 {% if contact.extension %}<div class="cell-sub">вн. {{ contact.extension }}</div>{% endif %}
                                 {% if contact.nickname %}<div class="cell-sub">ник {{ contact.nickname }}</div>{% endif %}
                                 {% if contact.telegram %}<div class="cell-sub">{{ contact.telegram }}</div>{% endif %}
@@ -672,9 +672,8 @@
                                             data-full-name="{{ contact.full_name|e }}"
                                             data-position="{{ contact.position|e }}"
                                             data-department="{{ contact.department|e }}"
-                                            data-phone="{{ contact.phone|e }}"
+                                            data-phone="{{ (contact.phone or contact.mobile)|e }}"
                                             data-extension="{{ contact.extension|e }}"
-                                            data-mobile="{{ contact.mobile|e }}"
                                             data-telegram="{{ contact.telegram|e }}"
                                             data-nickname="{{ contact.nickname|e }}"
                                             data-languages="{{ contact.languages|e }}"
@@ -784,10 +783,6 @@
                     <label>
                         <span class="form-label">Телефон</span>
                         <input class="form-control" name="phone" data-field="phone">
-                    </label>
-                    <label>
-                        <span class="form-label">Мобильный</span>
-                        <input class="form-control" name="mobile" data-field="mobile">
                     </label>
                     <label>
                         <span class="form-label">Внутренний номер</span>
@@ -1397,7 +1392,7 @@ function openContactModal(button) {
         const d = button.dataset;
         form.action = `/admin/contacts_kc/contacts/${d.contactId}/update`;
         document.getElementById('contactModalTitle').textContent = 'Изменить контакт';
-        ['full_name', 'position', 'phone', 'extension', 'mobile',
+        ['full_name', 'position', 'phone', 'extension',
          'telegram', 'nickname', 'languages', 'workplace', 'notes',
          'tags', 'sort_order'].forEach(field => setField(form, field, d[toCamel(field)]));
         setDepartmentValue(d.department || '');

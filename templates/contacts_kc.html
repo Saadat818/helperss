@@ -613,14 +613,11 @@
         {% if contact.mobile %}
         <button class="contact-action" type="button" data-copy="{{ contact.mobile }}">моб. {{ contact.mobile }}</button>
         {% endif %}
-        {% if contact.extension %}
+        {% if contact.extension and contact.extension != contact.phone and contact.extension != contact.mobile %}
         <button class="contact-action" type="button" data-copy="{{ contact.extension }}">вн. {{ contact.extension }}</button>
         {% endif %}
         {% if contact.telegram %}
         <button class="contact-action" type="button" data-copy="{{ contact.telegram }}">{{ contact.telegram }}</button>
-        {% endif %}
-        {% if contact.nickname %}
-        <button class="contact-action" type="button" data-copy="{{ contact.nickname }}">ник {{ contact.nickname }}</button>
         {% endif %}
     </div>
 
@@ -838,12 +835,16 @@ function contactCardHtml(contact) {
     const notes = contact.notes
         ? `<div class="helper-text">${escapeHtml(contact.notes)}</div>`
         : '';
+    const normalizedContactValue = value => String(value || '').replace(/\s+/g, '');
+    const extensionValue = normalizedContactValue(contact.extension);
+    const showExtension = contact.extension &&
+        extensionValue !== normalizedContactValue(contact.phone) &&
+        extensionValue !== normalizedContactValue(contact.mobile);
     const actions = [
         contact.phone ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.phone)}">☎ ${escapeHtml(contact.phone)}</button>` : '',
         contact.mobile ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.mobile)}">моб. ${escapeHtml(contact.mobile)}</button>` : '',
-        contact.extension ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.extension)}">вн. ${escapeHtml(contact.extension)}</button>` : '',
-        contact.telegram ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.telegram)}">${escapeHtml(contact.telegram)}</button>` : '',
-        contact.nickname ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.nickname)}">ник ${escapeHtml(contact.nickname)}</button>` : ''
+        showExtension ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.extension)}">вн. ${escapeHtml(contact.extension)}</button>` : '',
+        contact.telegram ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.telegram)}">${escapeHtml(contact.telegram)}</button>` : ''
     ].join('');
 
     return `

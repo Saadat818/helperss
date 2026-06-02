@@ -108,6 +108,59 @@
             padding-right: 4px;
         }
 
+        .channel-list,
+        .topic-results {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(100, 116, 139, .56) rgba(226, 232, 240, .72);
+        }
+
+        body.dark .channel-list,
+        body.dark .topic-results {
+            scrollbar-color: rgba(71, 85, 105, .92) rgba(15, 23, 42, .46);
+        }
+
+        .channel-list::-webkit-scrollbar,
+        .topic-results::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .channel-list::-webkit-scrollbar-track,
+        .topic-results::-webkit-scrollbar-track {
+            background: rgba(226, 232, 240, .72);
+            border-radius: 999px;
+        }
+
+        .channel-list::-webkit-scrollbar-thumb,
+        .topic-results::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, .56);
+            border: 2px solid transparent;
+            border-radius: 999px;
+            background-clip: padding-box;
+        }
+
+        .channel-list::-webkit-scrollbar-thumb:hover,
+        .topic-results::-webkit-scrollbar-thumb:hover {
+            background: rgba(71, 85, 105, .72);
+            background-clip: padding-box;
+        }
+
+        body.dark .channel-list::-webkit-scrollbar-track,
+        body.dark .topic-results::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, .46);
+        }
+
+        body.dark .channel-list::-webkit-scrollbar-thumb,
+        body.dark .topic-results::-webkit-scrollbar-thumb {
+            background: rgba(71, 85, 105, .92);
+            background-clip: padding-box;
+        }
+
+        body.dark .channel-list::-webkit-scrollbar-thumb:hover,
+        body.dark .topic-results::-webkit-scrollbar-thumb:hover {
+            background: rgba(100, 116, 139, .96);
+            background-clip: padding-box;
+        }
+
         .channel-btn {
             justify-content: flex-start;
             width: 100%;

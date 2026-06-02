@@ -46,10 +46,24 @@
             display: flex; align-items: center; justify-content: space-between;
         }
         .flow-title { color: #00d4aa; font-weight: 700; font-size: 14px; }
+        .flow-header-actions {
+            display: flex; align-items: center; gap: 8px;
+        }
         .flow-lvl-badge {
             background: #0a2a2a; color: #00d4aa;
             border-radius: 8px; padding: 2px 8px; font-size: 12px;
         }
+        .flow-close-btn {
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            border: 1px solid #00d4aa44;
+            background: #0a2a2a;
+            color: #00d4aa;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+        .flow-close-btn:hover { background: #00d4aa22; }
         .flow-controls {
             display: flex; gap: 6px; align-items: center;
         }
@@ -100,6 +114,10 @@
         body:not(.dark) .flow-lvl-badge {
             background: #e0f0f0; color: #007b7e;
         }
+        body:not(.dark) .flow-close-btn {
+            background: #e0f0f0; color: #007b7e; border-color: #00d4aa88;
+        }
+        body:not(.dark) .flow-close-btn:hover { background: #c0e8e0; }
         body:not(.dark) .flow-btn-sm {
             background: #e0f0f0; color: #007b7e; border-color: #00d4aa88;
         }
@@ -110,11 +128,14 @@
     </style>
 
     <div id="flowWidget">
-        <button id="flowBtn" title="Мини-игра" onclick="toggleFlow()">🧩</button>
+        <button id="flowBtn" title="Мини-игра" onclick="toggleFlow(event)">🧩</button>
         <div id="flowPanel">
             <div class="flow-header">
                 <span class="flow-title">🧩 Flow Puzzle</span>
-                <span class="flow-lvl-badge" id="flowLvlBadge">Уровень 1</span>
+                <div class="flow-header-actions">
+                    <span class="flow-lvl-badge" id="flowLvlBadge">Уровень 1</span>
+                    <button class="flow-close-btn" type="button" title="Закрыть" aria-label="Закрыть игру" onclick="closeFlow(event)">×</button>
+                </div>
             </div>
             <div class="flow-progress-bar">
                 <div class="flow-progress-fill" id="flowProgressFill" style="width:1%"></div>
@@ -363,6 +384,8 @@
             setTimeout(() => {
                 if(curLevel < LEVELS.length-1) {
                     initLevel(curLevel+1);
+                    const widget = document.getElementById('flowWidget');
+                    if (widget && !widget.classList.contains('open')) stopTimer();
                 } else {
                     document.getElementById('flowStatus').textContent = '🏆 Все 100 уровней пройдены!';
                     document.getElementById('flowResetAllBtn').style.display = 'inline-block';
@@ -392,32 +415,48 @@
         ctx.stroke();
     }
 
-    window.toggleFlow = function() {
+    function resumeTimer() {
+        if (timeLeft <= 0 || timerInterval) return;
+        timerInterval = setInterval(function() {
+            timeLeft--;
+            updateTimerDisplay();
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                const st = document.getElementById('flowStatus');
+                st.textContent = '⏰ Время вышло! Попробуй ещё раз';
+                st.className = 'flow-status';
+                st.style.color = '#e74c3c';
+            }
+        }, 1000);
+    }
+
+    function setFlowOpen(open) {
         const widget = document.getElementById('flowWidget');
         const isOpen = widget.classList.contains('open');
-        widget.classList.toggle('open');
-        if (isOpen) {
+        if (open === isOpen) return;
+        widget.classList.toggle('open', open);
+        if (!open) {
             // Закрываем — замораживаем таймер
             clearInterval(timerInterval);
             timerInterval = null;
         } else {
             // Открываем — возобновляем таймер если время ещё есть
-            if (timeLeft > 0 && !timerInterval) {
-                timerInterval = setInterval(function() {
-                    timeLeft--;
-                    updateTimerDisplay();
-                    if (timeLeft <= 0) {
-                        clearInterval(timerInterval);
-                        timerInterval = null;
-                        const st = document.getElementById('flowStatus');
-                        st.textContent = '⏰ Время вышло! Попробуй ещё раз';
-                        st.className = 'flow-status';
-                        st.style.color = '#e74c3c';
-                    }
-                }, 1000);
-            }
+            resumeTimer();
         }
+    }
+
+    window.toggleFlow = function(event) {
+        if (event) event.stopPropagation();
+        const widget = document.getElementById('flowWidget');
+        setFlowOpen(!widget.classList.contains('open'));
     };
+
+    window.closeFlow = function(event) {
+        if (event) event.stopPropagation();
+        setFlowOpen(false);
+    };
+
     window.flowNextLevel = function() {
         if(curLevel < LEVELS.length-1) initLevel(curLevel+1);
     };
@@ -442,6 +481,16 @@
         cv.addEventListener('touchmove', moveDraw, {passive:false});
         cv.addEventListener('touchend', endDraw);
         initLevel(curLevel);
+        stopTimer();
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') setFlowOpen(false);
+        });
+        document.addEventListener('click', function(event) {
+            const widget = document.getElementById('flowWidget');
+            if (widget && widget.classList.contains('open') && !widget.contains(event.target)) {
+                setFlowOpen(false);
+            }
+        });
     });
     })();
     </script>

@@ -47,6 +47,7 @@ class ADAuth:
         self.super_admin_logins = _parse_logins('AD_SUPER_ADMINS')
         self.admins_manuals = _parse_logins('AD_ADMINS_MANUALS')
         self.admins_topics = _parse_logins('AD_ADMINS_TOPICS')
+        self.admins_scenarios = _parse_logins('AD_ADMINS_SCENARIOS')
         self.admins_trainer = _parse_logins('AD_ADMINS_TRAINER')
         self.trainer_viewers = _parse_logins('AD_TRAINER_VIEWERS')
 
@@ -180,6 +181,8 @@ class ADAuth:
                 user_info['permissions'].append('admin_manuals')
             if lower_username in self.admins_topics:
                 user_info['permissions'].append('admin_topics')
+            if lower_username in self.admins_scenarios:
+                user_info['permissions'].append('admin_scenarios')
             if lower_username in self.admins_trainer:
                 user_info['permissions'].append('admin_trainer')
             if lower_username in self.trainer_viewers:

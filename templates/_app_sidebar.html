@@ -2,6 +2,8 @@
 {% set _name = _user.name if _user.name is defined else _user.get('name', _user.get('username', 'Оператор')) %}
 {% set _dept = _user.department if _user.department is defined else _user.get('department', 'Оператор поддержки') %}
 {% set _initials = (_name or 'О')[:2].upper() %}
+{% set _perms = session.get('admin_permissions', []) %}
+{% set _can_scenarios = session.get('admin_logged_in') and ('super_admin' in _perms or 'admin_scenarios' in _perms) %}
 
 <aside class="sidebar">
     <div class="sidebar-logo">
@@ -21,7 +23,7 @@
             <span class="nav-emoji" aria-hidden="true">📋</span>
             <span class="nav-label">Мои заявки</span>
         </a>
-        {% if session.get('admin_logged_in') %}
+        {% if _can_scenarios %}
         <a href="{{ url_for('scenarios_list') }}" class="nav-item {% if active_page == 'scenarios' %}active{% endif %}" title="Сценарии" aria-label="Сценарии">
             <span class="nav-emoji" aria-hidden="true">🎬</span>
             <span class="nav-label">Сценарии</span>
@@ -62,3 +64,4 @@
         </a>
     </div>
 </aside>
+{% include '_flow_puzzle.html' %}

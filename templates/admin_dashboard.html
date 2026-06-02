@@ -428,7 +428,7 @@
                 {% if 'super_admin' in perms or 'admin_manuals' in perms %}
                     <a href="{{ url_for('admin_contacts_kc') }}" class="btn btn-primary">☎️ Контакты КЦ</a>
                 {% endif %}
-                {% if 'super_admin' in perms or 'admin_manuals' in perms %}
+                {% if 'super_admin' in perms or 'admin_scenarios' in perms %}
                     <a href="{{ url_for('admin_scenarios') }}" class="btn btn-primary">🗂️ Сценарии</a>
                 {% endif %}
                 {% if 'super_admin' in perms or 'admin_topics' in perms %}

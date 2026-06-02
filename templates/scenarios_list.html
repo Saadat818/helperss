@@ -163,7 +163,10 @@
                             <div class="page-kicker">{% if search %}Поиск{% elif selected_category %}Категория{% else %}Все сценарии{% endif %}</div>
                             <h2 class="card-title">{{ scenarios|length }} найдено</h2>
                         </div>
+                        {% set perms = session.get('admin_permissions', []) %}
+                        {% if session.get('admin_logged_in') and ('super_admin' in perms or 'admin_scenarios' in perms) %}
                         <a class="btn btn-secondary" href="{{ url_for('admin_scenarios') }}">Управление</a>
+                        {% endif %}
                     </div>
 
                     {% if scenarios %}

@@ -1450,7 +1450,7 @@
 {% set can_topics = can_super_admin or 'admin_topics' in dashboard_permissions %}
 {% set can_trainer = can_super_admin or 'admin_trainer' in dashboard_permissions %}
 {% set can_trainer_view = can_trainer or 'trainer_viewer' in dashboard_permissions %}
-{% set can_scenarios = can_super_admin %}
+{% set can_scenarios = can_super_admin or 'admin_scenarios' in dashboard_permissions %}
 <div class="shell">
     <aside class="sidebar">
         <div class="brand">

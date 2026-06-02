@@ -73,7 +73,7 @@ except OSError:
     pass
 
 from flask_wtf.csrf import CSRFProtect
-from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER, ALL_ADMIN_ROLES
+from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER, ALL_ADMIN_ROLES
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
 from trainer_manager import TrainerManager
@@ -4802,6 +4802,8 @@ def api_admin_check_password():
                 test_permissions.append('admin_manuals')
             if lower_user in ad_auth.admins_topics:
                 test_permissions.append('admin_topics')
+            if lower_user in ad_auth.admins_scenarios:
+                test_permissions.append('admin_scenarios')
             if lower_user in ad_auth.admins_trainer:
                 test_permissions.append('admin_trainer')
             if lower_user in ad_auth.trainer_viewers:
@@ -7507,6 +7509,8 @@ def user_login():
                     test_permissions.append('admin_manuals')
                 if lower_user in ad_auth.admins_topics:
                     test_permissions.append('admin_topics')
+                if lower_user in ad_auth.admins_scenarios:
+                    test_permissions.append('admin_scenarios')
                 if lower_user in ad_auth.admins_trainer:
                     test_permissions.append('admin_trainer')
                 if lower_user in ad_auth.trainer_viewers:
@@ -7651,6 +7655,8 @@ def _admin_default_endpoint(permissions: list[str] | None = None) -> str:
         return 'admin_dashboard'
     if ROLE_ADMIN_TOPICS in permissions:
         return 'admin_topics'
+    if ROLE_ADMIN_SCENARIOS in permissions:
+        return 'admin_scenarios'
     if ROLE_ADMIN_TRAINER in permissions:
         return 'admin_trainer'
     if ROLE_TRAINER_VIEWER in permissions:
@@ -7670,6 +7676,8 @@ def _admin_env_permissions(username: str) -> list[str]:
             permissions.append(ROLE_ADMIN_MANUALS)
         if lower_user in ad_auth.admins_topics:
             permissions.append(ROLE_ADMIN_TOPICS)
+        if lower_user in ad_auth.admins_scenarios:
+            permissions.append(ROLE_ADMIN_SCENARIOS)
         if lower_user in ad_auth.admins_trainer:
             permissions.append(ROLE_ADMIN_TRAINER)
         if lower_user in ad_auth.trainer_viewers:
@@ -7688,6 +7696,7 @@ def _admin_section_allowed(section: str, permissions: list[str] | None) -> bool:
     required_by_section = {
         'manuals': [ROLE_ADMIN_MANUALS],
         'topics': [ROLE_ADMIN_TOPICS],
+        'scenarios': [ROLE_ADMIN_SCENARIOS],
         'trainer': [ROLE_ADMIN_TRAINER],
         'trainer_stats': [ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER],
     }
@@ -7789,6 +7798,8 @@ def admin_login():
                 test_permissions.append('admin_manuals')
             if lower_user in ad_auth.admins_topics:
                 test_permissions.append('admin_topics')
+            if lower_user in ad_auth.admins_scenarios:
+                test_permissions.append('admin_scenarios')
             if lower_user in ad_auth.admins_trainer:
                 test_permissions.append('admin_trainer')
             if lower_user in ad_auth.trainer_viewers:
@@ -11468,6 +11479,7 @@ def admin_users():
         (ROLE_SUPER_ADMIN, ROLE_NAMES.get(ROLE_SUPER_ADMIN, ROLE_SUPER_ADMIN)),
         (ROLE_ADMIN_MANUALS, ROLE_NAMES.get(ROLE_ADMIN_MANUALS, ROLE_ADMIN_MANUALS)),
         (ROLE_ADMIN_TOPICS, ROLE_NAMES.get(ROLE_ADMIN_TOPICS, ROLE_ADMIN_TOPICS)),
+        (ROLE_ADMIN_SCENARIOS, ROLE_NAMES.get(ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_SCENARIOS)),
         (ROLE_ADMIN_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_TRAINER, ROLE_ADMIN_TRAINER)),
         (ROLE_TRAINER_VIEWER, ROLE_NAMES.get(ROLE_TRAINER_VIEWER, ROLE_TRAINER_VIEWER)),
     ]
@@ -11530,6 +11542,7 @@ def admin_add_user():
         (ROLE_SUPER_ADMIN, ROLE_NAMES.get(ROLE_SUPER_ADMIN, ROLE_SUPER_ADMIN)),
         (ROLE_ADMIN_MANUALS, ROLE_NAMES.get(ROLE_ADMIN_MANUALS, ROLE_ADMIN_MANUALS)),
         (ROLE_ADMIN_TOPICS, ROLE_NAMES.get(ROLE_ADMIN_TOPICS, ROLE_ADMIN_TOPICS)),
+        (ROLE_ADMIN_SCENARIOS, ROLE_NAMES.get(ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_SCENARIOS)),
         (ROLE_ADMIN_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_TRAINER, ROLE_ADMIN_TRAINER)),
         (ROLE_TRAINER_VIEWER, ROLE_NAMES.get(ROLE_TRAINER_VIEWER, ROLE_TRAINER_VIEWER)),
     ]
@@ -11647,17 +11660,29 @@ def admin_delete_user(username):
 
 # ─── Пользовательская часть ────────────────────────────────────
 
+def _can_access_consultation_scenarios(permissions: list[str] | None = None) -> bool:
+    normalized = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    return ROLE_SUPER_ADMIN in normalized or ROLE_ADMIN_SCENARIOS in normalized
+
+
 def _require_scenarios_admin_access(api: bool = False):
+    if session.get('admin_logged_in'):
+        if _can_access_consultation_scenarios():
+            return None
+        if api:
+            return jsonify({'success': False, 'error': 'Недостаточно прав для сценариев'}), 403
+        flash('Сценарии консультаций пока доступны только администраторам сценариев.', 'error')
+        return redirect(url_for('choose_help_type'))
+
     if not session.get('authenticated'):
         if api:
             return jsonify({'success': False, 'error': 'Не авторизован'}), 401
         return redirect(url_for('user_login'))
-    if not session.get('admin_logged_in'):
-        if api:
-            return jsonify({'success': False, 'error': 'Сценарии доступны только администраторам'}), 403
-        flash('Сценарии временно доступны только администраторам.', 'error')
-        return redirect(url_for('choose_help_type'))
-    return None
+
+    if api:
+        return jsonify({'success': False, 'error': 'Сценарии доступны только администраторам сценариев'}), 403
+    flash('Сценарии консультаций пока в подготовке.', 'error')
+    return redirect(url_for('choose_help_type'))
 
 
 @app.route('/scenarios')
@@ -11743,7 +11768,7 @@ def _require_scenario_admin():
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
     perms = session.get('admin_permissions', [])
-    if ROLE_SUPER_ADMIN not in perms:
+    if not _can_access_consultation_scenarios(perms):
         flash('Недостаточно прав', 'error')
         return redirect(url_for('admin_dashboard'))
     return None

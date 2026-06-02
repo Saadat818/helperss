@@ -7648,7 +7648,7 @@ def _admin_default_endpoint(permissions: list[str] | None = None) -> str:
     if ROLE_SUPER_ADMIN in permissions:
         return 'admin_dashboard'
     if ROLE_ADMIN_MANUALS in permissions:
-        return 'admin_manuals'
+        return 'admin_dashboard'
     if ROLE_ADMIN_TOPICS in permissions:
         return 'admin_topics'
     if ROLE_ADMIN_TRAINER in permissions:
@@ -7891,9 +7891,9 @@ def admin_logout():
 def admin_dashboard():
     """Новая главная страница админ-панели."""
     permissions = session.get('admin_permissions', [])
-    if ROLE_SUPER_ADMIN not in permissions:
+    if ROLE_SUPER_ADMIN not in permissions and ROLE_ADMIN_MANUALS not in permissions:
         return redirect(url_for(_admin_default_endpoint(permissions)))
-    return render_template('admin_dashboard_new.html')
+    return render_template('admin_dashboard_new.html', admin_permissions=permissions)
 
 
 @app.route('/admin/dashboard-new')
@@ -11743,7 +11743,7 @@ def _require_scenario_admin():
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
     perms = session.get('admin_permissions', [])
-    if 'super_admin' not in perms and 'admin_manuals' not in perms:
+    if ROLE_SUPER_ADMIN not in perms:
         flash('Недостаточно прав', 'error')
         return redirect(url_for('admin_dashboard'))
     return None

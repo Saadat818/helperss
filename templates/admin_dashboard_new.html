@@ -1444,6 +1444,13 @@
         if (timelineChart || topicsChart) loadDashboard();
     }
 </script>
+{% set dashboard_permissions = admin_permissions if admin_permissions is defined else session.get('admin_permissions', []) %}
+{% set can_super_admin = 'super_admin' in dashboard_permissions %}
+{% set can_manuals = can_super_admin or 'admin_manuals' in dashboard_permissions %}
+{% set can_topics = can_super_admin or 'admin_topics' in dashboard_permissions %}
+{% set can_trainer = can_super_admin or 'admin_trainer' in dashboard_permissions %}
+{% set can_trainer_view = can_trainer or 'trainer_viewer' in dashboard_permissions %}
+{% set can_scenarios = can_super_admin %}
 <div class="shell">
     <aside class="sidebar">
         <div class="brand">
@@ -1459,22 +1466,36 @@
         <a class="nav-link" href="#pending"><span class="nav-icon">W</span>Заявки в работе</a>
 
         <div class="nav-section">Контент</div>
-        <a class="nav-link" href="{{ url_for('admin_manuals') }}"><span class="nav-icon">M</span>Мануалы</a>
-        <a class="nav-link" href="{{ url_for('admin_topics') }}"><span class="nav-icon">T</span>Тематики</a>
-        <a class="nav-link" href="{{ url_for('admin_contacts_kc') }}"><span class="nav-icon">K</span>Контакты КЦ</a>
-        <a class="nav-link" href="{{ url_for('admin_scenarios') }}"><span class="nav-icon">C</span>Сценарии</a>
-        <a class="nav-link" href="{{ url_for('admin_trainer') }}"><span class="nav-icon">R</span>Тренажёр</a>
+        {% if can_manuals %}
+            <a class="nav-link" href="{{ url_for('admin_manuals') }}"><span class="nav-icon">M</span>Мануалы</a>
+            <a class="nav-link" href="{{ url_for('admin_contacts_kc') }}"><span class="nav-icon">K</span>Контакты КЦ</a>
+        {% endif %}
+        {% if can_topics %}
+            <a class="nav-link" href="{{ url_for('admin_topics') }}"><span class="nav-icon">T</span>Тематики</a>
+        {% endif %}
+        {% if can_scenarios %}
+            <a class="nav-link" href="{{ url_for('admin_scenarios') }}"><span class="nav-icon">C</span>Сценарии</a>
+        {% endif %}
+        {% if can_trainer %}
+            <a class="nav-link" href="{{ url_for('admin_trainer') }}"><span class="nav-icon">R</span>Тренажёр</a>
+        {% endif %}
 
         <div class="nav-section">Управление</div>
         <a class="nav-link" href="#duty"><span class="nav-icon">D</span>Текущий дежурный</a>
         <a class="nav-link" href="#ticketSchedule"><span class="nav-icon">G</span>График заявок</a>
-        <a class="nav-link" href="{{ url_for('admin_users') }}"><span class="nav-icon">A</span>Администраторы</a>
-        <a class="nav-link" href="{{ url_for('admin_users') }}"><span class="nav-icon">P</span>Роли и права</a>
-        <a class="nav-link" href="{{ url_for('admin_import_topics') }}"><span class="nav-icon">I</span>Импорт</a>
+        {% if can_super_admin %}
+            <a class="nav-link" href="{{ url_for('admin_users') }}"><span class="nav-icon">A</span>Администраторы</a>
+            <a class="nav-link" href="{{ url_for('admin_users') }}"><span class="nav-icon">P</span>Роли и права</a>
+        {% endif %}
+        {% if can_topics %}
+            <a class="nav-link" href="{{ url_for('admin_import_topics') }}"><span class="nav-icon">I</span>Импорт</a>
+        {% endif %}
 
         <div class="nav-section">Система</div>
-        <a class="nav-link" href="{{ url_for('admin_trainer_audit') }}"><span class="nav-icon">L</span>Логи</a>
-        <a class="nav-link" href="{{ url_for('admin_trainer_audit') }}"><span class="nav-icon">Q</span>Аудит</a>
+        {% if can_trainer_view %}
+            <a class="nav-link" href="{{ url_for('admin_trainer_audit') }}"><span class="nav-icon">L</span>Логи</a>
+            <a class="nav-link" href="{{ url_for('admin_trainer_audit') }}"><span class="nav-icon">Q</span>Аудит</a>
+        {% endif %}
         <a class="nav-link" href="#management"><span class="nav-icon">N</span>Настройки</a>
 
         <div class="sidebar-footer">
@@ -1817,10 +1838,18 @@
                         <span class="card-link">Система</span>
                     </div>
                     <div class="quick-list">
-                        <a class="quick-link" href="{{ url_for('admin_users') }}"><span>Администраторы и роли</span><span>Открыть</span></a>
-                        <a class="quick-link" href="{{ url_for('admin_contacts_kc') }}"><span>Контакты КЦ</span><span>Открыть</span></a>
-                        <a class="quick-link" href="{{ url_for('admin_import_topics') }}"><span>Импорт тематик</span><span>Открыть</span></a>
-                        <a class="quick-link" href="{{ url_for('admin_trainer_audit') }}"><span>Логи и аудит</span><span>Открыть</span></a>
+                        {% if can_super_admin %}
+                            <a class="quick-link" href="{{ url_for('admin_users') }}"><span>Администраторы и роли</span><span>Открыть</span></a>
+                        {% endif %}
+                        {% if can_manuals %}
+                            <a class="quick-link" href="{{ url_for('admin_contacts_kc') }}"><span>Контакты КЦ</span><span>Открыть</span></a>
+                        {% endif %}
+                        {% if can_topics %}
+                            <a class="quick-link" href="{{ url_for('admin_import_topics') }}"><span>Импорт тематик</span><span>Открыть</span></a>
+                        {% endif %}
+                        {% if can_trainer_view %}
+                            <a class="quick-link" href="{{ url_for('admin_trainer_audit') }}"><span>Логи и аудит</span><span>Открыть</span></a>
+                        {% endif %}
                     </div>
                 </div>
             </div>

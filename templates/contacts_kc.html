@@ -36,6 +36,7 @@
         .contacts-results {
             grid-area: results;
             min-width: 0;
+            scroll-margin-top: 24px;
         }
 
         .department-list {
@@ -113,6 +114,15 @@
             border-color: var(--primary-mid);
             background: var(--primary-light);
             color: var(--primary-dark);
+        }
+        .department-nav-anchor {
+            color: inherit;
+            text-decoration: none;
+        }
+        .department-nav-anchor:focus-visible,
+        .department-link:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
         }
 
         .department-name {
@@ -215,6 +225,7 @@
             display: grid;
             gap: 12px;
             min-width: 0;
+            scroll-margin-top: 24px;
         }
 
         .hierarchy-children {
@@ -635,7 +646,9 @@
     <details class="department-node dept-level-{{ node.level }} dept-kind-{{ node.kind }}" {% if node_is_open %}open{% endif %}>
         <summary class="department-summary {% if node_is_selected %}active{% endif %}">
             <span class="department-toggle" aria-hidden="true"></span>
-            <span class="department-name">{{ node.name }}</span>
+            <a class="department-name department-nav-anchor"
+               href="#contact-section-{{ node.key }}"
+               data-department-anchor>{{ node.name }}</a>
             <span class="department-count">{{ node.active_contacts_count or 0 }}</span>
         </summary>
         <div class="department-children">
@@ -643,8 +656,9 @@
         </div>
     </details>
     {% else %}
-    <a class="department-link dept-level-{{ node.level }} dept-kind-{{ node.kind }} {% if node_is_selected %}active{% endif %}"
-       href="{{ url_for('contacts_kc', department=node.name, q=q, per_page=per_page) }}">
+    <a class="department-link department-nav-link dept-level-{{ node.level }} dept-kind-{{ node.kind }} {% if node_is_selected %}active{% endif %}"
+       href="#contact-section-{{ node.key }}"
+       data-department-anchor>
         <span class="department-name">{{ node.name }}</span>
         <span class="department-count">{{ node.active_contacts_count or 0 }}</span>
     </a>
@@ -721,7 +735,9 @@
 {%- endmacro %}
 
 {% macro render_hierarchy_unit(unit) %}
-<section class="hierarchy-unit hierarchy-level-{{ unit.level }} hierarchy-kind-{{ unit.kind }}" data-hierarchy-key="{{ unit.key }}">
+<section class="hierarchy-unit hierarchy-level-{{ unit.level }} hierarchy-kind-{{ unit.kind }}"
+         id="contact-section-{{ unit.key }}"
+         data-hierarchy-key="{{ unit.key }}">
     <header class="hierarchy-header">
         <div>
             <div class="hierarchy-kicker">{{ hierarchy_kind_label(unit.kind) }}</div>
@@ -766,9 +782,6 @@
                     <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                     <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Поиск: ФИО, группа, должность, ник, телефон или Telegram">
                 </div>
-                {% if selected_department %}
-                <input type="hidden" name="department" value="{{ selected_department }}">
-                {% endif %}
                 <button class="btn btn-primary" type="submit">Найти</button>
             </form>
 
@@ -776,15 +789,15 @@
                 <aside class="panel panel-pad department-panel">
                     <div class="page-kicker">Группы и отделы</div>
                     <div class="department-list">
-                        <a class="department-link {% if not selected_department %}active{% endif %}" href="{{ url_for('contacts_kc', q=q, per_page=per_page) }}">
-                            <span class="department-name">Все группы</span>
+                        <a class="department-link department-nav-link active" href="#contactsTop" data-department-anchor>
+                            <span class="department-name">Все сотрудники</span>
                             <span class="department-count">{{ stats.contacts_active }}</span>
                         </a>
                         {{ department_nav(department_tree) }}
                     </div>
                 </aside>
 
-                <section class="contacts-results">
+                <section class="contacts-results" id="contactsTop">
                     <div class="results-meta">
                         <span id="contactsResultText">
                             Показано: {{ contacts|length }} из {{ total }}
@@ -850,7 +863,7 @@ const imageViewerImg = document.getElementById('imageViewerImg');
 const imageViewerTitle = document.getElementById('imageViewerTitle');
 const imageZoomLevel = document.getElementById('imageZoomLevel');
 const contactsQuery = {{ q|tojson }};
-const contactsDepartment = {{ selected_department|tojson }};
+const contactsDepartment = '';
 const contactsPerPage = {{ per_page|tojson }};
 let contactsPage = {{ page|tojson }};
 let contactsTotal = {{ total|tojson }};
@@ -1036,6 +1049,67 @@ async function loadMoreContacts() {
         updateContactsStatus();
     }
 }
+
+function decodeHashId(hash) {
+    if (!hash || hash[0] !== '#') return '';
+    try {
+        return decodeURIComponent(hash.slice(1));
+    } catch (e) {
+        return hash.slice(1);
+    }
+}
+
+function openDepartmentAnchorParents(anchor) {
+    let node = anchor.closest('details');
+    while (node) {
+        node.open = true;
+        node = node.parentElement ? node.parentElement.closest('details') : null;
+    }
+}
+
+function setActiveDepartmentAnchor(hash) {
+    document.querySelectorAll('.department-link.active, .department-summary.active')
+        .forEach(item => item.classList.remove('active'));
+
+    const id = decodeHashId(hash);
+    const selectorHash = id ? `#${id}` : '#contactsTop';
+    const anchor = Array.from(document.querySelectorAll('[data-department-anchor]'))
+        .find(item => item.getAttribute('href') === selectorHash);
+
+    if (!anchor) return;
+    openDepartmentAnchorParents(anchor);
+
+    const summary = anchor.closest('.department-summary');
+    if (summary) {
+        summary.classList.add('active');
+    } else {
+        anchor.classList.add('active');
+    }
+}
+
+function scrollToDepartmentAnchor(anchor) {
+    const href = anchor.getAttribute('href') || '';
+    const id = decodeHashId(href);
+    const target = id ? document.getElementById(id) : null;
+    if (!target) return;
+
+    history.replaceState(null, '', href);
+    setActiveDepartmentAnchor(href);
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.querySelectorAll('[data-department-anchor]').forEach((anchor) => {
+    anchor.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        scrollToDepartmentAnchor(anchor);
+    });
+});
+
+setActiveDepartmentAnchor(window.location.hash || '#contactsTop');
+window.addEventListener('hashchange', () => {
+    setActiveDepartmentAnchor(window.location.hash || '#contactsTop');
+});
 
 if (contactsLoadMore) {
     contactsLoadMore.addEventListener('click', loadMoreContacts);

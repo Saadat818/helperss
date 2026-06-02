@@ -3226,7 +3226,7 @@ def contacts_kc():
     per_page = 5000
     page = 1
     departments = contacts_mgr.get_departments(include_inactive=False)
-    page_data = _contacts_page_data(q, department, page, per_page, user_info)
+    page_data = _contacts_page_data(q, '', page, per_page, user_info)
     contact_tree = contacts_mgr.build_contact_hierarchy(page_data['contacts'])
     department_tree = contacts_mgr.build_department_hierarchy(departments)
     stats = contacts_mgr.get_stats()

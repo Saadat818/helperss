@@ -175,6 +175,12 @@ def _contact_department_key(value: str) -> str:
     return text.strip()
 
 
+def _contact_department_anchor_key(value: str) -> str:
+    text = _contact_department_key(value)
+    text = re.sub(r"[^0-9a-zа-я]+", "-", text)
+    return text.strip("-") or "department"
+
+
 def _flatten_department_hierarchy(nodes, parent_path=(), parent_kinds=(), parent_order=()):
     records = []
     for index, node in enumerate(nodes):
@@ -761,6 +767,7 @@ class ContactsManager:
                 "name": record["name"],
                 "kind": record["kind"],
                 "level": record["level"],
+                "key": _contact_department_anchor_key(" / ".join(path)),
                 "path": list(path),
                 "contacts_count": int(item.get("contacts_count") or 0),
                 "active_contacts_count": int(item.get("active_contacts_count") or 0),
@@ -784,6 +791,7 @@ class ContactsManager:
                 "name": name,
                 "kind": "department",
                 "level": 0,
+                "key": _contact_department_anchor_key(name),
                 "path": [name],
                 "contacts_count": int(item.get("contacts_count") or 0),
                 "active_contacts_count": int(item.get("active_contacts_count") or 0),
@@ -808,7 +816,7 @@ class ContactsManager:
                     "name": name,
                     "kind": kind,
                     "level": index,
-                    "key": self._department_key(" / ".join(current_path)),
+                    "key": _contact_department_anchor_key(" / ".join(current_path)),
                     "children": [],
                     "contacts": [],
                 }

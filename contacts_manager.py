@@ -787,12 +787,11 @@ class ContactsManager:
         return roots
 
     def build_contact_hierarchy(self, contacts: List[Dict]) -> List[Dict]:
+        context = self._department_context()
         roots = []
         nodes_by_path = {}
 
-        for contact in contacts:
-            path = contact.get("hierarchy_path") or [contact.get("department_group") or "Без отдела"]
-            kinds = contact.get("hierarchy_kinds") or ["department"] * len(path)
+        def ensure_path(path, kinds):
             for index, name in enumerate(path):
                 current_path = tuple(path[:index + 1])
                 if current_path in nodes_by_path:
@@ -813,10 +812,28 @@ class ContactsManager:
                     parent = nodes_by_path.get(tuple(path[:index]))
                     if parent:
                         parent["children"].append(node)
+            return nodes_by_path.get(tuple(path))
 
-            nodes_by_path[tuple(path)]["contacts"].append(contact)
+        def prune_empty(nodes):
+            result = []
+            for node in nodes:
+                node["children"] = prune_empty(node["children"])
+                if node["contacts"] or node["children"]:
+                    result.append(node)
+            return result
 
-        return roots
+        for record in context["records"]:
+            ensure_path(record["path"], record["kinds"])
+
+        for contact in contacts:
+            path = contact.get("hierarchy_path") or [contact.get("department_group") or "Без отдела"]
+            kinds = contact.get("hierarchy_kinds") or ["department"] * len(path)
+
+            node = ensure_path(path, kinds)
+            if node:
+                node["contacts"].append(contact)
+
+        return prune_empty(roots)
 
     # ─── Подразделения ─────────────────────────────────────────────
 

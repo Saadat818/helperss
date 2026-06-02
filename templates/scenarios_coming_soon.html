@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сценарии — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        body {
+            background: var(--bg);
+        }
+
+        .coming-main {
+            display: flex;
+            align-items: center;
+        }
+
+        .coming-panel {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 36px;
+        }
+
+        .coming-icon {
+            width: 68px;
+            height: 68px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            margin-bottom: 20px;
+            background: var(--purple-light);
+            color: var(--purple);
+            font-size: 34px;
+        }
+
+        .coming-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 24px;
+        }
+
+        @media (max-width: 720px) {
+            .coming-main {
+                align-items: flex-start;
+            }
+
+            .coming-panel {
+                padding: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'scenarios' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
+
+    <main class="main-content coming-main">
+        <section class="panel panel-pad coming-panel">
+            <div class="coming-icon" aria-hidden="true">🧭</div>
+            <div class="page-kicker">Сценарии консультаций</div>
+            <h1 class="page-title">Раздел в разработке</h1>
+            <p class="page-subtitle">
+                Раздел «Сценарии» скоро будет доступен. Мы работаем над готовыми сценариями консультаций и ответами для операторов.
+            </p>
+            <div class="coming-actions">
+                <a class="btn btn-primary" href="{{ url_for('show_problems') }}">Мануалы</a>
+                <a class="btn btn-secondary" href="{{ url_for('search_topics') }}">Тематики</a>
+                <a class="btn btn-secondary" href="{{ url_for('choose_help_type') }}">Главная</a>
+            </div>
+        </section>
+    </main>
+</div>
+</body>
+</html>

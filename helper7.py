@@ -11665,14 +11665,17 @@ def _can_access_consultation_scenarios(permissions: list[str] | None = None) -> 
     return ROLE_SUPER_ADMIN in normalized or ROLE_ADMIN_SCENARIOS in normalized
 
 
+def _scenarios_coming_soon_response():
+    return render_template('scenarios_coming_soon.html')
+
+
 def _require_scenarios_admin_access(api: bool = False):
     if session.get('admin_logged_in'):
         if _can_access_consultation_scenarios():
             return None
         if api:
             return jsonify({'success': False, 'error': 'Недостаточно прав для сценариев'}), 403
-        flash('Сценарии консультаций пока доступны только администраторам сценариев.', 'error')
-        return redirect(url_for('choose_help_type'))
+        return _scenarios_coming_soon_response()
 
     if not session.get('authenticated'):
         if api:
@@ -11681,8 +11684,7 @@ def _require_scenarios_admin_access(api: bool = False):
 
     if api:
         return jsonify({'success': False, 'error': 'Сценарии доступны только администраторам сценариев'}), 403
-    flash('Сценарии консультаций пока в подготовке.', 'error')
-    return redirect(url_for('choose_help_type'))
+    return _scenarios_coming_soon_response()
 
 
 @app.route('/scenarios')

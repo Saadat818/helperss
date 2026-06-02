@@ -166,8 +166,6 @@
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
 
-                {% set perms = session.get('admin_permissions', []) %}
-                {% if session.get('admin_logged_in') and ('super_admin' in perms or 'admin_scenarios' in perms) %}
                 <a href="{{ url_for('scenarios_list') }}" class="section-card">
                     <div class="card-icon-wrap" style="background:var(--purple-light);color:var(--purple);">
                         <span class="card-emoji" aria-hidden="true">🧭</span>
@@ -178,7 +176,6 @@
                     </div>
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
-                {% endif %}
 
                 <a href="{{ url_for('trainer_menu') }}" class="section-card">
                     <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">

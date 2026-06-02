@@ -129,22 +129,78 @@
         .department-count {
             display: none;
         }
+        .department-node {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+        .department-summary {
+            display: flex;
+            align-items: flex-start;
+            gap: 7px;
+            min-width: 0;
+            padding: 8px 9px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text);
+            cursor: pointer;
+            list-style: none;
+        }
+        .department-summary::-webkit-details-marker {
+            display: none;
+        }
+        .department-summary:hover,
+        .department-summary.active {
+            border-color: var(--primary-mid);
+            background: var(--primary-light);
+            color: var(--primary-dark);
+        }
+        .department-toggle {
+            position: relative;
+            flex: 0 0 auto;
+            width: 18px;
+            height: 18px;
+            margin-top: -1px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--bg-secondary);
+        }
+        .department-toggle::before {
+            content: "";
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: 5px;
+            height: 5px;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(-45deg);
+            transition: transform .16s ease;
+        }
+        .department-node[open] > .department-summary .department-toggle::before {
+            transform: rotate(45deg);
+        }
         .department-children {
             display: grid;
             gap: 6px;
+            margin-left: 9px;
             padding-left: 12px;
             border-left: 1px solid var(--border);
         }
-        .department-link.dept-level-0 {
+        .department-link.dept-level-0,
+        .department-node.dept-level-0 > .department-summary {
             padding: 9px 10px;
             border-color: var(--primary-mid);
             background: color-mix(in srgb, var(--primary-light) 30%, var(--card));
         }
-        .department-link.dept-level-1 {
+        .department-link.dept-level-1,
+        .department-node.dept-level-1 > .department-summary {
             margin-top: 2px;
             background: var(--bg-secondary);
         }
-        .department-link.dept-kind-group .department-name {
+        .department-link.dept-kind-group .department-name,
+        .department-node.dept-kind-group > .department-summary .department-name {
             font-weight: 650;
         }
 
@@ -511,15 +567,26 @@
 {% set active_page = 'contacts' %}
 {% macro department_nav(nodes) %}
     {% for node in nodes %}
-    <a class="department-link dept-level-{{ node.level }} dept-kind-{{ node.kind }} {% if selected_department|lower == node.name|lower %}active{% endif %}"
+    {% set node_path_len = node.path|length %}
+    {% set node_is_selected = selected_department|lower == node.name|lower %}
+    {% set node_is_open = selected_department_path and selected_department_path[:node_path_len] == node.path %}
+    {% if node.children %}
+    <details class="department-node dept-level-{{ node.level }} dept-kind-{{ node.kind }}" {% if node_is_open %}open{% endif %}>
+        <summary class="department-summary {% if node_is_selected %}active{% endif %}">
+            <span class="department-toggle" aria-hidden="true"></span>
+            <span class="department-name">{{ node.name }}</span>
+            <span class="department-count">{{ node.active_contacts_count or 0 }}</span>
+        </summary>
+        <div class="department-children">
+            {{ department_nav(node.children) }}
+        </div>
+    </details>
+    {% else %}
+    <a class="department-link dept-level-{{ node.level }} dept-kind-{{ node.kind }} {% if node_is_selected %}active{% endif %}"
        href="{{ url_for('contacts_kc', department=node.name, q=q, per_page=per_page) }}">
         <span class="department-name">{{ node.name }}</span>
         <span class="department-count">{{ node.active_contacts_count or 0 }}</span>
     </a>
-    {% if node.children %}
-    <div class="department-children">
-        {{ department_nav(node.children) }}
-    </div>
     {% endif %}
     {% endfor %}
 {% endmacro %}

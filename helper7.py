@@ -3219,6 +3219,10 @@ def contacts_kc():
     q = request.args.get('q', '').strip()
     department = request.args.get('department', '').strip()
     selected_department = contacts_mgr._canonical_department(department) if department else ''
+    selected_department_record = contacts_mgr._department_record(selected_department) if selected_department else None
+    selected_department_path = list(selected_department_record["path"]) if selected_department_record else (
+        [selected_department] if selected_department else []
+    )
     per_page = 5000
     page = 1
     departments = contacts_mgr.get_departments(include_inactive=False)
@@ -3236,6 +3240,7 @@ def contacts_kc():
         stats=stats,
         q=q,
         selected_department=selected_department,
+        selected_department_path=selected_department_path,
         page=page_data['page'],
         per_page=page_data['per_page'],
         total=page_data['total'],

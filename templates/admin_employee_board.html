@@ -24,6 +24,24 @@
             --shadow: 0 12px 28px rgba(28, 39, 60, 0.07);
         }
 
+        body.dark {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --panel-soft: #263347;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --line: #334155;
+            --green-dark: #86efac;
+            --green-soft: #052e16;
+            --blue: #67e8f9;
+            --blue-soft: #0c2840;
+            --amber: #fbbf24;
+            --amber-soft: #451a03;
+            --red: #fca5a5;
+            --red-soft: #450a0a;
+            --shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        }
+
         * {
             box-sizing: border-box;
         }
@@ -118,6 +136,27 @@
             font-size: 13px;
         }
 
+        .theme-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 38px;
+            padding: 9px 13px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            color: var(--text);
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .theme-icon {
+            width: 18px;
+            text-align: center;
+            font-weight: 900;
+        }
+
         .grid {
             display: grid;
             grid-template-columns: 390px minmax(0, 1fr);
@@ -197,7 +236,7 @@
             width: 100%;
             border: 1px solid var(--line);
             border-radius: 8px;
-            background: #fff;
+            background: var(--panel);
             color: var(--text);
         }
 
@@ -265,6 +304,10 @@
             background: var(--blue-soft);
             color: #1d4f8f;
             font-weight: 650;
+        }
+
+        body.dark .flash {
+            color: #bfdbfe;
         }
 
         .posts {
@@ -347,14 +390,27 @@
             color: #fff;
         }
 
+        body.dark .badge.black {
+            background: #e5e7eb;
+            color: #111827;
+        }
+
         .badge.draft {
             background: var(--amber-soft);
             color: #8a5700;
         }
 
+        body.dark .badge.draft {
+            color: #fbbf24;
+        }
+
         .badge.archived {
             background: var(--red-soft);
             color: #9f1f31;
+        }
+
+        body.dark .badge.archived {
+            color: #fca5a5;
         }
 
         .post-text {
@@ -392,6 +448,22 @@
     </style>
 </head>
 <body>
+<script>
+    if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
+    function updateBoardThemeToggle() {
+        const btn = document.getElementById('adminThemeToggle');
+        if (!btn) return;
+        const isDark = document.body.classList.contains('dark');
+        btn.innerHTML = `<span class="theme-icon">${isDark ? '☀' : '☾'}</span><span>${isDark ? 'Светлая тема' : 'Тёмная тема'}</span>`;
+        btn.setAttribute('title', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+        btn.setAttribute('aria-label', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+    }
+    function toggleTheme() {
+        const isDark = document.body.classList.toggle('dark');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        updateBoardThemeToggle();
+    }
+</script>
 <div class="admin-page">
     <header class="topbar">
         <div>
@@ -400,6 +472,10 @@
             <div class="subtitle">Публикации достижений и обезличенных разборов для сотрудников.</div>
         </div>
         <div class="actions">
+            <button class="theme-btn" id="adminThemeToggle" type="button" onclick="toggleTheme()" title="Включить тёмную тему" aria-label="Включить тёмную тему">
+                <span class="theme-icon">☾</span>
+                <span>Тёмная тема</span>
+            </button>
             <a class="btn secondary" href="{{ url_for('employee_board') }}">Публичная страница</a>
             <a class="btn secondary" href="{{ url_for('admin_dashboard') }}">Обзор</a>
         </div>
@@ -678,6 +754,8 @@
     document.querySelectorAll('[data-filter-form] [data-auto-submit]').forEach((control) => {
         control.addEventListener('change', () => control.form?.submit());
     });
+
+    updateBoardThemeToggle();
 </script>
 </body>
 </html>

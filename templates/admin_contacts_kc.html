@@ -1424,7 +1424,7 @@ document.addEventListener('click', (event) => {
     }
 
     if (event.target.classList.contains('modal-overlay')) {
-        event.target.classList.remove('show');
+        return;
     }
 });
 

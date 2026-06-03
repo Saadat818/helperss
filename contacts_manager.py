@@ -621,8 +621,10 @@ class ContactsManager:
             return "lead"
         if "началь" in text:
             return "head"
-        if "главн" in text and "специалист" in text:
-            return "chief"
+        if "главн" in text and "эксперт" in text:
+            return "chief_expert"
+        if "главн" in text:
+            return "chief_specialist"
         if "старш" in text:
             return "senior"
         return "specialist"
@@ -637,11 +639,13 @@ class ContactsManager:
             return 0
         if role == "head":
             return 1
-        if role == "chief":
+        if role == "chief_expert":
             return 2
-        if role == "senior":
+        if role == "chief_specialist":
             return 3
-        return 4
+        if role == "senior":
+            return 4
+        return 5
 
     @staticmethod
     def _group_role(value: str) -> str:
@@ -650,8 +654,10 @@ class ContactsManager:
             return "lead"
         if text in {"head", "chief_manager", "начальник"}:
             return "head"
+        if text in {"chief_expert", "главный эксперт"}:
+            return "chief_expert"
         if text in {"chief", "main", "главный", "главный специалист"}:
-            return "chief"
+            return "chief_specialist"
         if text in {"senior", "старший", "старший специалист"}:
             return "senior"
         return "specialist"
@@ -666,7 +672,8 @@ class ContactsManager:
         return {
             "lead": "Руководитель",
             "head": "Начальник",
-            "chief": "Главный специалист",
+            "chief_expert": "Главный эксперт",
+            "chief_specialist": "Главный специалист",
             "senior": "Старший специалист",
         }.get(effective, "")
 
@@ -700,10 +707,11 @@ class ContactsManager:
             0: "lead",
             1: "head",
             2: "chief",
-            3: "senior",
+            3: "chief",
+            4: "senior",
         }.get(role_rank, "")
         contact["is_group_lead"] = role_rank in (0, 1)
-        contact["is_senior_contact"] = role_rank in (2, 3)
+        contact["is_senior_contact"] = role_rank in (2, 3, 4)
         return contact
 
     @staticmethod

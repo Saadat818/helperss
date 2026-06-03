@@ -354,6 +354,20 @@ class ContactsManager:
                     UNIQUE(contact_id, actor_key)
                 )
             """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS cc_section_visits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    section TEXT NOT NULL,
+                    visitor_key TEXT NOT NULL,
+                    visitor_name TEXT DEFAULT '',
+                    visit_date TEXT NOT NULL,
+                    first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    visit_count INTEGER DEFAULT 1,
+                    last_path TEXT DEFAULT '',
+                    UNIQUE(section, visitor_key, visit_date)
+                )
+            """)
             c.execute("PRAGMA table_info(cc_contacts)")
             existing_contact_cols = {row[1] for row in c.fetchall()}
             if "photo_path" not in existing_contact_cols:
@@ -376,6 +390,8 @@ class ContactsManager:
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_departments_active ON cc_departments(is_active)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contact_likes_contact ON cc_contact_likes(contact_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contact_likes_actor ON cc_contact_likes(actor_key)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cc_section_visits_section_date ON cc_section_visits(section, visit_date)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cc_section_visits_visitor ON cc_section_visits(visitor_key)")
             c.execute("""
                 UPDATE cc_contacts
                 SET department = (
@@ -1176,6 +1192,57 @@ class ContactsManager:
             conn.commit()
             return {"success": True}
 
+    def record_directory_visit(self, visitor_key: str, visitor_name: str = "", path: str = "") -> Dict:
+        visitor_key = self._clean(visitor_key, 220).lower()
+        if not visitor_key:
+            return {"success": False, "error": "Не указан пользователь"}
+
+        now = self._now()
+        visit_date = datetime.now().strftime("%Y-%m-%d")
+        visitor_name = self._clean(visitor_name, 220)
+        path = self._clean(path, 500)
+
+        with self._connect() as conn:
+            conn.execute("""
+                INSERT INTO cc_section_visits (
+                    section, visitor_key, visitor_name, visit_date,
+                    first_seen_at, last_seen_at, visit_count, last_path
+                )
+                VALUES ('contacts', ?, ?, ?, ?, ?, 1, ?)
+                ON CONFLICT(section, visitor_key, visit_date) DO UPDATE SET
+                    visitor_name = excluded.visitor_name,
+                    last_seen_at = excluded.last_seen_at,
+                    visit_count = cc_section_visits.visit_count + 1,
+                    last_path = excluded.last_path
+            """, (visitor_key, visitor_name, visit_date, now, now, path))
+            conn.commit()
+            return {"success": True}
+
+    def get_directory_usage_stats(self) -> Dict[str, int]:
+        today = datetime.now().strftime("%Y-%m-%d")
+        with self._connect() as conn:
+            today_row = conn.execute("""
+                SELECT
+                    COUNT(DISTINCT visitor_key) AS people,
+                    COALESCE(SUM(visit_count), 0) AS visits
+                FROM cc_section_visits
+                WHERE section IN ('contacts', 'directions') AND visit_date = ?
+            """, (today,)).fetchone()
+            total_row = conn.execute("""
+                SELECT
+                    COUNT(DISTINCT visitor_key) AS people,
+                    COALESCE(SUM(visit_count), 0) AS visits
+                FROM cc_section_visits
+                WHERE section IN ('contacts', 'directions')
+            """).fetchone()
+
+        return {
+            "today_people": int(today_row["people"] if today_row else 0),
+            "total_people": int(total_row["people"] if total_row else 0),
+            "today_visits": int(today_row["visits"] if today_row else 0),
+            "total_visits": int(total_row["visits"] if total_row else 0),
+        }
+
     def get_stats(self) -> Dict:
         with self._connect() as conn:
             contacts = conn.execute("""
@@ -1185,9 +1252,14 @@ class ContactsManager:
                     SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS inactive
                 FROM cc_contacts
             """).fetchone()
+            directory_usage = self.get_directory_usage_stats()
             return {
                 "contacts_total": int(contacts["total"] or 0),
                 "contacts_active": int(contacts["active"] or 0),
                 "contacts_inactive": int(contacts["inactive"] or 0),
                 "departments_total": len(self.get_departments(include_inactive=True)),
+                "directory_today_people": directory_usage["today_people"],
+                "directory_total_people": directory_usage["total_people"],
+                "directory_today_visits": directory_usage["today_visits"],
+                "directory_total_visits": directory_usage["total_visits"],
             }

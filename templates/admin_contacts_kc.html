@@ -43,7 +43,7 @@
         .flash.warning { border-color: rgba(217,119,6,.35); color: var(--yellow); background: var(--yellow-light); }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 12px;
             margin-bottom: 16px;
         }
@@ -62,6 +62,13 @@
             color: var(--text-muted);
             font-size: var(--text-sm);
             font-weight: 700;
+        }
+        .stat-detail {
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 700;
+            line-height: 1.35;
         }
         .filter-bar {
             display: grid;
@@ -579,6 +586,11 @@
         <div class="stat-box">
             <div class="stat-value">{{ stats.departments_total }}</div>
             <div class="stat-label">Групп/отделов</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">{{ stats.directory_today_people }} / {{ stats.directory_total_people }}</div>
+            <div class="stat-label">Справочник: сегодня / всего</div>
+            <div class="stat-detail">Переходов: {{ stats.directory_today_visits }} / {{ stats.directory_total_visits }}</div>
         </div>
         <div class="stat-box">
             <div class="stat-value">{{ total }}</div>

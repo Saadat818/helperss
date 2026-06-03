@@ -3209,6 +3209,34 @@ def my_tickets():
     return render_template('my_tickets.html', user_info=session['user_info'])
 
 
+def _contacts_visit_actor(user_info: dict) -> tuple[str, str]:
+    actor_key = _contact_like_actor_key(user_info)
+    actor_name = str(
+        user_info.get('name')
+        or user_info.get('username')
+        or user_info.get('email')
+        or actor_key
+        or ''
+    ).strip()
+    if not actor_key:
+        actor_key = str(session.get('contacts_visit_uid') or '').strip()
+        if not actor_key:
+            actor_key = f"session:{uuid.uuid4().hex}"
+            session['contacts_visit_uid'] = actor_key
+    if not actor_name:
+        actor_name = actor_key
+    return actor_key, actor_name
+
+
+def _record_contacts_directory_visit(user_info: dict):
+    actor_key, actor_name = _contacts_visit_actor(user_info)
+    path = request.full_path.rstrip('?')
+    try:
+        contacts_mgr.record_directory_visit(actor_key, actor_name, path)
+    except Exception as e:
+        print(f"[contacts_usage] Не удалось записать посещение справочника: {e}")
+
+
 @app.route('/contacts_kc')
 def contacts_kc():
     """Страница контактов контакт-центра."""
@@ -3216,6 +3244,7 @@ def contacts_kc():
         return redirect(url_for('user_login'))
 
     user_info = session.get('user_info') or {}
+    _record_contacts_directory_visit(user_info)
     q = request.args.get('q', '').strip()
     department = request.args.get('department', '').strip()
     selected_department = contacts_mgr._canonical_department(department) if department else ''

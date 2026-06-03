@@ -105,6 +105,43 @@
             color: #bbf7d0;
             opacity: 1;
         }
+
+        .home-services .section-card.service-wide {
+            position: relative;
+            grid-column: 1 / -1;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 126px;
+            padding-left: 64px;
+            padding-right: 64px;
+            text-align: center;
+        }
+
+        .home-services .section-card.service-wide .card-body {
+            display: flex;
+            flex: 0 1 auto;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .home-services .section-card.service-wide .card-desc {
+            max-width: 520px;
+        }
+
+        .home-services .section-card.service-wide .card-arrow {
+            position: absolute;
+            top: 50%;
+            right: 22px;
+            transform: translateY(-50%);
+        }
+
+        .home-services .section-card.service-wide:hover .card-arrow {
+            transform: translate(2px, -50%);
+        }
     </style>
 </head>
 <body>
@@ -118,7 +155,7 @@
                 <div>
                     <div class="page-kicker">Рабочее пространство</div>
                     <h1 class="page-title">Здравствуйте, {{ user_info.name or 'коллега' }}</h1>
-                    <p class="page-subtitle">Выберите нужный раздел Helper: инструкции, тематики, сценарии консультаций или тренажёр.</p>
+                    <p class="page-subtitle">Выберите нужный раздел Helper: инструкции, тематики, сценарии консультаций, контакты или тренажёр.</p>
                 </div>
                 <a class="btn btn-secondary" href="{{ url_for('user_logout') }}">
                     <svg class="icon" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg>
@@ -143,7 +180,7 @@
                 </div>
             </section>
 
-            <section class="content-grid grid-2">
+            <section class="content-grid grid-2 home-services">
                 <a href="{{ url_for('show_problems') }}" class="section-card featured">
                     <div class="card-icon-wrap" style="background:var(--primary-mid);">
                         <span class="card-emoji" aria-hidden="true">📚</span>
@@ -166,6 +203,17 @@
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
 
+                <a href="{{ url_for('contacts_kc') }}" class="section-card">
+                    <div class="card-icon-wrap" style="background:var(--primary-light);color:var(--primary-dark);">
+                        <span class="card-emoji" aria-hidden="true">☎️</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Контакты и направления КЦ</div>
+                        <div class="card-desc">Поиск сотрудников и групп контакт-центра по ФИО, направлению, должности, нику, телефону или Telegram.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+
                 <a href="{{ url_for('scenarios_list') }}" class="section-card">
                     <div class="card-icon-wrap" style="background:var(--purple-light);color:var(--purple);">
                         <span class="card-emoji" aria-hidden="true">🧭</span>
@@ -177,7 +225,7 @@
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
 
-                <a href="{{ url_for('trainer_menu') }}" class="section-card">
+                <a href="{{ url_for('trainer_menu') }}" class="section-card service-wide">
                     <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">
                         <span class="card-emoji" aria-hidden="true">🎯</span>
                     </div>

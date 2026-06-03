@@ -461,10 +461,11 @@
                         </div>
                         <div>
                             <label for="status">Статус</label>
+                            {% set selected_form_status = form_post.status|default('published', true) %}
                             <select id="status" name="status">
-                                <option value="draft" {% if form_post.status|default('draft') == 'draft' %}selected{% endif %}>Черновик</option>
-                                <option value="published" {% if form_post.status == 'published' %}selected{% endif %}>Опубликовано</option>
-                                <option value="archived" {% if form_post.status == 'archived' %}selected{% endif %}>Архив</option>
+                                <option value="draft" {% if selected_form_status == 'draft' %}selected{% endif %}>Черновик</option>
+                                <option value="published" {% if selected_form_status == 'published' %}selected{% endif %}>Опубликовано</option>
+                                <option value="archived" {% if selected_form_status == 'archived' %}selected{% endif %}>Архив</option>
                             </select>
                         </div>
                     </div>
@@ -550,13 +551,13 @@
         </section>
 
         <section>
-            <form class="filter-bar" method="get" action="{{ url_for('admin_employee_board') }}">
-                <select name="type" aria-label="Тип доски">
+            <form class="filter-bar" method="get" action="{{ url_for('admin_employee_board') }}" data-filter-form>
+                <select name="type" aria-label="Тип доски" data-auto-submit>
                     <option value="" {% if not board_type %}selected{% endif %}>Все доски</option>
                     <option value="white" {% if board_type == 'white' %}selected{% endif %}>Белая</option>
                     <option value="black" {% if board_type == 'black' %}selected{% endif %}>Чёрная</option>
                 </select>
-                <select name="status" aria-label="Статус">
+                <select name="status" aria-label="Статус" data-auto-submit>
                     <option value="" {% if not status %}selected{% endif %}>Все статусы</option>
                     <option value="draft" {% if status == 'draft' %}selected{% endif %}>Черновик</option>
                     <option value="published" {% if status == 'published' %}selected{% endif %}>Опубликовано</option>
@@ -672,6 +673,10 @@
     document.querySelectorAll('[data-board-form]').forEach((form) => {
         syncBoardFields(form);
         form.querySelector('[data-board-type]')?.addEventListener('change', () => syncBoardFields(form));
+    });
+
+    document.querySelectorAll('[data-filter-form] [data-auto-submit]').forEach((control) => {
+        control.addEventListener('change', () => control.form?.submit());
     });
 </script>
 </body>

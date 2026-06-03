@@ -3532,9 +3532,15 @@ def admin_employee_board_create():
         return _admin_employee_board_return()
 
     _apply_employee_board_photo(int(result['id']), data.get('board_type', 'white'))
-    flash('Запись добавлена', 'success')
+    if data.get('status') == 'published':
+        flash('Запись добавлена и опубликована', 'success')
+    else:
+        flash('Запись сохранена. На публичной странице она появится после публикации.', 'success')
     write_audit_log('employee_board_created', 200, {'post_id': result.get('id'), 'board_type': data.get('board_type')})
-    return _admin_employee_board_return()
+    return _admin_employee_board_return({
+        'type': data.get('board_type', ''),
+        'status': data.get('status', '')
+    })
 
 
 @app.route('/admin/employee_board/<int:post_id>/update', methods=['POST'])

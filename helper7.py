@@ -79,6 +79,7 @@ from stats_manager import StatsManager
 from trainer_manager import TrainerManager
 from scenario_manager import ScenarioManager
 from contacts_manager import ContactsManager
+from employee_board_manager import EmployeeBoardManager
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -2238,6 +2239,7 @@ trainer_mgr = TrainerManager(os.path.join(BASE_DIR, "topics.db"))
 # Инициализация ScenarioManager (сценарии консультаций КЦ)
 scenario_mgr = ScenarioManager(os.path.join(BASE_DIR, "topics.db"))
 contacts_mgr = ContactsManager(os.path.join(BASE_DIR, "topics.db"))
+employee_board_mgr = EmployeeBoardManager(os.path.join(BASE_DIR, "topics.db"))
 
 # Инициализация счётчика заявок
 _init_ticket_counter_table()
@@ -3207,6 +3209,393 @@ def my_tickets():
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
     return render_template('my_tickets.html', user_info=session['user_info'])
+
+
+EMPLOYEE_BOARD_PRIVATE_UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads', 'employee_board', 'originals')
+EMPLOYEE_BOARD_PRIVATE_PREFIX = 'uploads/employee_board/originals'
+EMPLOYEE_BOARD_PUBLIC_UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'uploads', 'employee_board', 'public')
+EMPLOYEE_BOARD_REDACTED_UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'uploads', 'employee_board', 'redacted')
+EMPLOYEE_BOARD_PUBLIC_PREFIX = 'uploads/employee_board/public'
+EMPLOYEE_BOARD_REDACTED_PREFIX = 'uploads/employee_board/redacted'
+EMPLOYEE_BOARD_PHOTO_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'}
+EMPLOYEE_BOARD_PHOTO_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _employee_board_photo_selected(file) -> bool:
+    return bool(file and (file.filename or (file.mimetype or '').lower().startswith('image/')))
+
+
+def _employee_board_photo_stream_size(file) -> int:
+    stream = getattr(file, 'stream', None)
+    if not stream:
+        return 0
+    try:
+        current = stream.tell()
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        stream.seek(current)
+        return int(size)
+    except (OSError, ValueError):
+        return int(request.content_length or 0)
+
+
+def _employee_board_photo_header(file, length: int = 64) -> bytes:
+    stream = getattr(file, 'stream', None)
+    if not stream:
+        return b''
+    try:
+        current = stream.tell()
+        stream.seek(0)
+        header = stream.read(length) or b''
+        stream.seek(current)
+        return header
+    except (OSError, ValueError):
+        return b''
+
+
+def _detect_employee_board_photo_extension(header: bytes) -> str:
+    if header.startswith(b'\xff\xd8\xff'):
+        return 'jpg'
+    if header.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if header.startswith((b'GIF87a', b'GIF89a')):
+        return 'gif'
+    if header.startswith(b'BM'):
+        return 'bmp'
+    if len(header) >= 12 and header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return 'webp'
+    return ''
+
+
+def _validate_employee_board_photo(file) -> str:
+    if not _employee_board_photo_selected(file):
+        return ''
+
+    original_name = secure_filename(file.filename or 'employee-photo')
+    filename_ext = original_name.rsplit('.', 1)[-1].lower() if '.' in original_name else ''
+    if filename_ext == 'jpeg':
+        filename_ext = 'jpg'
+    if filename_ext and filename_ext not in EMPLOYEE_BOARD_PHOTO_EXTENSIONS:
+        raise ValueError('Фото должно быть в формате JPG, PNG, WEBP, GIF или BMP')
+
+    size = _employee_board_photo_stream_size(file)
+    if size > EMPLOYEE_BOARD_PHOTO_MAX_BYTES:
+        raise ValueError('Фото должно быть не больше 10 МБ')
+
+    detected_ext = _detect_employee_board_photo_extension(_employee_board_photo_header(file))
+    if not detected_ext:
+        raise ValueError('Файл не похож на изображение JPG, PNG, WEBP, GIF или BMP')
+
+    if filename_ext and filename_ext != detected_ext:
+        raise ValueError('Расширение файла не совпадает с фактическим форматом изображения')
+
+    try:
+        file.stream.seek(0)
+    except (OSError, ValueError, AttributeError):
+        pass
+    return detected_ext
+
+
+def _employee_board_photo_error() -> str:
+    try:
+        _validate_employee_board_photo(request.files.get('photo'))
+    except ValueError as e:
+        return str(e)
+    return ''
+
+
+def _employee_board_static_full_path(photo_path: str) -> str:
+    normalized = str(photo_path or '').replace('\\', '/').lstrip('/')
+    return os.path.join(BASE_DIR, 'static', *normalized.split('/'))
+
+
+def _employee_board_private_full_path(photo_path: str) -> str:
+    normalized = str(photo_path or '').replace('\\', '/').lstrip('/')
+    return os.path.join(BASE_DIR, *normalized.split('/'))
+
+
+def _safe_remove_employee_board_photo(photo_path: str):
+    normalized = str(photo_path or '').replace('\\', '/').lstrip('/')
+    if not normalized:
+        return
+    allowed = (
+        EMPLOYEE_BOARD_PUBLIC_PREFIX + '/',
+        EMPLOYEE_BOARD_REDACTED_PREFIX + '/',
+        EMPLOYEE_BOARD_PRIVATE_PREFIX + '/',
+    )
+    if not normalized.startswith(allowed):
+        return
+    full_path = (
+        _employee_board_static_full_path(normalized)
+        if normalized.startswith((EMPLOYEE_BOARD_PUBLIC_PREFIX + '/', EMPLOYEE_BOARD_REDACTED_PREFIX + '/'))
+        else _employee_board_private_full_path(normalized)
+    )
+    try:
+        if os.path.isfile(full_path):
+            os.remove(full_path)
+    except OSError as e:
+        print(f"[employee_board] Не удалось удалить фото {full_path}: {e}")
+
+
+def _redacted_svg_bytes() -> bytes:
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420">
+<defs>
+<filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+<radialGradient id="bg" cx="50%" cy="34%" r="70%"><stop offset="0" stop-color="#475569"/><stop offset="1" stop-color="#0f172a"/></radialGradient>
+</defs>
+<rect width="420" height="420" fill="url(#bg)"/>
+<g filter="url(#soft)" opacity=".78">
+<circle cx="210" cy="142" r="72" fill="#dbeafe"/>
+<path d="M88 382c16-92 86-140 122-140s106 48 122 140z" fill="#e2e8f0"/>
+</g>
+<rect width="420" height="420" fill="#020617" opacity=".28"/>
+</svg>"""
+    return svg.encode('utf-8')
+
+
+def _create_redacted_employee_board_photo(source_path: str, output_path: str) -> bool:
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+    except Exception:
+        return False
+
+    with Image.open(source_path) as img:
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((420, 420))
+        canvas = Image.new('RGB', (420, 420), (15, 23, 42))
+        rgb = img.convert('RGB')
+        x = (420 - rgb.width) // 2
+        y = (420 - rgb.height) // 2
+        canvas.paste(rgb, (x, y))
+        canvas = ImageEnhance.Color(canvas).enhance(0.05)
+        canvas = ImageEnhance.Contrast(canvas).enhance(0.68)
+        canvas = canvas.filter(ImageFilter.GaussianBlur(radius=24))
+        veil = Image.new('RGB', canvas.size, (2, 6, 23))
+        canvas = Image.blend(canvas, veil, 0.42)
+        canvas.save(output_path, format='JPEG', quality=78, optimize=True)
+    return True
+
+
+def _save_employee_board_photo(post_id: int, board_type: str) -> tuple[str, str]:
+    file = request.files.get('photo')
+    if not _employee_board_photo_selected(file):
+        return '', ''
+
+    ext = _validate_employee_board_photo(file)
+    stem = f"{post_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+    if board_type == 'black':
+        os.makedirs(EMPLOYEE_BOARD_PRIVATE_UPLOAD_DIR, exist_ok=True)
+        os.makedirs(EMPLOYEE_BOARD_REDACTED_UPLOAD_DIR, exist_ok=True)
+        private_filename = f"{stem}.{ext}"
+        private_path = os.path.join(EMPLOYEE_BOARD_PRIVATE_UPLOAD_DIR, private_filename)
+        file.save(private_path)
+
+        redacted_filename = f"{stem}_redacted.jpg"
+        redacted_path = os.path.join(EMPLOYEE_BOARD_REDACTED_UPLOAD_DIR, redacted_filename)
+        try:
+            created_real_blur = _create_redacted_employee_board_photo(private_path, redacted_path)
+            if not created_real_blur:
+                redacted_filename = f"{stem}_redacted.svg"
+                redacted_path = os.path.join(EMPLOYEE_BOARD_REDACTED_UPLOAD_DIR, redacted_filename)
+                with open(redacted_path, 'wb') as f:
+                    f.write(_redacted_svg_bytes())
+        except Exception as e:
+            print(f"[employee_board] Не удалось создать blur-версию, используется SVG: {e}")
+            redacted_filename = f"{stem}_redacted.svg"
+            redacted_path = os.path.join(EMPLOYEE_BOARD_REDACTED_UPLOAD_DIR, redacted_filename)
+            with open(redacted_path, 'wb') as f:
+                f.write(_redacted_svg_bytes())
+        return f"{EMPLOYEE_BOARD_PRIVATE_PREFIX}/{private_filename}", f"{EMPLOYEE_BOARD_REDACTED_PREFIX}/{redacted_filename}"
+
+    os.makedirs(EMPLOYEE_BOARD_PUBLIC_UPLOAD_DIR, exist_ok=True)
+    filename = f"{stem}.{ext}"
+    full_path = os.path.join(EMPLOYEE_BOARD_PUBLIC_UPLOAD_DIR, filename)
+    file.save(full_path)
+    public_path = f"{EMPLOYEE_BOARD_PUBLIC_PREFIX}/{filename}"
+    return public_path, public_path
+
+
+def _apply_employee_board_photo(post_id: int, board_type: str, clear_photo: bool = False):
+    current = employee_board_mgr.get_post(post_id)
+    if not current:
+        return
+
+    try:
+        photo_path, public_photo_path = _save_employee_board_photo(post_id, board_type)
+    except ValueError as e:
+        flash(str(e), 'error')
+        return
+
+    if photo_path or public_photo_path:
+        _safe_remove_employee_board_photo(current.get('photo_path') or '')
+        _safe_remove_employee_board_photo(current.get('public_photo_path') or '')
+        employee_board_mgr.set_photo_paths(
+            post_id,
+            photo_path=photo_path,
+            public_photo_path=public_photo_path,
+            actor=session.get('admin_username', '')
+        )
+        return
+
+    if clear_photo:
+        _safe_remove_employee_board_photo(current.get('photo_path') or '')
+        _safe_remove_employee_board_photo(current.get('public_photo_path') or '')
+        employee_board_mgr.set_photo_paths(post_id, '', '', actor=session.get('admin_username', ''))
+
+
+def _employee_board_form_data(existing: dict | None = None) -> dict:
+    existing = existing or {}
+    return {
+        'board_type': request.form.get('board_type', existing.get('board_type', 'white')).strip(),
+        'status': request.form.get('status', existing.get('status', 'draft')).strip(),
+        'full_name': request.form.get('full_name', existing.get('full_name', '')).strip(),
+        'public_title': request.form.get('public_title', existing.get('public_title', '')).strip(),
+        'current_position': request.form.get('current_position', existing.get('current_position', '')).strip(),
+        'start_position': request.form.get('start_position', existing.get('start_position', '')).strip(),
+        'tenure': request.form.get('tenure', existing.get('tenure', '')).strip(),
+        'summary': request.form.get('summary', existing.get('summary', '')).strip(),
+        'description': request.form.get('description', existing.get('description', '')).strip(),
+        'role_before': request.form.get('role_before', existing.get('role_before', '')).strip(),
+        'incident': request.form.get('incident', existing.get('incident', '')).strip(),
+        'actions_taken': request.form.get('actions_taken', existing.get('actions_taken', '')).strip(),
+        'lesson': request.form.get('lesson', existing.get('lesson', '')).strip(),
+        'photo_path': existing.get('photo_path', ''),
+        'public_photo_path': existing.get('public_photo_path', ''),
+    }
+
+
+def _admin_employee_board_return(extra: dict | None = None):
+    args = {}
+    for key in ('type', 'status', 'q'):
+        value = request.form.get(f'return_{key}', request.args.get(key, '')).strip()
+        if value:
+            args[key] = value
+    if extra:
+        args.update(extra)
+    return redirect(url_for('admin_employee_board', **args))
+
+
+@app.route('/employee_board')
+def employee_board():
+    """Белая/Чёрная доска для сотрудников."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    active_tab = request.args.get('type', 'white').strip()
+    if active_tab not in ('white', 'black'):
+        active_tab = 'white'
+
+    return render_template(
+        'employee_board.html',
+        user_info=session.get('user_info', {}),
+        active_tab=active_tab,
+        white_posts=employee_board_mgr.public_posts('white'),
+        black_posts=employee_board_mgr.public_posts('black'),
+        stats=employee_board_mgr.stats()
+    )
+
+
+@app.route('/admin/employee_board')
+@AdminAuth.manuals_required
+def admin_employee_board():
+    """Админка Белой/Чёрной доски."""
+    board_type = request.args.get('type', '').strip()
+    status = request.args.get('status', '').strip()
+    q = request.args.get('q', '').strip()
+    edit_id = request.args.get('edit', type=int)
+    edit_post = employee_board_mgr.get_post(edit_id) if edit_id else None
+    posts = employee_board_mgr.list_posts(board_type=board_type, status=status, search=q)
+    return render_template(
+        'admin_employee_board.html',
+        posts=posts,
+        stats=employee_board_mgr.stats(),
+        board_type=board_type,
+        status=status,
+        q=q,
+        edit_post=edit_post
+    )
+
+
+@app.route('/admin/employee_board/create', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_employee_board_create():
+    photo_error = _employee_board_photo_error()
+    if photo_error:
+        flash(photo_error, 'error')
+        return _admin_employee_board_return()
+
+    data = _employee_board_form_data()
+    result = employee_board_mgr.create_post(data, actor=session.get('admin_username', ''))
+    if not result.get('success'):
+        flash(result.get('error', 'Не удалось добавить запись'), 'error')
+        return _admin_employee_board_return()
+
+    _apply_employee_board_photo(int(result['id']), data.get('board_type', 'white'))
+    flash('Запись добавлена', 'success')
+    write_audit_log('employee_board_created', 200, {'post_id': result.get('id'), 'board_type': data.get('board_type')})
+    return _admin_employee_board_return()
+
+
+@app.route('/admin/employee_board/<int:post_id>/update', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_employee_board_update(post_id):
+    current = employee_board_mgr.get_post(post_id)
+    if not current:
+        flash('Запись не найдена', 'error')
+        return _admin_employee_board_return()
+
+    photo_error = _employee_board_photo_error()
+    if photo_error:
+        flash(photo_error, 'error')
+        return _admin_employee_board_return({'edit': post_id})
+
+    data = _employee_board_form_data(current)
+    clear_photo = request.form.get('clear_photo') == 'on'
+    type_changed = current.get('board_type') != data.get('board_type')
+    has_new_photo = _employee_board_photo_selected(request.files.get('photo'))
+    if type_changed and not has_new_photo:
+        data['photo_path'] = ''
+        data['public_photo_path'] = ''
+        clear_photo = True
+
+    result = employee_board_mgr.update_post(post_id, data, actor=session.get('admin_username', ''))
+    if not result.get('success'):
+        flash(result.get('error', 'Не удалось обновить запись'), 'error')
+        return _admin_employee_board_return({'edit': post_id})
+
+    _apply_employee_board_photo(post_id, data.get('board_type', 'white'), clear_photo=clear_photo)
+    flash('Запись обновлена', 'success')
+    write_audit_log('employee_board_updated', 200, {'post_id': post_id, 'board_type': data.get('board_type')})
+    return _admin_employee_board_return()
+
+
+@app.route('/admin/employee_board/<int:post_id>/status', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_employee_board_status(post_id):
+    new_status = request.form.get('status', '').strip()
+    result = employee_board_mgr.set_status(post_id, new_status, actor=session.get('admin_username', ''))
+    if result.get('success'):
+        flash('Статус записи обновлён', 'success')
+        write_audit_log('employee_board_status_changed', 200, {'post_id': post_id, 'status': new_status})
+    else:
+        flash(result.get('error', 'Не удалось обновить статус'), 'error')
+    return _admin_employee_board_return()
+
+
+@app.route('/admin/employee_board/<int:post_id>/delete', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_employee_board_delete(post_id):
+    result = employee_board_mgr.delete_post(post_id)
+    if result.get('success'):
+        post = result.get('post') or {}
+        _safe_remove_employee_board_photo(post.get('photo_path') or '')
+        _safe_remove_employee_board_photo(post.get('public_photo_path') or '')
+        flash('Запись удалена', 'success')
+        write_audit_log('employee_board_deleted', 200, {'post_id': post_id})
+    else:
+        flash(result.get('error', 'Не удалось удалить запись'), 'error')
+    return _admin_employee_board_return()
 
 
 def _contacts_visit_actor(user_info: dict) -> tuple[str, str]:

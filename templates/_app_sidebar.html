@@ -37,6 +37,10 @@
             <span class="nav-emoji" aria-hidden="true">☎️</span>
             <span class="nav-label">Контакты и направления КЦ</span>
         </a>
+        <a href="{{ url_for('employee_board') }}" class="nav-item {% if active_page == 'employee_board' %}active{% endif %}" title="Белая / Чёрная доска" aria-label="Белая / Чёрная доска">
+            <span class="nav-emoji" aria-hidden="true">◐</span>
+            <span class="nav-label">Белая / Чёрная доска</span>
+        </a>
         <a href="{{ url_for('trainer_menu') }}" class="nav-item {% if active_page == 'trainer' %}active{% endif %}" title="Тренажёр" aria-label="Тренажёр">
             <span class="nav-emoji" aria-hidden="true">🎯</span>
             <span class="nav-label">Тренажёр</span>

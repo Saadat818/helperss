@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление доской — Helper Admin</title>
+    <style>
+        :root {
+            --bg: #f6f8fb;
+            --panel: #ffffff;
+            --panel-soft: #f9fbfd;
+            --text: #172033;
+            --muted: #6f7a8d;
+            --line: #e8edf3;
+            --green: #12a66a;
+            --green-dark: #0b8756;
+            --green-soft: #e7f7ef;
+            --blue: #2f80ed;
+            --blue-soft: #eaf3ff;
+            --amber: #f5a524;
+            --amber-soft: #fff4df;
+            --red: #e5485d;
+            --red-soft: #ffecef;
+            --shadow: 0 12px 28px rgba(28, 39, 60, 0.07);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", "Inter", Arial, sans-serif;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
+        }
+
+        .admin-page {
+            max-width: 1380px;
+            margin: 0 auto;
+            padding: 28px;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 20px;
+        }
+
+        .kicker {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 6px 0 6px;
+            font-size: 30px;
+            line-height: 1.15;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            padding: 9px 13px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: var(--green);
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn.secondary {
+            border-color: var(--line);
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .btn.danger {
+            background: var(--red);
+        }
+
+        .btn.small {
+            min-height: 32px;
+            padding: 7px 10px;
+            font-size: 13px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 390px minmax(0, 1fr);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .panel {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 18px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .panel-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .panel-body {
+            padding: 18px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        .stat {
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 850;
+        }
+
+        .stat-label {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .filter-bar {
+            display: grid;
+            grid-template-columns: 150px 150px minmax(220px, 1fr) auto;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
+        }
+
+        input,
+        select {
+            min-height: 40px;
+            padding: 8px 10px;
+        }
+
+        textarea {
+            min-height: 90px;
+            padding: 10px;
+            resize: vertical;
+        }
+
+        .form-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .field-group.hidden {
+            display: none;
+        }
+
+        .current-photo {
+            display: grid;
+            grid-template-columns: 92px minmax(0, 1fr);
+            gap: 12px;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel-soft);
+        }
+
+        .current-photo img {
+            width: 92px;
+            height: 92px;
+            display: block;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .photo-note {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .flash-list {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .flash {
+            padding: 11px 13px;
+            border-radius: 8px;
+            background: var(--blue-soft);
+            color: #1d4f8f;
+            font-weight: 650;
+        }
+
+        .posts {
+            display: grid;
+            gap: 12px;
+        }
+
+        .post-card {
+            display: grid;
+            grid-template-columns: 98px minmax(0, 1fr);
+            gap: 14px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: var(--panel);
+        }
+
+        .post-photo {
+            width: 98px;
+            height: 112px;
+            overflow: hidden;
+            border-radius: 8px;
+            background: var(--panel-soft);
+        }
+
+        .post-photo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .post-placeholder {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 30px;
+            font-weight: 800;
+        }
+
+        .post-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+        }
+
+        .post-title {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.22;
+        }
+
+        .post-meta {
+            margin-top: 5px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .badge {
+            display: inline-flex;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: var(--green-soft);
+            color: var(--green-dark);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .badge.black {
+            background: #111827;
+            color: #fff;
+        }
+
+        .badge.draft {
+            background: var(--amber-soft);
+            color: #8a5700;
+        }
+
+        .badge.archived {
+            background: var(--red-soft);
+            color: #9f1f31;
+        }
+
+        .post-text {
+            margin-top: 10px;
+            color: var(--text);
+            line-height: 1.45;
+        }
+
+        .post-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .post-actions form {
+            display: inline-flex;
+        }
+
+        .empty {
+            padding: 28px;
+            border: 1px dashed var(--line);
+            border-radius: 10px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        @media (max-width: 1180px) {
+            .grid,
+            .filter-bar,
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="admin-page">
+    <header class="topbar">
+        <div>
+            <div class="kicker">Контент</div>
+            <h1>Белая / Чёрная доска</h1>
+            <div class="subtitle">Публикации достижений и обезличенных разборов для сотрудников.</div>
+        </div>
+        <div class="actions">
+            <a class="btn secondary" href="{{ url_for('employee_board') }}">Публичная страница</a>
+            <a class="btn secondary" href="{{ url_for('admin_dashboard') }}">Обзор</a>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-list">
+                {% for category, message in messages %}
+                    <div class="flash">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <section class="stats">
+        <div class="stat">
+            <div class="stat-value">{{ stats.white_published }}</div>
+            <div class="stat-label">Белая опубликовано</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{{ stats.black_published }}</div>
+            <div class="stat-label">Чёрная опубликовано</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{{ stats.white_draft + stats.black_draft }}</div>
+            <div class="stat-label">Черновики</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{{ stats.total }}</div>
+            <div class="stat-label">Всего записей</div>
+        </div>
+    </section>
+
+    <div class="grid">
+        <section class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">{% if edit_post %}Редактирование{% else %}Новая запись{% endif %}</h2>
+                {% if edit_post %}
+                    <a class="btn secondary small" href="{{ url_for('admin_employee_board', type=board_type, status=status, q=q) }}">Отмена</a>
+                {% endif %}
+            </div>
+            <div class="panel-body">
+                {% set form_post = edit_post or {} %}
+                <form class="form-grid" method="post" enctype="multipart/form-data" data-board-form
+                      action="{% if edit_post %}{{ url_for('admin_employee_board_update', post_id=edit_post.id) }}{% else %}{{ url_for('admin_employee_board_create') }}{% endif %}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="return_type" value="{{ board_type }}">
+                    <input type="hidden" name="return_status" value="{{ status }}">
+                    <input type="hidden" name="return_q" value="{{ q }}">
+
+                    <div class="form-row">
+                        <div>
+                            <label for="board_type">Доска</label>
+                            <select id="board_type" name="board_type" data-board-type>
+                                <option value="white" {% if form_post.board_type|default('white') == 'white' %}selected{% endif %}>Белая доска</option>
+                                <option value="black" {% if form_post.board_type == 'black' %}selected{% endif %}>Чёрная доска</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="status">Статус</label>
+                            <select id="status" name="status">
+                                <option value="draft" {% if form_post.status|default('draft') == 'draft' %}selected{% endif %}>Черновик</option>
+                                <option value="published" {% if form_post.status == 'published' %}selected{% endif %}>Опубликовано</option>
+                                <option value="archived" {% if form_post.status == 'archived' %}selected{% endif %}>Архив</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="field-group white-field">
+                        <label for="full_name">ФИО</label>
+                        <input id="full_name" name="full_name" value="{{ form_post.full_name|default('') }}">
+                    </div>
+
+                    <div class="field-group black-field">
+                        <label for="public_title">Публичная метка кейса</label>
+                        <input id="public_title" name="public_title" value="{{ form_post.public_title|default('') }}" placeholder="Кейс KPI-001">
+                    </div>
+
+                    <div class="form-row white-field field-group">
+                        <div>
+                            <label for="current_position">Текущая должность</label>
+                            <input id="current_position" name="current_position" value="{{ form_post.current_position|default('') }}">
+                        </div>
+                        <div>
+                            <label for="start_position">Кем пришёл в банк</label>
+                            <input id="start_position" name="start_position" value="{{ form_post.start_position|default('') }}">
+                        </div>
+                    </div>
+
+                    <div class="field-group white-field">
+                        <label for="tenure">Срок</label>
+                        <input id="tenure" name="tenure" value="{{ form_post.tenure|default('') }}" placeholder="Например: 2 года 4 месяца">
+                    </div>
+
+                    <div class="field-group black-field">
+                        <label for="role_before">Кем был / направление</label>
+                        <input id="role_before" name="role_before" value="{{ form_post.role_before|default('') }}" placeholder="Например: оператор КЦ">
+                    </div>
+
+                    <div>
+                        <label for="summary">Кратко</label>
+                        <textarea id="summary" name="summary">{{ form_post.summary|default('') }}</textarea>
+                    </div>
+
+                    <div class="field-group white-field">
+                        <label for="description">Описание достижения</label>
+                        <textarea id="description" name="description">{{ form_post.description|default('') }}</textarea>
+                    </div>
+
+                    <div class="field-group black-field">
+                        <label for="incident">Что произошло</label>
+                        <textarea id="incident" name="incident">{{ form_post.incident|default('') }}</textarea>
+                    </div>
+
+                    <div class="field-group black-field">
+                        <label for="actions_taken">Что предприняли</label>
+                        <textarea id="actions_taken" name="actions_taken">{{ form_post.actions_taken|default('') }}</textarea>
+                    </div>
+
+                    <div class="field-group black-field">
+                        <label for="lesson">Вывод</label>
+                        <textarea id="lesson" name="lesson">{{ form_post.lesson|default('') }}</textarea>
+                    </div>
+
+                    {% if edit_post and edit_post.public_photo_path %}
+                        <div class="current-photo">
+                            <img src="{{ url_for('static', filename=edit_post.public_photo_path) }}" alt="Текущее фото">
+                            <div>
+                                <div class="photo-note">Текущее публичное изображение. Для Чёрной доски это размытая версия, оригинал публично не отдаётся.</div>
+                                <label style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                                    <input type="checkbox" name="clear_photo" style="width:auto;min-height:auto;">
+                                    Удалить фото
+                                </label>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <div>
+                        <label for="photo">Фото</label>
+                        <input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp">
+                        <div class="photo-note">Для Чёрной доски публично сохраняется только сильно размытая версия.</div>
+                    </div>
+
+                    <button class="btn" type="submit">{% if edit_post %}Сохранить{% else %}Добавить{% endif %}</button>
+                </form>
+            </div>
+        </section>
+
+        <section>
+            <form class="filter-bar" method="get" action="{{ url_for('admin_employee_board') }}">
+                <select name="type" aria-label="Тип доски">
+                    <option value="" {% if not board_type %}selected{% endif %}>Все доски</option>
+                    <option value="white" {% if board_type == 'white' %}selected{% endif %}>Белая</option>
+                    <option value="black" {% if board_type == 'black' %}selected{% endif %}>Чёрная</option>
+                </select>
+                <select name="status" aria-label="Статус">
+                    <option value="" {% if not status %}selected{% endif %}>Все статусы</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>Черновик</option>
+                    <option value="published" {% if status == 'published' %}selected{% endif %}>Опубликовано</option>
+                    <option value="archived" {% if status == 'archived' %}selected{% endif %}>Архив</option>
+                </select>
+                <input name="q" value="{{ q }}" placeholder="Поиск">
+                <button class="btn secondary" type="submit">Показать</button>
+            </form>
+
+            <div class="posts">
+                {% if posts %}
+                    {% for post in posts %}
+                        <article class="post-card">
+                            <div class="post-photo">
+                                {% if post.public_photo_path %}
+                                    <img src="{{ url_for('static', filename=post.public_photo_path) }}" alt="{{ post.public_title or post.full_name }}">
+                                {% else %}
+                                    <div class="post-placeholder">{{ (post.public_title or post.full_name or 'H')[:1] }}</div>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <div class="post-head">
+                                    <div>
+                                        <h3 class="post-title">{{ post.public_title or post.full_name }}</h3>
+                                        <div class="post-meta">
+                                            {% if post.board_type == 'white' %}
+                                                {{ post.current_position or 'Должность не указана' }}
+                                            {% else %}
+                                                {{ post.role_before or 'Роль не указана' }}
+                                            {% endif %}
+                                        </div>
+                                        <div class="badges">
+                                            <span class="badge {% if post.board_type == 'black' %}black{% endif %}">{{ post.type_label }}</span>
+                                            <span class="badge {% if post.status == 'draft' %}draft{% elif post.status == 'archived' %}archived{% endif %}">{{ post.status_label }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {% if post.summary %}
+                                    <div class="post-text">{{ post.summary }}</div>
+                                {% elif post.incident %}
+                                    <div class="post-text">{{ post.incident }}</div>
+                                {% elif post.description %}
+                                    <div class="post-text">{{ post.description }}</div>
+                                {% endif %}
+
+                                <div class="post-actions">
+                                    <a class="btn secondary small" href="{{ url_for('admin_employee_board', type=board_type, status=status, q=q, edit=post.id) }}">Редактировать</a>
+
+                                    {% if post.status != 'published' %}
+                                        <form method="post" action="{{ url_for('admin_employee_board_status', post_id=post.id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <input type="hidden" name="return_type" value="{{ board_type }}">
+                                            <input type="hidden" name="return_status" value="{{ status }}">
+                                            <input type="hidden" name="return_q" value="{{ q }}">
+                                            <input type="hidden" name="status" value="published">
+                                            <button class="btn small" type="submit">Опубликовать</button>
+                                        </form>
+                                    {% endif %}
+
+                                    {% if post.status != 'draft' %}
+                                        <form method="post" action="{{ url_for('admin_employee_board_status', post_id=post.id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <input type="hidden" name="return_type" value="{{ board_type }}">
+                                            <input type="hidden" name="return_status" value="{{ status }}">
+                                            <input type="hidden" name="return_q" value="{{ q }}">
+                                            <input type="hidden" name="status" value="draft">
+                                            <button class="btn secondary small" type="submit">В черновик</button>
+                                        </form>
+                                    {% endif %}
+
+                                    {% if post.status != 'archived' %}
+                                        <form method="post" action="{{ url_for('admin_employee_board_status', post_id=post.id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <input type="hidden" name="return_type" value="{{ board_type }}">
+                                            <input type="hidden" name="return_status" value="{{ status }}">
+                                            <input type="hidden" name="return_q" value="{{ q }}">
+                                            <input type="hidden" name="status" value="archived">
+                                            <button class="btn secondary small" type="submit">В архив</button>
+                                        </form>
+                                    {% endif %}
+
+                                    <form method="post" action="{{ url_for('admin_employee_board_delete', post_id=post.id) }}" onsubmit="return confirm('Удалить запись?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="return_type" value="{{ board_type }}">
+                                        <input type="hidden" name="return_status" value="{{ status }}">
+                                        <input type="hidden" name="return_q" value="{{ q }}">
+                                        <button class="btn danger small" type="submit">Удалить</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </article>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty">Записей по выбранному фильтру нет.</div>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+    function syncBoardFields(form) {
+        const type = form.querySelector('[data-board-type]')?.value || 'white';
+        form.querySelectorAll('.white-field').forEach((el) => {
+            el.classList.toggle('hidden', type !== 'white');
+        });
+        form.querySelectorAll('.black-field').forEach((el) => {
+            el.classList.toggle('hidden', type !== 'black');
+        });
+    }
+
+    document.querySelectorAll('[data-board-form]').forEach((form) => {
+        syncBoardFields(form);
+        form.querySelector('[data-board-type]')?.addEventListener('change', () => syncBoardFields(form));
+    });
+</script>
+</body>
+</html>

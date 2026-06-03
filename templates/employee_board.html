@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Белая / Чёрная доска — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        .board-main {
+            background:
+                linear-gradient(180deg, rgba(248, 250, 252, .94), rgba(241, 245, 249, .98)),
+                var(--bg);
+        }
+
+        body.dark .board-main {
+            background:
+                linear-gradient(180deg, rgba(15, 23, 42, .96), rgba(2, 6, 23, .98)),
+                var(--bg);
+        }
+
+        .board-tabs {
+            display: inline-flex;
+            gap: 6px;
+            padding: 4px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--card);
+        }
+
+        .board-tab {
+            min-width: 150px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-align: center;
+            text-decoration: none;
+        }
+
+        .board-tab.active {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .board-stats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(180px, 1fr));
+            gap: 12px;
+            margin: 18px 0;
+        }
+
+        .board-stat {
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+        }
+
+        .board-stat-value {
+            font-size: 26px;
+            font-weight: 800;
+        }
+
+        .board-stat-label {
+            margin-top: 4px;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+        }
+
+        .board-section {
+            display: none;
+        }
+
+        .board-section.active {
+            display: block;
+        }
+
+        .board-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .board-card {
+            display: grid;
+            grid-template-columns: 168px minmax(0, 1fr);
+            gap: 18px;
+            min-height: 220px;
+            padding: 18px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .board-card.black {
+            border-color: rgba(100, 116, 139, .34);
+        }
+
+        .board-photo {
+            width: 168px;
+            height: 196px;
+            overflow: hidden;
+            border-radius: 12px;
+            background: var(--bg-secondary);
+        }
+
+        .board-photo img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+
+        .board-photo.black-photo img {
+            filter: blur(2px) saturate(.65) contrast(.82);
+            transform: scale(1.03);
+        }
+
+        .board-photo-placeholder {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            color: var(--text-muted);
+            font-size: 42px;
+            font-weight: 800;
+        }
+
+        .board-card-body {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .board-badge {
+            width: fit-content;
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: var(--text-xs);
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .black .board-badge {
+            background: #111827;
+            color: #e5e7eb;
+        }
+
+        body.dark .black .board-badge {
+            background: #e5e7eb;
+            color: #111827;
+        }
+
+        .board-title {
+            margin: 0;
+            color: var(--text);
+            font-size: 22px;
+            line-height: 1.18;
+            font-weight: 800;
+        }
+
+        .board-meta {
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            line-height: 1.45;
+        }
+
+        .board-text {
+            color: var(--text);
+            line-height: 1.55;
+        }
+
+        .board-facts {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: auto;
+        }
+
+        .board-fact {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .board-fact-label {
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 700;
+        }
+
+        .board-fact-value {
+            margin-top: 4px;
+            font-weight: 700;
+        }
+
+        .incident-blocks {
+            display: grid;
+            gap: 10px;
+        }
+
+        .incident-block {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .incident-label {
+            margin-bottom: 5px;
+            color: var(--text-muted);
+            font-size: var(--text-xs);
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .empty-state {
+            padding: 28px;
+            border: 1px dashed var(--border);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        @media (max-width: 1180px) {
+            .board-list {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'employee_board' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
+
+    <main class="main-content board-main">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Достижения и разборы</div>
+                    <h1 class="page-title">Белая / Чёрная доска</h1>
+                    <p class="page-subtitle">Истории сильных результатов и обезличенные разборы нарушений качества.</p>
+                </div>
+                {% if session.get('admin_logged_in') %}
+                    <a class="btn btn-secondary" href="{{ url_for('admin_employee_board') }}">Управление</a>
+                {% endif %}
+            </header>
+
+            <div class="board-tabs" role="tablist">
+                <a class="board-tab {% if active_tab == 'white' %}active{% endif %}" href="{{ url_for('employee_board', type='white') }}">Белая доска</a>
+                <a class="board-tab {% if active_tab == 'black' %}active{% endif %}" href="{{ url_for('employee_board', type='black') }}">Чёрная доска</a>
+            </div>
+
+            <section class="board-stats" aria-label="Статистика доски">
+                <div class="board-stat">
+                    <div class="board-stat-value">{{ stats.white_published }}</div>
+                    <div class="board-stat-label">Опубликовано на Белой доске</div>
+                </div>
+                <div class="board-stat">
+                    <div class="board-stat-value">{{ stats.black_published }}</div>
+                    <div class="board-stat-label">Опубликовано на Чёрной доске</div>
+                </div>
+            </section>
+
+            <section class="board-section {% if active_tab == 'white' %}active{% endif %}">
+                {% if white_posts %}
+                    <div class="board-list">
+                        {% for post in white_posts %}
+                            <article class="board-card white">
+                                <div class="board-photo">
+                                    {% if post.public_photo_path %}
+                                        <img src="{{ url_for('static', filename=post.public_photo_path) }}" alt="{{ post.public_title }}">
+                                    {% else %}
+                                        <div class="board-photo-placeholder">{{ (post.full_name or post.public_title or 'H')[:1] }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="board-card-body">
+                                    <div class="board-badge">Белая доска</div>
+                                    <h2 class="board-title">{{ post.public_title or post.full_name }}</h2>
+                                    <div class="board-meta">{{ post.current_position }}</div>
+                                    {% if post.summary %}
+                                        <div class="board-text">{{ post.summary }}</div>
+                                    {% endif %}
+                                    {% if post.description %}
+                                        <div class="board-text">{{ post.description }}</div>
+                                    {% endif %}
+                                    <div class="board-facts">
+                                        {% if post.start_position %}
+                                            <div class="board-fact">
+                                                <div class="board-fact-label">Пришёл в банк</div>
+                                                <div class="board-fact-value">{{ post.start_position }}</div>
+                                            </div>
+                                        {% endif %}
+                                        {% if post.tenure %}
+                                            <div class="board-fact">
+                                                <div class="board-fact-label">Срок</div>
+                                                <div class="board-fact-value">{{ post.tenure }}</div>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">На Белой доске пока нет опубликованных записей.</div>
+                {% endif %}
+            </section>
+
+            <section class="board-section {% if active_tab == 'black' %}active{% endif %}">
+                {% if black_posts %}
+                    <div class="board-list">
+                        {% for post in black_posts %}
+                            <article class="board-card black">
+                                <div class="board-photo black-photo">
+                                    {% if post.public_photo_path %}
+                                        <img src="{{ url_for('static', filename=post.public_photo_path) }}" alt="Обезличенное фото">
+                                    {% else %}
+                                        <div class="board-photo-placeholder">?</div>
+                                    {% endif %}
+                                </div>
+                                <div class="board-card-body">
+                                    <div class="board-badge">Чёрная доска</div>
+                                    <h2 class="board-title">{{ post.public_title }}</h2>
+                                    <div class="board-meta">{{ post.role_before }}</div>
+                                    {% if post.summary %}
+                                        <div class="board-text">{{ post.summary }}</div>
+                                    {% endif %}
+                                    <div class="incident-blocks">
+                                        <div class="incident-block">
+                                            <div class="incident-label">Что произошло</div>
+                                            <div>{{ post.incident }}</div>
+                                        </div>
+                                        <div class="incident-block">
+                                            <div class="incident-label">Что предприняли</div>
+                                            <div>{{ post.actions_taken }}</div>
+                                        </div>
+                                        {% if post.lesson %}
+                                            <div class="incident-block">
+                                                <div class="incident-label">Вывод</div>
+                                                <div>{{ post.lesson }}</div>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">На Чёрной доске пока нет опубликованных записей.</div>
+                {% endif %}
+            </section>
+        </div>
+    </main>
+</div>
+</body>
+</html>

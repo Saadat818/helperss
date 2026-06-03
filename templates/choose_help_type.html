@@ -219,16 +219,18 @@
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
 
-                <a href="{{ url_for('employee_board') }}" class="section-card">
-                    <div class="card-icon-wrap" style="background:var(--red-light);color:var(--red);">
-                        <span class="card-emoji" aria-hidden="true">◐</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="card-title">Белая / Чёрная доска</div>
-                        <div class="card-desc">Успешные сотрудники и обезличенные разборы нарушений качества.</div>
-                    </div>
-                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                </a>
+                {% if session.get('admin_logged_in') %}
+                    <a href="{{ url_for('employee_board') }}" class="section-card">
+                        <div class="card-icon-wrap" style="background:var(--red-light);color:var(--red);">
+                            <span class="card-emoji" aria-hidden="true">◐</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="card-title">Белая / Чёрная доска</div>
+                            <div class="card-desc">Успешные сотрудники и обезличенные разборы нарушений качества.</div>
+                        </div>
+                        <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    </a>
+                {% endif %}
 
                 <a href="{{ url_for('trainer_menu') }}" class="section-card">
                     <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">

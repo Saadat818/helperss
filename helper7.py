@@ -3478,9 +3478,11 @@ def _admin_employee_board_return(extra: dict | None = None):
 
 @app.route('/employee_board')
 def employee_board():
-    """Белая/Чёрная доска для сотрудников."""
-    if 'user_info' not in session or not session.get('authenticated'):
-        return redirect(url_for('user_login'))
+    """Белая/Чёрная доска. Пока доступна только администраторам."""
+    if not session.get('admin_logged_in'):
+        if 'user_info' not in session or not session.get('authenticated'):
+            return redirect(url_for('user_login'))
+        return redirect(url_for('choose_help_type'))
 
     active_tab = request.args.get('type', 'white').strip()
     if active_tab not in ('white', 'black'):

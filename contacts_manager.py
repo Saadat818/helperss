@@ -454,6 +454,13 @@ class ContactsManager:
         return text[:limit]
 
     @staticmethod
+    def _int_value(value, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
     def _department_key(value: str) -> str:
         return _contact_department_key(value)
 
@@ -810,7 +817,9 @@ class ContactsManager:
         return (
             *self._department_sort_key(department, context),
             self._group_role_rank(contact.get("group_role") or "", position),
-            int(contact.get("sort_order") or 0),
+            self._int_value(contact.get("sort_order"), 0),
+            str(contact.get("created_at") or ""),
+            self._int_value(contact.get("id"), 0),
             str(contact.get("full_name") or "").lower(),
         )
 

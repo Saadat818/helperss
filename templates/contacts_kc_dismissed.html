@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Уволенные и переведённые — Контакты КЦ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        .archive-main { min-height: 100vh; background: var(--bg); }
+        .archive-main .page {
+            width: min(1280px, calc(100vw - 48px));
+            margin: 0 auto;
+            padding: 32px 0 48px;
+        }
+        .archive-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+        .archive-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .archive-toolbar {
+            display: grid;
+            grid-template-columns: minmax(260px, 1fr) auto;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .archive-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 12px;
+        }
+        .archive-card {
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-sm);
+        }
+        .archive-head {
+            display: grid;
+            grid-template-columns: 58px minmax(0, 1fr);
+            gap: 12px;
+            align-items: center;
+        }
+        .archive-photo,
+        .archive-photo-empty {
+            width: 58px;
+            aspect-ratio: 1 / 1;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .archive-photo {
+            object-fit: cover;
+            object-position: center;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            cursor: zoom-in;
+        }
+        .archive-photo:hover { border-color: var(--primary); }
+        img.archive-photo { height: 58px; }
+        .archive-photo-empty {
+            display: grid;
+            place-items: center;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: 22px;
+            font-weight: 900;
+        }
+        .archive-name {
+            margin: 0;
+            color: var(--text);
+            font-size: 18px;
+            font-weight: 900;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+        .archive-position {
+            margin-top: 3px;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+            font-weight: 700;
+            line-height: 1.35;
+        }
+        .archive-meta,
+        .archive-contact-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .archive-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 5px 9px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-secondary);
+            color: var(--text);
+            font-size: var(--text-xs);
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+        .archive-chip.reason {
+            border-color: var(--primary-mid);
+            background: var(--primary-light);
+            color: var(--primary-dark);
+        }
+        .archive-comment {
+            padding: 10px 11px;
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+            color: var(--text);
+            font-size: var(--text-sm);
+            font-weight: 700;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+        .archive-empty {
+            padding: 20px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+        }
+        .image-viewer {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 28px;
+            background: rgba(15, 23, 42, .78);
+        }
+        .image-viewer.show { display: flex; }
+        .image-viewer-card {
+            width: min(1120px, 100%);
+            max-height: 92vh;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            gap: 12px;
+        }
+        .image-viewer-stage {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: min(76vh, 760px);
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 14px;
+            background: rgba(15, 23, 42, .5);
+            cursor: zoom-in;
+            touch-action: none;
+        }
+        .image-viewer-stage.is-zoomed { cursor: grab; }
+        .image-viewer-stage.is-dragging { cursor: grabbing; }
+        .image-viewer img {
+            max-width: 100%;
+            max-height: 78vh;
+            object-fit: contain;
+            border-radius: 12px;
+            background: #fff;
+            user-select: none;
+            transform: translate3d(0, 0, 0) scale(1);
+            transform-origin: center center;
+            transition: transform .12s ease;
+            will-change: transform;
+        }
+        .image-viewer-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            color: #fff;
+            font-weight: 800;
+        }
+        .image-viewer-title {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .image-viewer-tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+        .image-viewer-close,
+        .image-zoom-btn,
+        .image-zoom-level {
+            min-width: 38px;
+            min-height: 34px;
+            padding: 7px 12px;
+            border: 1px solid rgba(255,255,255,.35);
+            border-radius: 8px;
+            background: rgba(255,255,255,.12);
+            color: #fff;
+            font-weight: 900;
+        }
+        .image-viewer-close,
+        .image-zoom-btn {
+            cursor: pointer;
+        }
+        .image-zoom-level {
+            min-width: 58px;
+            text-align: center;
+        }
+        @media (max-width: 720px) {
+            .archive-main .page { width: min(100% - 24px, 1280px); padding-top: 20px; }
+            .archive-header,
+            .archive-toolbar { grid-template-columns: 1fr; display: grid; }
+            .archive-actions { justify-content: flex-start; }
+            .archive-grid { grid-template-columns: 1fr; }
+            .image-viewer { padding: 12px; }
+            .image-viewer-bar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+            .image-viewer-tools {
+                width: 100%;
+                flex-wrap: wrap;
+            }
+            .image-viewer-stage { min-height: 70vh; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'contacts' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
+
+    <main class="main-content archive-main">
+        <div class="page">
+            <header class="archive-header">
+                <div>
+                    <div class="page-kicker">Справочник</div>
+                    <h1 class="page-title">Уволенные и переведённые</h1>
+                    <p class="page-subtitle">Контакты, скрытые из основного справочника КЦ.</p>
+                </div>
+                <div class="archive-actions">
+                    <a class="btn btn-secondary" href="{{ url_for('contacts_kc') }}">Активные контакты</a>
+                    {% set perms = session.get('admin_permissions', []) %}
+                    {% if session.get('admin_logged_in') and ('super_admin' in perms or 'admin_manuals' in perms) %}
+                    <a class="btn btn-secondary" href="{{ url_for('admin_contacts_kc', status='inactive') }}">Управление</a>
+                    {% endif %}
+                </div>
+            </header>
+
+            <form class="archive-toolbar" method="get" action="{{ url_for('contacts_kc_dismissed') }}">
+                <div class="search-bar">
+                    <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Поиск по ФИО, должности, отделу, нику или телефону">
+                </div>
+                <button class="btn btn-primary" type="submit">Найти</button>
+            </form>
+
+            <div class="results-meta" style="margin-bottom: 12px;">
+                <span>Показано: {{ contacts|length }} из {{ total }}{% if q %} по запросу "{{ q }}"{% endif %}</span>
+                <span>В архиве: {{ stats.contacts_inactive }}</span>
+            </div>
+
+            {% if contacts %}
+            <section class="archive-grid">
+                {% for contact in contacts %}
+                <article class="archive-card">
+                    <div class="archive-head">
+                        {% if contact.photo_path %}
+                        <img class="archive-photo"
+                             src="{{ url_for('static', filename=contact.photo_path) }}"
+                             alt=""
+                             loading="lazy"
+                             decoding="async"
+                             data-full-image="{{ url_for('static', filename=contact.photo_path) }}"
+                             data-image-title="{{ contact.full_name }}">
+                        {% else %}
+                        <div class="archive-photo-empty">{{ (contact.full_name or '?')[:1] }}</div>
+                        {% endif %}
+                        <div>
+                            <h2 class="archive-name">{{ contact.full_name }}</h2>
+                            {% if contact.position %}<div class="archive-position">{{ contact.position }}</div>{% endif %}
+                        </div>
+                    </div>
+
+                    <div class="archive-meta">
+                        <span class="archive-chip reason">{{ contact.inactive_reason_label }}</span>
+                        {% if contact.inactive_date %}<span class="archive-chip">{{ contact.inactive_date }}</span>{% endif %}
+                        {% if contact.department %}<span class="archive-chip">{{ contact.department }}</span>{% endif %}
+                    </div>
+
+                    <div class="archive-contact-row">
+                        {% if contact.phone %}<span class="archive-chip">{{ contact.phone }}</span>{% endif %}
+                        {% if contact.mobile %}<span class="archive-chip">моб. {{ contact.mobile }}</span>{% endif %}
+                        {% if contact.extension %}<span class="archive-chip">вн. {{ contact.extension }}</span>{% endif %}
+                        {% if contact.telegram %}<span class="archive-chip">{{ contact.telegram }}</span>{% endif %}
+                        {% if contact.nickname %}<span class="archive-chip">ник {{ contact.nickname }}</span>{% endif %}
+                    </div>
+
+                    {% if contact.inactive_comment %}
+                    <div class="archive-comment">{{ contact.inactive_comment }}</div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </section>
+            {% else %}
+            <div class="archive-empty">
+                <strong>Скрытых контактов нет</strong>
+                <div class="page-subtitle" style="margin-top: 6px;">Контакты появятся здесь после действия "Скрыть" в админке.</div>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+
+<div class="image-viewer" id="imageViewer">
+    <div class="image-viewer-card">
+        <div class="image-viewer-bar">
+            <div class="image-viewer-title" id="imageViewerTitle"></div>
+            <div class="image-viewer-tools">
+                <button class="image-zoom-btn" type="button" data-image-zoom="out" aria-label="Уменьшить">−</button>
+                <span class="image-zoom-level" id="imageZoomLevel">100%</span>
+                <button class="image-zoom-btn" type="button" data-image-zoom="in" aria-label="Увеличить">+</button>
+                <button class="image-zoom-btn" type="button" data-image-zoom="reset" aria-label="Сбросить масштаб">100%</button>
+                <button class="image-viewer-close" type="button" onclick="closeImageViewer()">Закрыть</button>
+            </div>
+        </div>
+        <div class="image-viewer-stage" id="imageViewerStage">
+            <img id="imageViewerImg" src="" alt="" draggable="false">
+        </div>
+    </div>
+</div>
+
+<script>
+const imageViewer = document.getElementById('imageViewer');
+const imageViewerStage = document.getElementById('imageViewerStage');
+const imageViewerImg = document.getElementById('imageViewerImg');
+const imageViewerTitle = document.getElementById('imageViewerTitle');
+const imageZoomLevel = document.getElementById('imageZoomLevel');
+const imageZoomState = {
+    scale: 1,
+    x: 0,
+    y: 0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    dragBaseX: 0,
+    dragBaseY: 0,
+    pointers: new Map(),
+    pinchStartDistance: 0,
+    pinchStartScale: 1,
+};
+
+document.addEventListener('click', (event) => {
+    const photo = event.target.closest('[data-full-image]');
+    if (photo) {
+        openImageViewer(photo.dataset.fullImage, photo.dataset.imageTitle || '');
+    }
+});
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function clampImagePan() {
+    if (imageZoomState.scale <= 1) {
+        imageZoomState.x = 0;
+        imageZoomState.y = 0;
+        return;
+    }
+
+    const maxX = Math.max(0, (imageViewerImg.offsetWidth * imageZoomState.scale - imageViewerStage.clientWidth) / 2);
+    const maxY = Math.max(0, (imageViewerImg.offsetHeight * imageZoomState.scale - imageViewerStage.clientHeight) / 2);
+    imageZoomState.x = clamp(imageZoomState.x, -maxX, maxX);
+    imageZoomState.y = clamp(imageZoomState.y, -maxY, maxY);
+}
+
+function applyImageZoom(animate = true) {
+    clampImagePan();
+    imageViewerImg.style.transition = animate ? 'transform .12s ease' : 'none';
+    imageViewerImg.style.transform = `translate3d(${imageZoomState.x}px, ${imageZoomState.y}px, 0) scale(${imageZoomState.scale})`;
+    imageZoomLevel.textContent = `${Math.round(imageZoomState.scale * 100)}%`;
+    imageViewerStage.classList.toggle('is-zoomed', imageZoomState.scale > 1.01);
+}
+
+function resetImageZoom(animate = true) {
+    imageZoomState.scale = 1;
+    imageZoomState.x = 0;
+    imageZoomState.y = 0;
+    imageZoomState.dragging = false;
+    imageZoomState.pointers.clear();
+    imageViewerStage.classList.remove('is-dragging');
+    applyImageZoom(animate);
+}
+
+function setImageZoom(nextScale, clientX = null, clientY = null, animate = true) {
+    const oldScale = imageZoomState.scale || 1;
+    const scale = clamp(nextScale, 1, 5);
+
+    if (clientX !== null && clientY !== null && scale > 1) {
+        const rect = imageViewerStage.getBoundingClientRect();
+        const pointX = clientX - rect.left - rect.width / 2;
+        const pointY = clientY - rect.top - rect.height / 2;
+        const ratio = scale / oldScale;
+        imageZoomState.x = pointX - (pointX - imageZoomState.x) * ratio;
+        imageZoomState.y = pointY - (pointY - imageZoomState.y) * ratio;
+    } else if (scale <= 1) {
+        imageZoomState.x = 0;
+        imageZoomState.y = 0;
+    }
+
+    imageZoomState.scale = scale;
+    applyImageZoom(animate);
+}
+
+function pointerDistance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function pointerCenter(a, b) {
+    return {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+    };
+}
+
+function startImagePinch() {
+    const points = Array.from(imageZoomState.pointers.values());
+    if (points.length < 2) return;
+    imageZoomState.pinchStartDistance = pointerDistance(points[0], points[1]) || 1;
+    imageZoomState.pinchStartScale = imageZoomState.scale;
+    imageZoomState.dragging = false;
+    imageViewerStage.classList.remove('is-dragging');
+}
+
+function continueSinglePointerDrag(pointer) {
+    imageZoomState.dragging = imageZoomState.scale > 1;
+    imageZoomState.dragStartX = pointer.x;
+    imageZoomState.dragStartY = pointer.y;
+    imageZoomState.dragBaseX = imageZoomState.x;
+    imageZoomState.dragBaseY = imageZoomState.y;
+    imageViewerStage.classList.toggle('is-dragging', imageZoomState.dragging);
+}
+
+function openImageViewer(src, title) {
+    imageViewerImg.src = src;
+    imageViewerTitle.textContent = title;
+    imageViewer.classList.add('show');
+    resetImageZoom(false);
+}
+
+function closeImageViewer() {
+    imageViewer.classList.remove('show');
+    imageViewerImg.src = '';
+    resetImageZoom(false);
+}
+
+imageViewer.querySelectorAll('[data-image-zoom]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const action = button.dataset.imageZoom;
+        if (action === 'in') {
+            setImageZoom(imageZoomState.scale * 1.25, null, null);
+        } else if (action === 'out') {
+            setImageZoom(imageZoomState.scale / 1.25, null, null);
+        } else {
+            resetImageZoom();
+        }
+    });
+});
+
+imageViewerStage.addEventListener('wheel', (event) => {
+    if (!imageViewer.classList.contains('show')) return;
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.18 : 1 / 1.18;
+    setImageZoom(imageZoomState.scale * factor, event.clientX, event.clientY);
+}, { passive: false });
+
+imageViewerStage.addEventListener('dblclick', (event) => {
+    if (imageZoomState.scale > 1.01) {
+        resetImageZoom();
+    } else {
+        setImageZoom(2, event.clientX, event.clientY);
+    }
+});
+
+imageViewerStage.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (imageViewerStage.setPointerCapture) {
+        imageViewerStage.setPointerCapture(event.pointerId);
+    }
+    imageZoomState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (imageZoomState.pointers.size >= 2) {
+        startImagePinch();
+        return;
+    }
+
+    continueSinglePointerDrag({ x: event.clientX, y: event.clientY });
+});
+
+imageViewerStage.addEventListener('pointermove', (event) => {
+    if (!imageZoomState.pointers.has(event.pointerId)) return;
+    imageZoomState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (imageZoomState.pointers.size >= 2) {
+        event.preventDefault();
+        const points = Array.from(imageZoomState.pointers.values());
+        const distance = pointerDistance(points[0], points[1]) || imageZoomState.pinchStartDistance || 1;
+        const center = pointerCenter(points[0], points[1]);
+        const startDistance = imageZoomState.pinchStartDistance || distance || 1;
+        setImageZoom(imageZoomState.pinchStartScale * distance / startDistance, center.x, center.y, false);
+        return;
+    }
+
+    if (!imageZoomState.dragging || imageZoomState.scale <= 1) return;
+    event.preventDefault();
+    imageZoomState.x = imageZoomState.dragBaseX + event.clientX - imageZoomState.dragStartX;
+    imageZoomState.y = imageZoomState.dragBaseY + event.clientY - imageZoomState.dragStartY;
+    applyImageZoom(false);
+});
+
+function finishImagePointer(event) {
+    imageZoomState.pointers.delete(event.pointerId);
+    if (imageZoomState.pointers.size === 1) {
+        continueSinglePointerDrag(Array.from(imageZoomState.pointers.values())[0]);
+        return;
+    }
+    imageZoomState.dragging = false;
+    imageZoomState.pinchStartDistance = 0;
+    imageViewerStage.classList.remove('is-dragging');
+}
+
+imageViewerStage.addEventListener('pointerup', finishImagePointer);
+imageViewerStage.addEventListener('pointercancel', finishImagePointer);
+imageViewerStage.addEventListener('lostpointercapture', finishImagePointer);
+
+imageViewer.addEventListener('click', (event) => {
+    if (event.target.id === 'imageViewer') closeImageViewer();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeImageViewer();
+});
+</script>
+</body>
+</html>

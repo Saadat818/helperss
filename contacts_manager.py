@@ -40,7 +40,7 @@ CONTACT_DEPARTMENT_HIERARCHY = [
                     {
                         "name": "Отдел сопровождения обслуживания (ГОПЗ)",
                         "kind": "department",
-                        "aliases": ["Отдел сопровождения обслуживания", "Отдел поддержки обслуживания"],
+                        "aliases": ["Отдел сопровождения обслуживания"],
                         "children": [
                             {
                                 "name": "Группа обработки претензий и запросов №1",
@@ -124,6 +124,7 @@ CONTACT_DEPARTMENT_HIERARCHY = [
                 ],
                 "children": [
                     {"name": "Отдел автоматизации процессов обслуживания", "kind": "department"},
+                    {"name": "Отдел поддержки обслуживания", "kind": "department"},
                     {
                         "name": "Отдел клиентского опыта",
                         "kind": "department",
@@ -322,6 +323,11 @@ class ContactsManager:
                     tags TEXT DEFAULT '',
                     photo_path TEXT DEFAULT '',
                     is_active INTEGER DEFAULT 1,
+                    inactive_reason TEXT DEFAULT '',
+                    inactive_date TEXT DEFAULT '',
+                    inactive_comment TEXT DEFAULT '',
+                    inactive_by TEXT DEFAULT '',
+                    inactive_at TEXT DEFAULT '',
                     sort_order INTEGER DEFAULT 0,
                     created_by TEXT DEFAULT '',
                     updated_by TEXT DEFAULT '',
@@ -378,9 +384,20 @@ class ContactsManager:
                 c.execute("ALTER TABLE cc_contacts ADD COLUMN nickname TEXT DEFAULT ''")
             if "group_role" not in existing_contact_cols:
                 c.execute("ALTER TABLE cc_contacts ADD COLUMN group_role TEXT DEFAULT 'specialist'")
+            if "inactive_reason" not in existing_contact_cols:
+                c.execute("ALTER TABLE cc_contacts ADD COLUMN inactive_reason TEXT DEFAULT ''")
+            if "inactive_date" not in existing_contact_cols:
+                c.execute("ALTER TABLE cc_contacts ADD COLUMN inactive_date TEXT DEFAULT ''")
+            if "inactive_comment" not in existing_contact_cols:
+                c.execute("ALTER TABLE cc_contacts ADD COLUMN inactive_comment TEXT DEFAULT ''")
+            if "inactive_by" not in existing_contact_cols:
+                c.execute("ALTER TABLE cc_contacts ADD COLUMN inactive_by TEXT DEFAULT ''")
+            if "inactive_at" not in existing_contact_cols:
+                c.execute("ALTER TABLE cc_contacts ADD COLUMN inactive_at TEXT DEFAULT ''")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contacts_direction ON cc_contacts(direction_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contacts_department ON cc_contacts(department)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contacts_active ON cc_contacts(is_active)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contacts_inactive_date ON cc_contacts(inactive_date)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contacts_name ON cc_contacts(full_name)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contacts_email ON cc_contacts(email)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contacts_nickname ON cc_contacts(nickname)")
@@ -710,6 +727,7 @@ class ContactsManager:
             3: "chief",
             4: "senior",
         }.get(role_rank, "")
+        contact["inactive_reason_label"] = self.inactive_reason_label(contact.get("inactive_reason") or "")
         contact["is_group_lead"] = role_rank in (0, 1)
         contact["is_senior_contact"] = role_rank in (2, 3, 4)
         return contact
@@ -720,6 +738,23 @@ class ContactsManager:
         if text in {"0", "no", "false", "нет", "неактивен", "архив", "inactive"}:
             return 0
         return 1
+
+    @staticmethod
+    def _inactive_reason(value: str) -> str:
+        text = str(value or "").strip().lower()
+        if text in {"dismissed", "уволен", "уволена", "увольнение"}:
+            return "dismissed"
+        if text in {"transferred", "переведен", "переведена", "перевод"}:
+            return "transferred"
+        return "hidden"
+
+    @staticmethod
+    def inactive_reason_label(reason: str) -> str:
+        return {
+            "dismissed": "Уволен(а)",
+            "transferred": "Переведён(а)",
+            "hidden": "Скрыт(а)",
+        }.get(str(reason or "").strip(), "Скрыт(а)")
 
     def get_departments(self, include_inactive: bool = True) -> List[Dict]:
         context = self._department_context()
@@ -992,6 +1027,22 @@ class ContactsManager:
             safe_offset = max(0, int(offset or 0))
             return rows[safe_offset:safe_offset + safe_limit]
 
+    def get_inactive_contacts(self, q: str = "", limit: int = 5000, offset: int = 0) -> List[Dict]:
+        context = self._department_context()
+        with self._connect() as conn:
+            query, params = self._contacts_query(q, "", None, "inactive", count=False)
+            rows = [self._decorate_contact(dict(r), context) for r in conn.execute(query, params).fetchall()]
+            for row in rows:
+                row["inactive_reason_label"] = self.inactive_reason_label(row.get("inactive_reason") or "")
+            rows.sort(key=lambda item: (
+                item.get("inactive_date") or item.get("inactive_at") or "",
+                item.get("updated_at") or "",
+                item.get("full_name") or "",
+            ), reverse=True)
+            safe_limit = max(1, min(int(limit or 5000), 5000))
+            safe_offset = max(0, int(offset or 0))
+            return rows[safe_offset:safe_offset + safe_limit]
+
     def count_contacts(self, q: str = "", department: str = "", direction_id: int | None = None,
                        status: str = "active") -> int:
         with self._connect() as conn:
@@ -1033,9 +1084,10 @@ class ContactsManager:
                     OR c.phone LIKE ? OR c.extension LIKE ? OR c.mobile LIKE ?
                     OR c.telegram LIKE ? OR c.nickname LIKE ?
                     OR c.workplace LIKE ? OR c.responsibilities LIKE ? OR c.tags LIKE ?
+                    OR c.inactive_reason LIKE ? OR c.inactive_date LIKE ? OR c.inactive_comment LIKE ?
                 )
             """
-            params.extend([like] * 11)
+            params.extend([like] * 14)
         return query, params
 
     def get_contact(self, contact_id: int) -> Optional[Dict]:
@@ -1159,25 +1211,63 @@ class ContactsManager:
                 SET direction_id = ?, full_name = ?, position = ?, department = ?, phone = ?,
                     extension = ?, mobile = ?, email = ?, telegram = ?, nickname = ?, group_role = ?, workplace = ?,
                     schedule = ?, languages = ?, responsibilities = ?, notes = ?, tags = ?,
-                    is_active = ?, sort_order = ?, updated_by = ?, updated_at = ?
+                    is_active = ?, sort_order = ?,
+                    inactive_reason = CASE WHEN ? = 1 THEN '' ELSE inactive_reason END,
+                    inactive_date = CASE WHEN ? = 1 THEN '' ELSE inactive_date END,
+                    inactive_comment = CASE WHEN ? = 1 THEN '' ELSE inactive_comment END,
+                    inactive_by = CASE WHEN ? = 1 THEN '' ELSE inactive_by END,
+                    inactive_at = CASE WHEN ? = 1 THEN '' ELSE inactive_at END,
+                    updated_by = ?, updated_at = ?
                 WHERE id = ?
             """, (
                 payload["direction_id"], payload["full_name"], payload["position"], payload["department"],
                 payload["phone"], payload["extension"], payload["mobile"], payload["email"],
                 payload["telegram"], payload["nickname"], payload["group_role"], payload["workplace"], payload["schedule"], payload["languages"],
                 payload["responsibilities"], payload["notes"], payload["tags"], payload["is_active"], payload["sort_order"],
+                payload["is_active"], payload["is_active"], payload["is_active"], payload["is_active"], payload["is_active"],
                 actor, self._now(), contact_id,
             ))
             conn.commit()
             return {"success": True}
 
-    def set_contact_active(self, contact_id: int, is_active: bool, actor: str = "") -> Dict:
+    def set_contact_active(self, contact_id: int, is_active: bool, actor: str = "", archive_data: Dict | None = None) -> Dict:
+        archive_data = archive_data or {}
         with self._connect() as conn:
-            conn.execute("""
-                UPDATE cc_contacts
-                SET is_active = ?, updated_by = ?, updated_at = ?
-                WHERE id = ?
-            """, (1 if is_active else 0, actor, self._now(), contact_id))
+            exists = conn.execute("SELECT id FROM cc_contacts WHERE id = ?", (contact_id,)).fetchone()
+            if not exists:
+                return {"success": False, "error": "Контакт не найден"}
+            now = self._now()
+            if is_active:
+                conn.execute("""
+                    UPDATE cc_contacts
+                    SET is_active = 1,
+                        inactive_reason = '',
+                        inactive_date = '',
+                        inactive_comment = '',
+                        inactive_by = '',
+                        inactive_at = '',
+                        updated_by = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (actor, now, contact_id))
+            else:
+                reason = self._inactive_reason(archive_data.get("inactive_reason"))
+                inactive_date = self._clean(archive_data.get("inactive_date"), 40)
+                inactive_comment = self._clean(archive_data.get("inactive_comment"), 1500)
+                if not inactive_date:
+                    inactive_date = datetime.now().strftime("%Y-%m-%d")
+                conn.execute("""
+                    UPDATE cc_contacts
+                    SET is_active = 0,
+                        inactive_reason = ?,
+                        inactive_date = ?,
+                        inactive_comment = ?,
+                        inactive_by = ?,
+                        inactive_at = ?,
+                        updated_by = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (reason, inactive_date, inactive_comment, actor, now, actor, now, contact_id))
             conn.commit()
             return {"success": True}
 

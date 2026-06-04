@@ -777,6 +777,7 @@
                     <h1 class="page-title">Контакты КЦ</h1>
                     <p class="page-subtitle">Сотрудники разложены по подразделениям, отделам и группам контакт-центра.</p>
                 </div>
+                <a class="btn btn-secondary" href="{{ url_for('contacts_kc_dismissed') }}">Уволенные</a>
                 {% set perms = session.get('admin_permissions', []) %}
                 {% if session.get('admin_logged_in') and ('super_admin' in perms or 'admin_manuals' in perms) %}
                 <a class="btn btn-secondary" href="{{ url_for('admin_contacts_kc') }}">Управление</a>

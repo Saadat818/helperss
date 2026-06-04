@@ -3286,9 +3286,6 @@ def _validate_employee_board_photo(file) -> str:
     if not detected_ext:
         raise ValueError('Файл не похож на изображение JPG, PNG, WEBP, GIF или BMP')
 
-    if filename_ext and filename_ext != detected_ext:
-        raise ValueError('Расширение файла не совпадает с фактическим форматом изображения')
-
     try:
         file.stream.seek(0)
     except (OSError, ValueError, AttributeError):
@@ -3634,13 +3631,28 @@ def _record_contacts_directory_visit(user_info: dict):
         print(f"[contacts_usage] Не удалось записать посещение справочника: {e}")
 
 
+def _contacts_current_user_info() -> dict | None:
+    if 'user_info' in session and session.get('authenticated'):
+        return session.get('user_info') or {}
+    if session.get('admin_logged_in'):
+        admin_username = session.get('admin_username') or 'admin'
+        return {
+            'username': admin_username,
+            'name': admin_username,
+            'department': 'Администрирование',
+            'email': '',
+            'workplace': '',
+        }
+    return None
+
+
 @app.route('/contacts_kc')
 def contacts_kc():
     """Страница контактов контакт-центра."""
-    if 'user_info' not in session or not session.get('authenticated'):
+    user_info = _contacts_current_user_info()
+    if user_info is None:
         return redirect(url_for('user_login'))
 
-    user_info = session.get('user_info') or {}
     _record_contacts_directory_visit(user_info)
     q = request.args.get('q', '').strip()
     department = request.args.get('department', '').strip()
@@ -3672,6 +3684,34 @@ def contacts_kc():
         total=page_data['total'],
         total_pages=page_data['total_pages'],
         has_more=page_data['has_more']
+    )
+
+
+@app.route('/contacts_kc/dismissed')
+@app.route('/contacts_kc/уволенные')
+@app.route('/contacts_kc/inactive')
+def contacts_kc_dismissed():
+    """Скрытые контакты: уволенные и переведённые сотрудники."""
+    user_info = _contacts_current_user_info()
+    if user_info is None:
+        return redirect(url_for('user_login'))
+
+    _record_contacts_directory_visit(user_info)
+    q = request.args.get('q', '').strip()
+    per_page = 5000
+    page = 1
+    total = contacts_mgr.count_contacts(q=q, status='inactive')
+    contacts = contacts_mgr.get_inactive_contacts(q=q, limit=per_page, offset=0)
+    stats = contacts_mgr.get_stats()
+    return render_template(
+        'contacts_kc_dismissed.html',
+        user_info=user_info,
+        contacts=contacts,
+        stats=stats,
+        q=q,
+        page=page,
+        per_page=per_page,
+        total=total,
     )
 
 
@@ -3917,10 +3957,6 @@ def _validate_contact_photo(file) -> str:
     if not detected_ext:
         raise ValueError('Файл не похож на изображение JPG, PNG, WEBP, GIF, BMP или AVIF')
 
-    if filename_ext and filename_ext != detected_ext:
-        # JFIF is a JPEG container, so it is already normalized to jpg above.
-        raise ValueError('Расширение файла не совпадает с фактическим форматом изображения')
-
     try:
         file.stream.seek(0)
     except (OSError, ValueError, AttributeError):
@@ -4118,9 +4154,28 @@ def admin_contact_update(contact_id):
 @AdminAuth.manuals_required
 def admin_contact_toggle(contact_id):
     is_active = request.form.get('is_active') == '1'
-    contacts_mgr.set_contact_active(contact_id, is_active, actor=session.get('admin_username', ''))
-    flash('Статус контакта обновлён', 'success')
-    write_audit_log('contact_status_changed', 200, {'contact_id': contact_id, 'is_active': is_active})
+    archive_data = {}
+    if not is_active:
+        archive_data = {
+            'inactive_reason': request.form.get('inactive_reason', '').strip(),
+            'inactive_date': request.form.get('inactive_date', '').strip(),
+            'inactive_comment': request.form.get('inactive_comment', '').strip(),
+        }
+    result = contacts_mgr.set_contact_active(
+        contact_id,
+        is_active,
+        actor=session.get('admin_username', ''),
+        archive_data=archive_data
+    )
+    if result.get('success'):
+        flash('Контакт возвращён в справочник' if is_active else 'Контакт перенесён в скрытые', 'success')
+        write_audit_log('contact_status_changed', 200, {
+            'contact_id': contact_id,
+            'is_active': is_active,
+            **archive_data
+        })
+    else:
+        flash(result.get('error', 'Не удалось обновить статус контакта'), 'error')
     return _admin_contacts_return()
 
 

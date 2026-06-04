@@ -562,6 +562,7 @@
             <button class="btn btn-primary" type="button" onclick="openContactModal()">Добавить контакт</button>
             <button class="btn btn-secondary" type="button" onclick="openDepartmentModal()">Группы и отделы</button>
             <a class="btn btn-secondary" href="{{ url_for('contacts_kc') }}">Справочник</a>
+            <a class="btn btn-secondary" href="{{ url_for('contacts_kc_dismissed') }}">Уволенные</a>
             <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Обзор</a>
         </div>
     </header>
@@ -672,6 +673,12 @@
                                 <span class="badge badge-success">Активен</span>
                                 {% else %}
                                 <span class="badge badge-warning">Неактивен</span>
+                                {% if contact.inactive_reason_label %}
+                                <div class="cell-sub">{{ contact.inactive_reason_label }}{% if contact.inactive_date %} · {{ contact.inactive_date }}{% endif %}</div>
+                                {% endif %}
+                                {% if contact.inactive_comment %}
+                                <div class="cell-sub">{{ contact.inactive_comment }}</div>
+                                {% endif %}
                                 {% endif %}
                             </td>
                             <td>
@@ -694,15 +701,22 @@
                                             data-sort-order="{{ contact.sort_order or 0 }}"
                                             data-active="{{ contact.is_active }}"
                                             onclick="openContactModal(this)">Изменить</button>
+                                    {% if contact.is_active %}
+                                    <button class="mini-btn" type="button"
+                                            data-hide-contact-id="{{ contact.id }}"
+                                            data-hide-contact-name="{{ contact.full_name|e }}"
+                                            onclick="openHideContactModal(this)">Скрыть</button>
+                                    {% else %}
                                     <form method="post" action="{{ url_for('admin_contact_toggle', contact_id=contact.id) }}">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="return_q" value="{{ q }}">
                                         <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
                                         <input type="hidden" name="return_status" value="{{ status }}">
                                         <input type="hidden" name="return_page" value="{{ page }}">
-                                        <input type="hidden" name="is_active" value="{{ 0 if contact.is_active else 1 }}">
-                                        <button class="mini-btn" type="submit">{{ 'Скрыть' if contact.is_active else 'Вернуть' }}</button>
+                                        <input type="hidden" name="is_active" value="1">
+                                        <button class="mini-btn" type="submit">Вернуть</button>
                                     </form>
+                                    {% endif %}
                                     <form method="post" action="{{ url_for('admin_contact_delete', contact_id=contact.id) }}" onsubmit="return confirm('Удалить контакт?')">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="return_q" value="{{ q }}">
@@ -826,7 +840,7 @@
                                     <label class="photo-pick-btn" for="contactPhotoInput">Выбрать файл</label>
                                     <button class="photo-clear-btn" id="clearSelectedPhotoBtn" type="button">Убрать выбранное фото</button>
                                     <input class="photo-input-hidden" id="contactPhotoInput" name="photo" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.jfif,.avif">
-                                    <div class="photo-file-name" id="contactPhotoFileName">JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF до 10 МБ</div>
+                                    <div class="photo-file-name" id="contactPhotoFileName">JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF до 50 МБ, большие фото сжимаются</div>
                                 </div>
                                 <label class="check-row clear-photo-row" id="clearPhotoRow">
                                     <input type="checkbox" name="clear_photo">
@@ -857,6 +871,53 @@
                 <div class="modal-actions">
                     <button class="btn btn-secondary" type="button" onclick="closeModal('contactModal')">Отмена</button>
                     <button class="btn btn-primary" type="submit">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="hideContactModal">
+    <div class="modal modal-sm">
+        <div class="modal-head">
+            <h2 class="modal-title">Скрыть контакт</h2>
+            <button class="mini-btn" type="button" onclick="closeModal('hideContactModal')">Закрыть</button>
+        </div>
+        <div class="modal-body">
+            <form method="post" action="" id="hideContactForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_q" value="{{ q }}">
+                <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                <input type="hidden" name="return_status" value="{{ status }}">
+                <input type="hidden" name="return_page" value="{{ page }}">
+                <input type="hidden" name="is_active" value="0">
+
+                <div class="form-grid">
+                    <div class="wide">
+                        <div class="form-label">Сотрудник</div>
+                        <div class="cell-title" id="hideContactName"></div>
+                    </div>
+                    <label>
+                        <span class="form-label">Статус</span>
+                        <select class="form-control" name="inactive_reason">
+                            <option value="dismissed">Уволен(а)</option>
+                            <option value="transferred">Переведён(а)</option>
+                            <option value="hidden">Скрыт(а)</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span class="form-label">Дата</span>
+                        <input class="form-control" name="inactive_date" id="hideContactDate" type="date">
+                    </label>
+                    <label class="wide">
+                        <span class="form-label">Комментарий</span>
+                        <textarea class="form-control" name="inactive_comment" placeholder="Например: уволилась 04.06.2026, перевелась в другой отдел, временно скрыть из справочника"></textarea>
+                    </label>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" type="button" onclick="closeModal('hideContactModal')">Отмена</button>
+                    <button class="btn btn-primary" type="submit">Скрыть</button>
                 </div>
             </form>
         </div>
@@ -963,6 +1024,9 @@ const contactCreateUrl = "{{ url_for('admin_contact_create') }}";
 const departmentOptions = {{ departments|map(attribute='name')|list|tojson }};
 const initialSelectedDepartment = {{ (selected_department or '')|tojson }};
 const CONTACT_PHOTO_PREVIEW_SIZE = 224;
+const CONTACT_PHOTO_MAX_SOURCE_BYTES = 50 * 1024 * 1024;
+const CONTACT_PHOTO_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const CONTACT_PHOTO_MAX_UPLOAD_DIMENSION = 1800;
 let selectedPhotoObjectUrl = '';
 let photoPreviewToken = 0;
 let activeDepartmentIndex = -1;
@@ -1183,7 +1247,7 @@ function setContactPhotoPreview(photoPath) {
     if (clearRow) clearRow.style.display = hasPhoto ? 'flex' : 'none';
     if (clearPhoto) clearPhoto.checked = false;
     setSelectedPhotoClearVisible(false);
-    if (fileName) fileName.textContent = hasPhoto ? 'Фото уже сохранено. Можно загрузить новое.' : 'JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF до 10 МБ';
+    if (fileName) fileName.textContent = hasPhoto ? 'Фото уже сохранено. Можно загрузить новое.' : 'JPG, PNG, WEBP, GIF, BMP, JFIF, AVIF до 50 МБ, большие фото сжимаются';
 }
 
 function clearSelectedContactPhoto() {
@@ -1206,6 +1270,22 @@ function openDepartmentModal() {
     document.getElementById('departmentModal').classList.add('show');
 }
 
+function openHideContactModal(button) {
+    if (!button || !button.dataset.hideContactId) return;
+    const form = document.getElementById('hideContactForm');
+    const name = document.getElementById('hideContactName');
+    const date = document.getElementById('hideContactDate');
+    form.reset();
+    form.action = `/admin/contacts_kc/contacts/${button.dataset.hideContactId}/toggle`;
+    if (name) name.textContent = button.dataset.hideContactName || '';
+    if (date && !date.value) {
+        const localToday = new Date();
+        localToday.setMinutes(localToday.getMinutes() - localToday.getTimezoneOffset());
+        date.value = localToday.toISOString().slice(0, 10);
+    }
+    document.getElementById('hideContactModal').classList.add('show');
+}
+
 function normalizedImageFile(file) {
     if (!file) return null;
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/avif'];
@@ -1214,8 +1294,8 @@ function normalizedImageFile(file) {
         alert('Выберите изображение: JPG, PNG, WEBP, GIF, BMP, JFIF или AVIF.');
         return null;
     }
-    if (file.size > 10 * 1024 * 1024) {
-        alert('Фото должно быть не больше 10 МБ.');
+    if (file.size > CONTACT_PHOTO_MAX_SOURCE_BYTES) {
+        alert('Фото должно быть не больше 50 МБ.');
         return null;
     }
     if (file.name) return file;
@@ -1230,6 +1310,59 @@ function normalizedImageFile(file) {
     };
     const ext = extByType[file.type] || 'png';
     return new File([file], `clipboard-screenshot.${ext}`, {type: file.type || 'image/png'});
+}
+
+function formatFileSize(bytes) {
+    const mb = Number(bytes || 0) / (1024 * 1024);
+    return `${mb.toFixed(mb >= 10 ? 1 : 2)} МБ`;
+}
+
+function contactPhotoUploadName(file) {
+    const rawName = String(file?.name || 'contact-photo').replace(/\.[^.]+$/, '') || 'contact-photo';
+    const safeName = rawName.replace(/[^\wа-яА-ЯёЁ-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'contact-photo';
+    return `${safeName}.jpg`;
+}
+
+async function compressContactPhotoForUpload(file) {
+    if (file.size <= CONTACT_PHOTO_MAX_UPLOAD_BYTES) {
+        return file;
+    }
+    if (!window.createImageBitmap) {
+        throw new Error('Браузер не поддерживает сжатие изображений. Выберите фото до 10 МБ.');
+    }
+
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(
+        1,
+        CONTACT_PHOTO_MAX_UPLOAD_DIMENSION / Math.max(bitmap.width, bitmap.height)
+    );
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d', {alpha: false});
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    if (bitmap.close) bitmap.close();
+
+    const qualities = [0.86, 0.78, 0.7, 0.62, 0.54];
+    let bestBlob = null;
+    for (const quality of qualities) {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        if (!blob) continue;
+        bestBlob = blob;
+        if (blob.size <= CONTACT_PHOTO_MAX_UPLOAD_BYTES) break;
+    }
+    if (!bestBlob) {
+        throw new Error('Не удалось сжать фото.');
+    }
+    if (bestBlob.size > CONTACT_PHOTO_MAX_UPLOAD_BYTES) {
+        throw new Error('Фото слишком большое. Попробуйте выбрать или обрезать изображение меньше.');
+    }
+    return new File([bestBlob], contactPhotoUploadName(file), {
+        type: 'image/jpeg',
+        lastModified: Date.now()
+    });
 }
 
 async function createContactPhotoPreviewUrl(file) {
@@ -1267,18 +1400,6 @@ async function setSelectedPhoto(file, syncInput = true) {
     const clearRow = document.getElementById('clearPhotoRow');
     const clearPhoto = document.querySelector('#clearPhotoRow input[name="clear_photo"]');
 
-    if (syncInput && input) {
-        try {
-            const dt = new DataTransfer();
-            dt.items.add(normalized);
-            input.files = dt.files;
-        } catch (e) {
-            console.warn('Не удалось программно назначить файл', e);
-            alert('Браузер не разрешил прикрепить этот файл. Нажмите "Выберите файл" и выберите изображение вручную.');
-            return false;
-        }
-    }
-
     const token = photoPreviewToken + 1;
     photoPreviewToken = token;
     const previousObjectUrl = selectedPhotoObjectUrl;
@@ -1287,13 +1408,34 @@ async function setSelectedPhoto(file, syncInput = true) {
         preview.classList.remove('show');
         preview.removeAttribute('src');
     }
-    if (fileName) fileName.textContent = `${normalized.name} - готовим превью...`;
+    if (fileName) {
+        fileName.textContent = normalized.size > CONTACT_PHOTO_MAX_UPLOAD_BYTES
+            ? `${normalized.name} - сжимаем ${formatFileSize(normalized.size)}...`
+            : `${normalized.name} - готовим превью...`;
+    }
     if (clearPhoto) clearPhoto.checked = false;
     if (clearRow) clearRow.style.display = 'none';
     setSelectedPhotoClearVisible(true);
 
     try {
-        const previewUrl = await createContactPhotoPreviewUrl(normalized);
+        const uploadFile = await compressContactPhotoForUpload(normalized);
+        if (token !== photoPreviewToken) {
+            return false;
+        }
+        if (syncInput && input) {
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(uploadFile);
+                input.files = dt.files;
+            } catch (e) {
+                console.warn('Не удалось программно назначить файл', e);
+                input.value = '';
+                alert('Браузер не разрешил прикрепить этот файл. Нажмите "Выберите файл" и выберите изображение вручную.');
+                return false;
+            }
+        }
+
+        const previewUrl = await createContactPhotoPreviewUrl(uploadFile);
         if (token !== photoPreviewToken) {
             URL.revokeObjectURL(previewUrl);
             return false;
@@ -1306,17 +1448,23 @@ async function setSelectedPhoto(file, syncInput = true) {
             preview.src = previewUrl;
             preview.classList.add('show');
         }
-        if (fileName) fileName.textContent = normalized.name;
+        if (fileName) {
+            fileName.textContent = uploadFile === normalized
+                ? `${uploadFile.name} - ${formatFileSize(uploadFile.size)}`
+                : `${uploadFile.name} - сжато с ${formatFileSize(normalized.size)} до ${formatFileSize(uploadFile.size)}`;
+        }
         return true;
     } catch (e) {
-        console.warn('Не удалось построить превью', e);
+        console.warn('Не удалось подготовить фото', e);
         if (previousObjectUrl) {
             URL.revokeObjectURL(previousObjectUrl);
         }
         if (token === photoPreviewToken && fileName) {
-            fileName.textContent = `${normalized.name} выбран, превью недоступно`;
+            fileName.textContent = 'Фото не подготовлено';
         }
-        return true;
+        alert(e.message || 'Не удалось подготовить фото');
+        clearSelectedContactPhoto();
+        return false;
     }
 }
 
@@ -1331,7 +1479,7 @@ function initPhotoDropzone() {
     }
 
     input.addEventListener('change', () => {
-        if (input.files && input.files[0]) setSelectedPhoto(input.files[0], false);
+        if (input.files && input.files[0]) setSelectedPhoto(input.files[0], true);
         else clearSelectedContactPhoto();
     });
 

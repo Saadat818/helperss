@@ -975,11 +975,11 @@
                 </form>
 
                 <div>
-                    <div class="cell-title">Добавленные вручную</div>
-                    <div class="form-hint">Базовую структуру удалить нельзя. Вручную добавленные группы удаляются, только если в них нет сотрудников и дочерних групп.</div>
+                    <div class="cell-title">Структура подразделений</div>
+                    <div class="form-hint">Базовые департаменты, управления, отделы и группы можно редактировать. Удаляются только добавленные вручную подразделения без сотрудников и дочерних элементов.</div>
                     <div class="department-list">
-                        {% if custom_departments %}
-                            {% for department in custom_departments %}
+                        {% if department_editor_items %}
+                            {% for department in department_editor_items %}
                             <div class="department-row">
                                 <div>
                                     <div class="department-path">{{ department.path|join(' / ') }}</div>
@@ -987,24 +987,96 @@
                                         {% if department.kind == 'management' %}Управление{% elif department.kind == 'department' %}Отдел{% else %}Группа{% endif %}
                                         · сотрудников: {{ department.contacts_count }}
                                         · дочерних: {{ department.children_count }}
+                                        · {{ 'добавлено вручную' if department.is_custom else 'базовая структура' }}
                                     </div>
                                 </div>
-                                <form method="post" action="{{ url_for('admin_contact_department_delete', department_id=department.id) }}" onsubmit="return confirm('Удалить подразделение?')">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="return_q" value="{{ q }}">
-                                    <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
-                                    <input type="hidden" name="return_status" value="{{ status }}">
-                                    <input type="hidden" name="return_page" value="{{ page }}">
-                                    <button class="mini-btn mini-danger" type="submit" {% if department.contacts_count or department.children_count %}disabled{% endif %}>Удалить</button>
-                                </form>
+                                <div class="row-actions">
+                                    <button class="mini-btn" type="button"
+                                            data-department-source="{{ department.source }}"
+                                            data-department-source-id="{{ department.source_id }}"
+                                            data-department-name="{{ department.name|e }}"
+                                            data-department-parent="{{ department.parent_name|e }}"
+                                            data-department-kind="{{ department.kind }}"
+                                            data-department-sort-order="{{ department.sort_order or 0 }}"
+                                            data-department-aliases="{{ department.aliases|e }}"
+                                            onclick="openDepartmentEditModal(this)">Изменить</button>
+                                    {% if department.is_custom %}
+                                    <form method="post" action="{{ url_for('admin_contact_department_delete', department_id=department.id) }}" onsubmit="return confirm('Удалить подразделение?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="return_q" value="{{ q }}">
+                                        <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                                        <input type="hidden" name="return_status" value="{{ status }}">
+                                        <input type="hidden" name="return_page" value="{{ page }}">
+                                        <button class="mini-btn mini-danger" type="submit" {% if department.contacts_count or department.children_count %}disabled{% endif %}>Удалить</button>
+                                    </form>
+                                    {% endif %}
+                                </div>
                             </div>
                             {% endfor %}
                         {% else %}
-                            <div class="department-empty">Пока нет подразделений, добавленных через админку.</div>
+                            <div class="department-empty">Структура подразделений пока пуста.</div>
                         {% endif %}
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="departmentEditModal">
+    <div class="modal modal-sm">
+        <div class="modal-head">
+            <h2 class="modal-title">Изменить подразделение</h2>
+            <button class="mini-btn" type="button" onclick="closeModal('departmentEditModal')">Закрыть</button>
+        </div>
+        <div class="modal-body">
+            <form method="post" action="{{ url_for('admin_contact_department_update') }}" id="departmentEditForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_q" value="{{ q }}">
+                <input type="hidden" name="return_department" value="{{ selected_department or '' }}">
+                <input type="hidden" name="return_status" value="{{ status }}">
+                <input type="hidden" name="return_page" value="{{ page }}">
+                <input type="hidden" name="department_source">
+                <input type="hidden" name="department_source_id">
+
+                <div class="form-grid">
+                    <label class="wide">
+                        <span class="form-label">Название *</span>
+                        <input class="form-control" name="name" required>
+                    </label>
+                    <label class="wide">
+                        <span class="form-label">Родительский отдел</span>
+                        <select class="form-control" name="parent_name">
+                            <option value="">Без родителя</option>
+                            {% for department in departments %}
+                            <option value="{{ department.name }}">
+                                {{ department.path|join(' / ') if department.path else department.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="form-label">Тип</span>
+                        <select class="form-control" name="kind">
+                            <option value="group">Группа</option>
+                            <option value="department">Отдел</option>
+                            <option value="management">Управление</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span class="form-label">Порядок</span>
+                        <input class="form-control" name="sort_order" type="number" value="0">
+                    </label>
+                    <label class="wide">
+                        <span class="form-label">Алиасы</span>
+                        <textarea class="form-control" name="aliases" placeholder="По одному варианту названия на строку"></textarea>
+                    </label>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" type="button" onclick="closeModal('departmentEditModal')">Отмена</button>
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -1268,6 +1340,21 @@ function contactModalIsOpen() {
 
 function openDepartmentModal() {
     document.getElementById('departmentModal').classList.add('show');
+}
+
+function openDepartmentEditModal(button) {
+    if (!button) return;
+    const form = document.getElementById('departmentEditForm');
+    if (!form) return;
+    form.reset();
+    form.elements.department_source.value = button.dataset.departmentSource || '';
+    form.elements.department_source_id.value = button.dataset.departmentSourceId || '';
+    form.elements.name.value = button.dataset.departmentName || '';
+    form.elements.parent_name.value = button.dataset.departmentParent || '';
+    form.elements.kind.value = button.dataset.departmentKind || 'group';
+    form.elements.sort_order.value = button.dataset.departmentSortOrder || '0';
+    form.elements.aliases.value = button.dataset.departmentAliases || '';
+    document.getElementById('departmentEditModal').classList.add('show');
 }
 
 function openHideContactModal(button) {

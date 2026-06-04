@@ -4054,7 +4054,7 @@ def admin_contacts_kc():
         offset=offset
     )
     departments = contacts_mgr.get_departments(include_inactive=True)
-    custom_departments = contacts_mgr.get_custom_departments()
+    department_editor_items = contacts_mgr.get_department_editor_items()
     position_options = contacts_mgr.get_position_options()
     stats = contacts_mgr.get_stats()
 
@@ -4062,7 +4062,7 @@ def admin_contacts_kc():
         'admin_contacts_kc.html',
         contacts=contacts,
         departments=departments,
-        custom_departments=custom_departments,
+        department_editor_items=department_editor_items,
         position_options=position_options,
         stats=stats,
         q=q,
@@ -4089,6 +4089,31 @@ def admin_contact_department_create():
         write_audit_log('contact_department_created', 200, {'department_id': result.get('id')})
     else:
         flash(result.get('error', 'Не удалось добавить группу или отдел'), 'error')
+    return _admin_contacts_return()
+
+
+@app.route('/admin/contacts_kc/departments/update', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_department_update():
+    source = request.form.get('department_source', '').strip()
+    source_id = request.form.get('department_source_id', '').strip()
+    data = {
+        'name': request.form.get('name', '').strip(),
+        'parent_name': request.form.get('parent_name', '').strip(),
+        'kind': request.form.get('kind', 'group').strip(),
+        'aliases': request.form.get('aliases', '').strip(),
+        'sort_order': request.form.get('sort_order', '0').strip(),
+    }
+    result = contacts_mgr.update_department(source, source_id, data, actor=session.get('admin_username', ''))
+    if result.get('success'):
+        flash('Группа или отдел обновлены', 'success')
+        write_audit_log('contact_department_updated', 200, {
+            'source': source,
+            'source_id': source_id,
+            'name': data.get('name')
+        })
+    else:
+        flash(result.get('error', 'Не удалось обновить группу или отдел'), 'error')
     return _admin_contacts_return()
 
 

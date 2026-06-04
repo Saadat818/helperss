@@ -351,6 +351,21 @@ class ContactsManager:
                 )
             """)
             c.execute("""
+                CREATE TABLE IF NOT EXISTS cc_department_overrides (
+                    original_name TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    parent_name TEXT DEFAULT '',
+                    kind TEXT DEFAULT 'group',
+                    aliases TEXT DEFAULT '',
+                    sort_order INTEGER DEFAULT 0,
+                    is_active INTEGER DEFAULT 1,
+                    created_by TEXT DEFAULT '',
+                    updated_by TEXT DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            c.execute("""
                 CREATE TABLE IF NOT EXISTS cc_contact_likes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     contact_id INTEGER NOT NULL REFERENCES cc_contacts(id) ON DELETE CASCADE,
@@ -405,6 +420,7 @@ class ContactsManager:
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_departments_name ON cc_departments(name)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_departments_parent ON cc_departments(parent_name)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_departments_active ON cc_departments(is_active)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cc_department_overrides_active ON cc_department_overrides(is_active)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contact_likes_contact ON cc_contact_likes(contact_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_contact_likes_actor ON cc_contact_likes(actor_key)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cc_section_visits_section_date ON cc_section_visits(section, visit_date)")
@@ -479,16 +495,95 @@ class ContactsManager:
                 ORDER BY sort_order, name
             """).fetchall()]
 
-    def _department_records(self) -> List[Dict]:
-        records = [self._record_clone(record) for record in CONTACT_HIERARCHY_RECORDS]
-        by_key = {self._department_key(record["name"]): record for record in records}
-        canonical_by_key = {}
-        for record in records:
-            canonical_by_key[self._department_key(record["name"])] = record["name"]
-            for alias in record.get("aliases", ()):
-                canonical_by_key[self._department_key(alias)] = record["name"]
+    def _department_override_rows(self) -> Dict[str, Dict]:
+        with self._connect() as conn:
+            rows = [dict(row) for row in conn.execute("""
+                SELECT original_name, name, parent_name, kind, aliases, sort_order, is_active,
+                       created_by, updated_by, created_at, updated_at
+                FROM cc_department_overrides
+                WHERE is_active = 1
+            """).fetchall()]
+        return {
+            self._department_key(row.get("original_name") or ""): row
+            for row in rows
+            if self._department_key(row.get("original_name") or "")
+        }
 
-        pending = self._custom_department_rows()
+    @staticmethod
+    def _unique_department_aliases(values: List[str]) -> tuple[str, ...]:
+        seen = set()
+        result = []
+        for value in values:
+            cleaned = ContactsManager._clean(value, 220)
+            key = ContactsManager._department_key(cleaned)
+            if cleaned and key and key not in seen:
+                seen.add(key)
+                result.append(cleaned)
+        return tuple(result)
+
+    def _department_records(self) -> List[Dict]:
+        overrides = self._department_override_rows()
+        base_display_by_original = {}
+        for record in CONTACT_HIERARCHY_RECORDS:
+            override = overrides.get(self._department_key(record["name"]))
+            name = self._clean(override.get("name"), 220) if override else ""
+            base_display_by_original[record["name"]] = name or record["name"]
+
+        pending = []
+        for record in CONTACT_HIERARCHY_RECORDS:
+            original_name = record["name"]
+            override = overrides.get(self._department_key(original_name))
+            name = self._clean(override.get("name"), 220) if override else ""
+            name = name or original_name
+            parent_original = record["path"][-2] if len(record.get("path") or ()) > 1 else ""
+            parent_name = (
+                self._clean(override.get("parent_name"), 220)
+                if override is not None
+                else base_display_by_original.get(parent_original, parent_original)
+            )
+            if override is None and not parent_original:
+                parent_name = ""
+            original_aliases = list(record.get("aliases") or ())
+            if self._department_key(name) != self._department_key(original_name):
+                original_aliases.append(original_name)
+            override_aliases = self._department_aliases(override.get("aliases")) if override else ()
+            aliases = self._unique_department_aliases([*original_aliases, *override_aliases])
+            try:
+                sort_order = int(override.get("sort_order") if override else 0)
+            except (TypeError, ValueError, IndexError):
+                sort_order = 0
+            pending.append({
+                "source": "base",
+                "source_id": self._department_key(original_name),
+                "original_name": original_name,
+                "id": None,
+                "name": name,
+                "parent_name": parent_name,
+                "kind": self._department_kind(override.get("kind") if override else record.get("kind")),
+                "aliases": aliases,
+                "sort_order": sort_order,
+                "original_sort_key": tuple(record.get("sort_key") or ()),
+                "is_custom": False,
+            })
+
+        for row in self._custom_department_rows():
+            pending.append({
+                "source": "custom",
+                "source_id": str(int(row.get("id") or 0)),
+                "original_name": "",
+                "id": int(row.get("id") or 0),
+                "name": self._clean(row.get("name"), 220),
+                "parent_name": self._clean(row.get("parent_name"), 220),
+                "kind": self._department_kind(row.get("kind")),
+                "aliases": self._department_aliases(row.get("aliases")),
+                "sort_order": int(row.get("sort_order") or 0),
+                "original_sort_key": (),
+                "is_custom": True,
+            })
+
+        records = []
+        by_key = {}
+        canonical_by_key = {}
         dynamic_root_order = len(CONTACT_HIERARCHY_RECORDS) + 1000
 
         while pending:
@@ -511,23 +606,33 @@ class ContactsManager:
                     sort_order = int(row.get("sort_order") or 0)
                 except (TypeError, ValueError):
                     sort_order = 0
-                position = 1000 + sort_order * 1000 + int(row.get("id") or 0)
+                if row.get("source") == "base":
+                    base_position = tuple(int(part) for part in (row.get("original_sort_key") or (sort_order,)))
+                    position = (*base_position[:-1], base_position[-1] + sort_order * 1000) if base_position else (sort_order,)
+                else:
+                    position = (1000 + sort_order * 1000 + int(row.get("id") or 0),)
                 path = (*parent_record["path"], name) if parent_record else (name,)
                 kinds = (*parent_record["kinds"], self._department_kind(row.get("kind"))) if parent_record else (
                     self._department_kind(row.get("kind")),
                 )
-                sort_key = (*parent_record["sort_key"], position) if parent_record else (dynamic_root_order + position,)
-                aliases = self._department_aliases(row.get("aliases"))
+                sort_key = (*parent_record["sort_key"], position[-1]) if parent_record else (
+                    *(position if row.get("source") == "base" else (dynamic_root_order + position[-1],)),
+                )
+                aliases = tuple(row.get("aliases") or ())
                 record = {
                     "id": int(row.get("id") or 0),
+                    "source": row.get("source") or "custom",
+                    "source_id": row.get("source_id") or str(int(row.get("id") or 0)),
+                    "original_name": row.get("original_name") or "",
                     "name": name,
                     "kind": self._department_kind(row.get("kind")),
                     "path": path,
                     "kinds": kinds,
                     "level": len(path) - 1,
                     "sort_key": sort_key,
+                    "sort_order": sort_order,
                     "aliases": aliases,
-                    "is_custom": True,
+                    "is_custom": bool(row.get("is_custom")),
                 }
                 records.append(record)
                 by_key[key] = record
@@ -547,17 +652,21 @@ class ContactsManager:
                     except (TypeError, ValueError):
                         sort_order = 0
                     position = 1000 + sort_order * 1000 + int(row.get("id") or 0)
-                    aliases = self._department_aliases(row.get("aliases"))
+                    aliases = tuple(row.get("aliases") or ())
                     record = {
                         "id": int(row.get("id") or 0),
+                        "source": row.get("source") or "custom",
+                        "source_id": row.get("source_id") or str(int(row.get("id") or 0)),
+                        "original_name": row.get("original_name") or "",
                         "name": name,
                         "kind": self._department_kind(row.get("kind")),
                         "path": (name,),
                         "kinds": (self._department_kind(row.get("kind")),),
                         "level": 0,
                         "sort_key": (dynamic_root_order + position,),
+                        "sort_order": sort_order,
                         "aliases": aliases,
-                        "is_custom": True,
+                        "is_custom": bool(row.get("is_custom")),
                     }
                     records.append(record)
                     by_key[key] = record
@@ -949,6 +1058,42 @@ class ContactsManager:
 
         return sorted(result, key=lambda item: self._department_sort_key(item.get("name") or "", context))
 
+    def get_department_editor_items(self) -> List[Dict]:
+        context = self._department_context()
+        with self._connect() as conn:
+            result = []
+            for record in context["records"]:
+                values = self._department_filter_values(record["name"], context)
+                placeholders = ", ".join(["lower(TRIM(?))"] * len(values))
+                contact_count_row = conn.execute(f"""
+                    SELECT COUNT(*) AS cnt
+                    FROM cc_contacts
+                    WHERE lower(TRIM(department)) IN ({placeholders})
+                """, values).fetchone()
+                child_count = sum(
+                    1 for candidate in context["records"]
+                    if candidate.get("path", ())[:len(record.get("path", ()))] == record.get("path", ())
+                    and candidate.get("name") != record.get("name")
+                    and len(candidate.get("path", ())) == len(record.get("path", ())) + 1
+                )
+                result.append({
+                    "source": record.get("source") or ("custom" if record.get("is_custom") else "base"),
+                    "source_id": record.get("source_id") or str(record.get("id") or ""),
+                    "id": record.get("id"),
+                    "name": record.get("name") or "",
+                    "original_name": record.get("original_name") or "",
+                    "parent_name": record.get("path", ("", ""))[-2] if len(record.get("path", ())) > 1 else "",
+                    "kind": self._department_kind(record.get("kind")),
+                    "path": list(record.get("path") or (record.get("name") or "",)),
+                    "level": int(record.get("level") or 0),
+                    "sort_order": int(record.get("sort_order") or 0),
+                    "aliases": "\n".join(record.get("aliases") or ()),
+                    "contacts_count": int(contact_count_row["cnt"] if contact_count_row else 0),
+                    "children_count": child_count,
+                    "is_custom": bool(record.get("is_custom")),
+                })
+        return sorted(result, key=lambda item: self._department_sort_key(item.get("name") or "", context))
+
     def create_department(self, data: Dict, actor: str = "") -> Dict:
         context = self._department_context()
         name = self._clean(data.get("name"), 220)
@@ -981,6 +1126,102 @@ class ContactsManager:
             ))
             conn.commit()
             return {"success": True, "id": cur.lastrowid}
+
+    def _department_record_by_source(self, source: str, source_id: str, context: Dict) -> Optional[Dict]:
+        source = str(source or "").strip()
+        source_id = str(source_id or "").strip()
+        for record in context["records"]:
+            if record.get("source") == source and str(record.get("source_id") or "") == source_id:
+                return record
+        return None
+
+    def update_department(self, source: str, source_id: str, data: Dict, actor: str = "") -> Dict:
+        context = self._department_context()
+        source = str(source or "").strip()
+        source_id = str(source_id or "").strip()
+        current = self._department_record_by_source(source, source_id, context)
+        if not current:
+            return {"success": False, "error": "Подразделение не найдено"}
+
+        old_name = self._clean(current.get("name"), 220)
+        name = self._clean(data.get("name"), 220)
+        parent_name = self._canonical_department(data.get("parent_name") or "", context)
+        kind = self._department_kind(data.get("kind"))
+        aliases = "\n".join(self._department_aliases(data.get("aliases")))
+        try:
+            sort_order = int(data.get("sort_order") or 0)
+        except (TypeError, ValueError):
+            sort_order = 0
+
+        if not name:
+            return {"success": False, "error": "Название группы или отдела обязательно"}
+
+        name_key = self._department_key(name)
+        existing_name = context["canonical_by_key"].get(name_key)
+        existing_record = self._department_record(existing_name, context) if existing_name else None
+        if existing_record and existing_record.get("source_id") != current.get("source_id"):
+            return {"success": False, "error": "Такое подразделение уже есть"}
+
+        if parent_name:
+            parent_record = self._department_record(parent_name, context)
+            if not parent_record:
+                return {"success": False, "error": "Родительский отдел не найден"}
+            if self._department_key(parent_name) in {self._department_key(old_name), name_key}:
+                return {"success": False, "error": "Подразделение не может быть родителем самого себя"}
+            if tuple(current.get("path") or ()) and tuple(parent_record.get("path") or ())[:len(current["path"])] == tuple(current["path"]):
+                return {"success": False, "error": "Нельзя перенести подразделение внутрь его дочерней группы"}
+
+        now = self._now()
+        with self._connect() as conn:
+            if source == "base":
+                original_name = current.get("original_name") or old_name
+                conn.execute("""
+                    INSERT INTO cc_department_overrides (
+                        original_name, name, parent_name, kind, aliases, sort_order, is_active,
+                        created_by, updated_by, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                    ON CONFLICT(original_name) DO UPDATE SET
+                        name = excluded.name,
+                        parent_name = excluded.parent_name,
+                        kind = excluded.kind,
+                        aliases = excluded.aliases,
+                        sort_order = excluded.sort_order,
+                        is_active = 1,
+                        updated_by = excluded.updated_by,
+                        updated_at = excluded.updated_at
+                """, (
+                    original_name, name, parent_name, kind, aliases, sort_order,
+                    actor, actor, now, now,
+                ))
+            elif source == "custom":
+                conn.execute("""
+                    UPDATE cc_departments
+                    SET name = ?, parent_name = ?, kind = ?, aliases = ?, sort_order = ?,
+                        updated_by = ?, updated_at = ?
+                    WHERE id = ? AND is_active = 1
+                """, (name, parent_name, kind, aliases, sort_order, actor, now, int(source_id or 0)))
+            else:
+                return {"success": False, "error": "Неизвестный тип подразделения"}
+
+            if self._department_key(old_name) != self._department_key(name):
+                conn.execute("""
+                    UPDATE cc_contacts
+                    SET department = ?, updated_by = ?, updated_at = ?
+                    WHERE lower(TRIM(department)) = lower(TRIM(?))
+                """, (name, actor, now, old_name))
+                conn.execute("""
+                    UPDATE cc_departments
+                    SET parent_name = ?, updated_by = ?, updated_at = ?
+                    WHERE lower(TRIM(parent_name)) = lower(TRIM(?))
+                """, (name, actor, now, old_name))
+                conn.execute("""
+                    UPDATE cc_department_overrides
+                    SET parent_name = ?, updated_by = ?, updated_at = ?
+                    WHERE lower(TRIM(parent_name)) = lower(TRIM(?))
+                """, (name, actor, now, old_name))
+
+            conn.commit()
+            return {"success": True}
 
     def delete_department(self, department_id: int) -> Dict:
         with self._connect() as conn:

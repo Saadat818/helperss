@@ -280,6 +280,7 @@ class ContactsManager:
     def _connect(self):
         conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0)
         conn.row_factory = sqlite3.Row
+        conn.create_function("unicode_casefold", 1, lambda value: str(value or "").casefold())
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         return conn
@@ -1327,17 +1328,26 @@ class ContactsManager:
             params.extend(department_values)
         q = self._clean(q, 200)
         if q:
-            like = f"%{q}%"
+            needle = q.casefold()
             query += """
                 AND (
-                    c.full_name LIKE ? OR c.position LIKE ? OR c.department LIKE ?
-                    OR c.phone LIKE ? OR c.extension LIKE ? OR c.mobile LIKE ?
-                    OR c.telegram LIKE ? OR c.nickname LIKE ?
-                    OR c.workplace LIKE ? OR c.responsibilities LIKE ? OR c.tags LIKE ?
-                    OR c.inactive_reason LIKE ? OR c.inactive_date LIKE ? OR c.inactive_comment LIKE ?
+                    instr(unicode_casefold(c.full_name), ?) > 0
+                    OR instr(unicode_casefold(c.position), ?) > 0
+                    OR instr(unicode_casefold(c.department), ?) > 0
+                    OR instr(unicode_casefold(c.phone), ?) > 0
+                    OR instr(unicode_casefold(c.extension), ?) > 0
+                    OR instr(unicode_casefold(c.mobile), ?) > 0
+                    OR instr(unicode_casefold(c.telegram), ?) > 0
+                    OR instr(unicode_casefold(c.nickname), ?) > 0
+                    OR instr(unicode_casefold(c.workplace), ?) > 0
+                    OR instr(unicode_casefold(c.responsibilities), ?) > 0
+                    OR instr(unicode_casefold(c.tags), ?) > 0
+                    OR instr(unicode_casefold(c.inactive_reason), ?) > 0
+                    OR instr(unicode_casefold(c.inactive_date), ?) > 0
+                    OR instr(unicode_casefold(c.inactive_comment), ?) > 0
                 )
             """
-            params.extend([like] * 14)
+            params.extend([needle] * 14)
         return query, params
 
     def get_contact(self, contact_id: int) -> Optional[Dict]:

@@ -526,6 +526,7 @@
                     <input type="hidden" name="return_type" value="{{ board_type }}">
                     <input type="hidden" name="return_status" value="{{ status }}">
                     <input type="hidden" name="return_q" value="{{ q }}">
+                    <input type="hidden" name="role_before" value="">
 
                     <div class="form-row">
                         <div>
@@ -570,11 +571,6 @@
                     <div class="field-group white-field">
                         <label for="tenure">Срок</label>
                         <input id="tenure" name="tenure" value="{{ form_post.tenure|default('') }}" placeholder="Например: 2 года 4 месяца">
-                    </div>
-
-                    <div class="field-group black-field">
-                        <label for="role_before">Кем был / направление</label>
-                        <input id="role_before" name="role_before" value="{{ form_post.role_before|default('') }}" placeholder="Например: оператор КЦ">
                     </div>
 
                     <div>
@@ -658,13 +654,11 @@
                                 <div class="post-head">
                                     <div>
                                         <h3 class="post-title">{{ post.public_title or post.full_name }}</h3>
+                                        {% if post.board_type == 'white' %}
                                         <div class="post-meta">
-                                            {% if post.board_type == 'white' %}
-                                                {{ post.current_position or 'Должность не указана' }}
-                                            {% else %}
-                                                {{ post.role_before or 'Роль не указана' }}
-                                            {% endif %}
+                                            {{ post.current_position or 'Должность не указана' }}
                                         </div>
+                                        {% endif %}
                                         <div class="badges">
                                             <span class="badge {% if post.board_type == 'black' %}black{% endif %}">{{ post.type_label }}</span>
                                             <span class="badge {% if post.status == 'draft' %}draft{% elif post.status == 'archived' %}archived{% endif %}">{{ post.status_label }}</span>

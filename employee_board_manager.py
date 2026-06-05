@@ -313,8 +313,6 @@ class EmployeeBoardManager:
             tenure = ""
             description = description or ""
             public_title = public_title or "Кейс без персональных данных"
-            if not role_before:
-                return {"success": False, "error": "Для Чёрной доски укажите роль или направление сотрудника"}
             if not incident:
                 return {"success": False, "error": "Для Чёрной доски опишите, что произошло"}
             if not actions_taken:

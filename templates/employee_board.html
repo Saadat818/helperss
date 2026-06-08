@@ -69,6 +69,7 @@
 
         .board-section {
             display: none;
+            margin-top: 22px;
         }
 
         .board-section.active {
@@ -78,31 +79,56 @@
         .board-list {
             display: grid;
             grid-template-columns: minmax(0, 1fr);
-            gap: 16px;
+            gap: 18px;
         }
 
         .board-card {
+            position: relative;
+            overflow: hidden;
             display: grid;
-            grid-template-columns: 168px minmax(0, 1fr);
-            gap: 18px;
+            grid-template-columns: 230px minmax(0, 1fr);
+            align-items: start;
+            gap: 24px;
             width: 100%;
-            min-height: 220px;
-            padding: 18px;
+            padding: 20px;
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             background: var(--card);
             box-shadow: var(--shadow-sm);
         }
 
+        .board-card::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 4px;
+            background: var(--primary);
+        }
+
+        .board-card.white {
+            border-color: rgba(22, 163, 74, .28);
+        }
+
         .board-card.black {
             border-color: rgba(100, 116, 139, .34);
         }
 
+        .board-card.black::before {
+            background: #64748b;
+        }
+
+        .board-card-aside {
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+        }
+
         .board-photo {
-            width: 168px;
-            height: 196px;
+            width: 100%;
+            height: 258px;
             overflow: hidden;
-            border-radius: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
             background: var(--bg-secondary);
         }
 
@@ -132,6 +158,14 @@
             min-width: 0;
             display: flex;
             flex-direction: column;
+            gap: 12px;
+            padding-top: 2px;
+        }
+
+        .board-card-top {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
             gap: 10px;
         }
 
@@ -159,34 +193,56 @@
         .board-title {
             margin: 0;
             color: var(--text);
-            font-size: 22px;
+            font-size: 24px;
             line-height: 1.18;
             font-weight: 800;
         }
 
         .board-meta {
+            max-width: 760px;
             color: var(--text-muted);
             font-size: var(--text-sm);
             line-height: 1.45;
         }
 
-        .board-text {
+        .board-highlight {
+            max-width: 860px;
+            padding: 12px 14px;
+            border-left: 3px solid var(--primary);
+            border-radius: 8px;
+            background: rgba(22, 163, 74, .08);
             color: var(--text);
-            line-height: 1.55;
+            font-weight: 800;
+            line-height: 1.45;
+        }
+
+        .black .board-highlight {
+            border-left-color: #64748b;
+            background: rgba(100, 116, 139, .12);
+        }
+
+        .board-text {
+            max-width: 910px;
+            color: var(--text);
+            line-height: 1.62;
         }
 
         .board-facts {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
-            margin-top: auto;
+            gap: 0;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-secondary);
         }
 
         .board-fact {
-            padding: 10px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: var(--bg-secondary);
+            padding: 11px 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .board-fact:first-child {
+            border-top: 0;
         }
 
         .board-fact-label {
@@ -202,14 +258,18 @@
 
         .incident-blocks {
             display: grid;
-            gap: 10px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 4px;
         }
 
         .incident-block {
-            padding: 12px;
+            min-width: 0;
+            padding: 14px;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 10px;
             background: var(--bg-secondary);
+            line-height: 1.55;
         }
 
         .incident-label {
@@ -227,6 +287,16 @@
             background: var(--card);
             color: var(--text-muted);
             text-align: center;
+        }
+
+        @media (max-width: 900px) {
+            .board-card {
+                grid-template-columns: 200px minmax(0, 1fr);
+            }
+
+            .incident-blocks {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 520px) {
@@ -286,37 +356,45 @@
                     <div class="board-list">
                         {% for post in white_posts %}
                             <article class="board-card white">
-                                <div class="board-photo">
-                                    {% if post.public_photo_path %}
-                                        <img src="{{ url_for('static', filename=post.public_photo_path) }}" alt="{{ post.public_title }}">
-                                    {% else %}
-                                        <div class="board-photo-placeholder">{{ (post.full_name or post.public_title or 'H')[:1] }}</div>
+                                <div class="board-card-aside">
+                                    <div class="board-photo">
+                                        {% if post.public_photo_path %}
+                                            <img src="{{ url_for('static', filename=post.public_photo_path) }}" alt="{{ post.public_title }}">
+                                        {% else %}
+                                            <div class="board-photo-placeholder">{{ (post.full_name or post.public_title or 'H')[:1] }}</div>
+                                        {% endif %}
+                                    </div>
+                                    {% if post.start_position or post.tenure %}
+                                        <div class="board-facts">
+                                            {% if post.start_position %}
+                                                <div class="board-fact">
+                                                    <div class="board-fact-label">Пришёл в банк</div>
+                                                    <div class="board-fact-value">{{ post.start_position }}</div>
+                                                </div>
+                                            {% endif %}
+                                            {% if post.tenure %}
+                                                <div class="board-fact">
+                                                    <div class="board-fact-label">Срок</div>
+                                                    <div class="board-fact-value">{{ post.tenure }}</div>
+                                                </div>
+                                            {% endif %}
+                                        </div>
                                     {% endif %}
                                 </div>
                                 <div class="board-card-body">
-                                    <div class="board-badge">Белая доска</div>
+                                    <div class="board-card-top">
+                                        <div class="board-badge">Белая доска</div>
+                                    </div>
                                     <h2 class="board-title">{{ post.public_title or post.full_name }}</h2>
-                                    <div class="board-meta">{{ post.current_position }}</div>
+                                    {% if post.current_position %}
+                                        <div class="board-meta">{{ post.current_position }}</div>
+                                    {% endif %}
                                     {% if post.summary %}
-                                        <div class="board-text">{{ post.summary }}</div>
+                                        <div class="board-highlight">{{ post.summary }}</div>
                                     {% endif %}
                                     {% if post.description %}
                                         <div class="board-text">{{ post.description }}</div>
                                     {% endif %}
-                                    <div class="board-facts">
-                                        {% if post.start_position %}
-                                            <div class="board-fact">
-                                                <div class="board-fact-label">Пришёл в банк</div>
-                                                <div class="board-fact-value">{{ post.start_position }}</div>
-                                            </div>
-                                        {% endif %}
-                                        {% if post.tenure %}
-                                            <div class="board-fact">
-                                                <div class="board-fact-label">Срок</div>
-                                                <div class="board-fact-value">{{ post.tenure }}</div>
-                                            </div>
-                                        {% endif %}
-                                    </div>
                                 </div>
                             </article>
                         {% endfor %}
@@ -331,18 +409,22 @@
                     <div class="board-list">
                         {% for post in black_posts %}
                             <article class="board-card black">
-                                <div class="board-photo black-photo">
-                                    {% if post.public_photo_path %}
-                                        <img src="{{ url_for('static', filename=post.public_photo_path) }}" alt="Обезличенное фото">
-                                    {% else %}
-                                        <div class="board-photo-placeholder">?</div>
-                                    {% endif %}
+                                <div class="board-card-aside">
+                                    <div class="board-photo black-photo">
+                                        {% if post.public_photo_path %}
+                                            <img src="{{ url_for('static', filename=post.public_photo_path) }}" alt="Обезличенное фото">
+                                        {% else %}
+                                            <div class="board-photo-placeholder">?</div>
+                                        {% endif %}
+                                    </div>
                                 </div>
                                 <div class="board-card-body">
-                                    <div class="board-badge">Чёрная доска</div>
+                                    <div class="board-card-top">
+                                        <div class="board-badge">Чёрная доска</div>
+                                    </div>
                                     <h2 class="board-title">{{ post.public_title }}</h2>
                                     {% if post.summary %}
-                                        <div class="board-text">{{ post.summary }}</div>
+                                        <div class="board-highlight">{{ post.summary }}</div>
                                     {% endif %}
                                     <div class="incident-blocks">
                                         <div class="incident-block">

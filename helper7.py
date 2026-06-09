@@ -423,6 +423,16 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Lax for better compatibility
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max request size (DoS protection)
 
+BRANCH_SECTION_ENABLED = os.getenv('HELPER_BRANCH_SECTION_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+
+
+@app.context_processor
+def inject_feature_flags():
+    return {
+        'branch_section_enabled': BRANCH_SECTION_ENABLED,
+    }
+
+
 # Security headers
 @app.after_request
 def add_security_headers(response):
@@ -2326,6 +2336,23 @@ def _manual_segment_info(segment: str | None = None) -> dict:
     return MANUAL_SEGMENTS[_manual_segment(segment)]
 
 
+def _is_branch_segment(segment: str | None = None) -> bool:
+    return _manual_segment(segment) == 'branch'
+
+
+def _branch_section_redirect(admin: bool = False):
+    flash('Раздел «Филиалы» временно недоступен.')
+    return redirect(url_for('admin_dashboard' if admin else 'choose_help_type'))
+
+
+def _branch_section_blocked(segment: str | None = None) -> bool:
+    return _is_branch_segment(segment) and not BRANCH_SECTION_ENABLED
+
+
+def _trainer_branch_blocked(segment: str | None = None) -> bool:
+    return str(segment or '').strip().lower() == 'branch' and not BRANCH_SECTION_ENABLED
+
+
 def _manual_item_segment(manual: dict | None) -> str:
     return _manual_segment((manual or {}).get('segment') or 'kc')
 
@@ -3260,6 +3287,8 @@ def choose_help_type():
 @app.route('/branch')
 def branch_home():
     """Раздел филиалов: отдельные мануалы и тренажер."""
+    if not BRANCH_SECTION_ENABLED:
+        return _branch_section_redirect()
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
     return render_template('branch_home.html', user_info=session['user_info'])
@@ -3268,12 +3297,16 @@ def branch_home():
 @app.route('/branch/manuals')
 def branch_manuals():
     """Мануалы филиалов."""
+    if not BRANCH_SECTION_ENABLED:
+        return _branch_section_redirect()
     return _show_problems_for_segment('branch')
 
 
 @app.route('/branch/trainer')
 def branch_trainer():
     """Тренажер филиалов."""
+    if not BRANCH_SECTION_ENABLED:
+        return _branch_section_redirect()
     return redirect(url_for('trainer_segment_menu', segment='branch'))
 
 
@@ -4410,6 +4443,8 @@ def _manual_access_redirect(segment: str):
 def _show_problems_for_segment(segment: str):
     """Страница мануалов - требует указания рабочего места."""
     segment = _manual_segment(segment)
+    if _branch_section_blocked(segment):
+        return _branch_section_redirect()
     access_redirect = _manual_access_redirect(segment)
     if access_redirect:
         return access_redirect
@@ -4436,6 +4471,8 @@ def select_problem_segment(segment, problem_id):
 
 def _select_problem_for_segment(segment: str, problem_id: str):
     segment = _manual_segment(segment)
+    if _branch_section_blocked(segment):
+        return _branch_section_redirect()
     access_redirect = _manual_access_redirect(segment)
     if access_redirect:
         return access_redirect
@@ -4582,6 +4619,8 @@ def show_manual_segment(segment, subproblem_id):
 
 def _show_manual_for_segment(segment: str, subproblem_id: str):
     segment = _manual_segment(segment)
+    if _branch_section_blocked(segment):
+        return _branch_section_redirect()
     if 'user_info' not in session or 'problem_id' not in session:
         return redirect(url_for('index'))
 
@@ -4880,6 +4919,8 @@ def manual_feedback():
         return redirect(url_for('user_login'))
 
     segment = _manual_segment(request.form.get('segment') or session.get('manual_segment'))
+    if _branch_section_blocked(segment):
+        return _branch_section_redirect()
     result = str(request.form.get('result') or '').strip()
     comment = str(request.form.get('comment') or '').strip()[:1000]
     problem_description = str(session.get('problem_title') or 'Неизвестная инструкция')[:500]
@@ -5894,6 +5935,9 @@ def trainer_segment_menu(segment):
 
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
+    if _trainer_branch_blocked(segment):
+        flash('Раздел «Филиалы» временно недоступен.')
+        return redirect(url_for('trainer_menu'))
 
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
@@ -5913,6 +5957,9 @@ def trainer_level(segment, level_code):
         return redirect(url_for('user_login'))
 
     if segment not in TRAINER_SEGMENTS:
+        return redirect(url_for('trainer_menu'))
+    if _trainer_branch_blocked(segment):
+        flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('trainer_menu'))
 
     user_id = session['user_info'].get('username', 'anonymous')
@@ -5992,6 +6039,11 @@ def trainer_play(scenario_id):
 
     if not scenario:
         flash('Сценарий не найден')
+        return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
+
+    scenario_segment = scenario.get('segment') or play_segment
+    if _trainer_branch_blocked(scenario_segment):
+        flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
 
     # Черновики и скрытые сценарии недоступны для обычных пользователей
@@ -6404,6 +6456,8 @@ def _admin_trainer_redirect(scenario_id=None, segment=None):
     if not segment and scenario_id:
         sc = trainer_mgr.get_scenario(scenario_id)
         segment = sc.get('segment', 'kc') if sc else 'kc'
+    if _trainer_branch_blocked(segment):
+        segment = 'kc'
     if segment in TRAINER_SEGMENTS:
         return redirect(url_for('admin_trainer_segment', segment=segment))
     return redirect(url_for('admin_trainer'))
@@ -6414,6 +6468,8 @@ def _admin_trainer_redirect(scenario_id=None, segment=None):
 def admin_trainer():
     """Редирект в первый доступный сегмент"""
     allowed_segments = session.get('trainer_segments', ['kc', 'branch'])
+    if not BRANCH_SECTION_ENABLED:
+        allowed_segments = [s for s in allowed_segments if s != 'branch']
     first_segment = allowed_segments[0] if allowed_segments else 'kc'
     return redirect(url_for('admin_trainer_segment', segment=first_segment))
 
@@ -6424,9 +6480,14 @@ def admin_trainer_segment(segment):
     """Админка: список сценариев тренажера по сегменту"""
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('admin_trainer'))
+    if _trainer_branch_blocked(segment):
+        flash('Раздел «Филиалы» временно недоступен.')
+        return redirect(url_for('admin_trainer_segment', segment='kc'))
 
     # Проверяем доступ к сегменту
     allowed_segments = session.get('trainer_segments', ['kc', 'branch'])
+    if not BRANCH_SECTION_ENABLED:
+        allowed_segments = [s for s in allowed_segments if s != 'branch']
     if segment not in allowed_segments:
         # Перенаправляем в первый доступный сегмент
         if allowed_segments:
@@ -6508,6 +6569,8 @@ def admin_trainer_create():
             'is_draft': is_draft,
             'segment': request.form.get('segment', 'kc'),
         }
+        if _trainer_branch_blocked(data['segment']):
+            data['segment'] = 'kc'
 
         if not data['title']:
             flash('Название обязательно')
@@ -6551,6 +6614,9 @@ def admin_trainer_edit(scenario_id):
         return redirect(url_for('admin_trainer'))
 
     sc_segment = scenario.get('segment', 'kc')
+    if _trainer_branch_blocked(sc_segment):
+        flash('Раздел «Филиалы» временно недоступен.')
+        return redirect(url_for('admin_trainer'))
     levels = trainer_mgr.get_all_levels()
     categories = trainer_mgr.get_all_categories()
 
@@ -6599,6 +6665,8 @@ def admin_trainer_edit(scenario_id):
             'emotion_passive_rate': request.form.get('emotion_passive_rate', 0, type=int),
             'segment': request.form.get('segment', 'kc'),
         }
+        if _trainer_branch_blocked(data['segment']):
+            data['segment'] = 'kc'
         # Сохраняем снимок текущей версии перед обновлением
         user_info = session.get('user_info', {})
         editor = user_info.get('username') or user_info.get('name', 'admin')
@@ -8596,6 +8664,9 @@ def admin_dashboard_new():
 def admin_manuals():
     """Старая страница управления мануалами."""
     segment = _manual_segment(request.args.get('segment') or 'kc')
+    if _branch_section_blocked(segment):
+        flash('Раздел «Филиалы» временно отключен.')
+        return redirect(url_for('admin_manuals', segment='kc'))
     manuals = _filter_manuals_by_segment(admin_manager.load_manuals(), segment)
     return render_template(
         'admin_dashboard.html',
@@ -8683,6 +8754,8 @@ def _branch_manual_feedback_stats(limit: int = 50) -> dict:
 @AdminAuth.manuals_required
 def admin_branch():
     """Админ-раздел филиалов."""
+    if not BRANCH_SECTION_ENABLED:
+        return _branch_section_redirect(admin=True)
     feedback = _branch_manual_feedback_stats(limit=80)
     return render_template('admin_branch.html', feedback=feedback)
 
@@ -8692,10 +8765,14 @@ def admin_branch():
 def admin_create_manual():
     """Создание нового мануала"""
     selected_segment = _manual_segment(request.values.get('segment') or 'kc')
+    if _branch_section_blocked(selected_segment):
+        selected_segment = 'kc'
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
         manual_type = request.form.get('manual_type', 'with_subproblems').strip()
         selected_segment = _manual_segment(request.form.get('segment') or selected_segment)
+        if _branch_section_blocked(selected_segment):
+            selected_segment = 'kc'
 
         # Валидация
         if not title:
@@ -9033,7 +9110,8 @@ def admin_update_manual(manual_id):
 
     # Обновляем только заголовок
     manual['title'] = title
-    manual['segment'] = _manual_segment(request.form.get('segment') or manual.get('segment') or 'kc')
+    selected_segment = _manual_segment(request.form.get('segment') or manual.get('segment') or 'kc')
+    manual['segment'] = 'kc' if _branch_section_blocked(selected_segment) else selected_segment
 
     # Сохраняем изменения
     if admin_manager.update_manual(manual_id, title, manual):
@@ -12413,6 +12491,8 @@ def admin_change_user_permissions(username):
 def admin_change_user_segments(username):
     """Изменение доступных сегментов тренажёра для администратора"""
     segments = request.form.getlist('trainer_segments')
+    if not BRANCH_SECTION_ENABLED:
+        segments = [s for s in segments if s != 'branch']
     result = admins_manager.update_trainer_segments(username, segments)
 
     if result['success']:

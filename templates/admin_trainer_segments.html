@@ -112,12 +112,14 @@
                 <div class="seg-desc">Сценарии, статистика и рейтинг специалистов КЦ</div>
                 <div class="seg-btn">Открыть →</div>
             </a>
-            <a href="{{ url_for('admin_trainer_segment', segment='branch') }}" class="seg-card" style="--accent:#2196F3;">
-                <div class="seg-icon">🏦</div>
-                <div class="seg-name">Филиалы</div>
-                <div class="seg-desc">Сценарии, статистика и рейтинг сотрудников филиалов</div>
-                <div class="seg-btn">Открыть →</div>
-            </a>
+            {% if branch_section_enabled %}
+                <a href="{{ url_for('admin_trainer_segment', segment='branch') }}" class="seg-card" style="--accent:#2196F3;">
+                    <div class="seg-icon">🏦</div>
+                    <div class="seg-name">Филиалы</div>
+                    <div class="seg-desc">Сценарии, статистика и рейтинг сотрудников филиалов</div>
+                    <div class="seg-btn">Открыть →</div>
+                </a>
+            {% endif %}
         </div>
     </div>
 </body>

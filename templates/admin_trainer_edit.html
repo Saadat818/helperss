@@ -787,7 +787,9 @@
                         <label for="segment">Сегмент *</label>
                         <select id="segment" name="segment" required>
                             <option value="kc" {% if not scenario or scenario.get('segment', 'kc') == 'kc' %}selected{% endif %}>🎧 Контакт Центр</option>
-                            <option value="branch" {% if scenario and scenario.get('segment') == 'branch' %}selected{% endif %}>🏦 Филиалы</option>
+                            {% if branch_section_enabled %}
+                                <option value="branch" {% if scenario and scenario.get('segment') == 'branch' %}selected{% endif %}>🏦 Филиалы</option>
+                            {% endif %}
                         </select>
                     </div>
 

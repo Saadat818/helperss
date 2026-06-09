@@ -579,7 +579,9 @@
                 <label for="segment">Раздел:</label>
                 <select id="segment" name="segment">
                     <option value="kc" {% if manual.segment|default('kc') == 'kc' %}selected{% endif %}>Контакт-центр</option>
-                    <option value="branch" {% if manual.segment|default('kc') == 'branch' %}selected{% endif %}>Филиалы</option>
+                    {% if branch_section_enabled %}
+                        <option value="branch" {% if manual.segment|default('kc') == 'branch' %}selected{% endif %}>Филиалы</option>
+                    {% endif %}
                 </select>
             </div>
 

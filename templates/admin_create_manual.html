@@ -387,9 +387,13 @@
                 <label for="segment">Раздел *</label>
                 <select id="segment" name="segment" required style="width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
                     <option value="kc" {% if selected_segment == 'kc' %}selected{% endif %}>Контакт-центр</option>
-                    <option value="branch" {% if selected_segment == 'branch' %}selected{% endif %}>Филиалы</option>
+                    {% if branch_section_enabled %}
+                        <option value="branch" {% if selected_segment == 'branch' %}selected{% endif %}>Филиалы</option>
+                    {% endif %}
                 </select>
-                <p class="helper-text">Филиальные мануалы отображаются только в разделе “Филиалы”.</p>
+                {% if branch_section_enabled %}
+                    <p class="helper-text">Филиальные мануалы отображаются только в разделе “Филиалы”.</p>
+                {% endif %}
             </div>
 
             <div class="form-group">

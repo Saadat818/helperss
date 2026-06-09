@@ -426,7 +426,9 @@
                 <a href="{{ url_for('choose_help_type') }}" class="btn btn-primary">🏠 На Главную</a>
                 {% if 'super_admin' in perms or 'admin_manuals' in perms %}
                     <a href="{{ url_for('admin_create_manual', segment=manual_segment) }}" class="btn btn-primary">📚 Создать мануал</a>
-                    <a href="{{ url_for('admin_branch') }}" class="btn btn-primary">🏦 Филиалы</a>
+                    {% if branch_section_enabled %}
+                        <a href="{{ url_for('admin_branch') }}" class="btn btn-primary">🏦 Филиалы</a>
+                    {% endif %}
                 {% endif %}
                 {% if 'super_admin' in perms or 'admin_manuals' in perms %}
                     <a href="{{ url_for('admin_contacts_kc') }}" class="btn btn-primary">☎️ Контакты КЦ</a>
@@ -463,7 +465,9 @@
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
             <a href="{{ url_for('admin_manuals', segment='kc') }}" class="btn {% if manual_segment == 'kc' %}btn-primary{% else %}btn-secondary{% endif %}">Контакт-центр</a>
-            <a href="{{ url_for('admin_manuals', segment='branch') }}" class="btn {% if manual_segment == 'branch' %}btn-primary{% else %}btn-secondary{% endif %}">Филиалы</a>
+            {% if branch_section_enabled %}
+                <a href="{{ url_for('admin_manuals', segment='branch') }}" class="btn {% if manual_segment == 'branch' %}btn-primary{% else %}btn-secondary{% endif %}">Филиалы</a>
+            {% endif %}
         </div>
 
         <!-- Виджет онлайн-статистики (только для super_admin) -->

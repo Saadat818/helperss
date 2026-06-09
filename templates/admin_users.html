@@ -203,7 +203,9 @@
                             <form class="row-form" method="POST" action="{{ url_for('admin_change_user_segments', username=admin.username) }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <label class="check-item"><input type="checkbox" name="trainer_segments" value="kc" {% if 'kc' in segs %}checked{% endif %}> КЦ</label>
-                                <label class="check-item"><input type="checkbox" name="trainer_segments" value="branch" {% if 'branch' in segs %}checked{% endif %}> Филиалы</label>
+                                {% if branch_section_enabled %}
+                                    <label class="check-item"><input type="checkbox" name="trainer_segments" value="branch" {% if 'branch' in segs %}checked{% endif %}> Филиалы</label>
+                                {% endif %}
                                 <div><button class="btn btn-sm" type="submit">Сохранить</button></div>
                             </form>
                         {% endif %}

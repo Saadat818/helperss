@@ -4152,9 +4152,11 @@ def admin_contacts_kc():
         status = 'active'
     page = max(1, request.args.get('page', 1, type=int))
     per_page = 100
-    offset = (page - 1) * per_page
 
     total = contacts_mgr.count_contacts(q=q, department=department, status=status)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
     contacts = contacts_mgr.get_contacts(
         q=q,
         department=department,
@@ -4236,6 +4238,18 @@ def admin_contact_department_delete(department_id):
     else:
         flash(result.get('error', 'Не удалось удалить группу или отдел'), 'error')
     return _admin_contacts_return()
+
+
+@app.route('/admin/contacts_kc/departments/reorder', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contact_departments_reorder():
+    data = request.get_json(silent=True) or {}
+    names = data.get('names') if isinstance(data.get('names'), list) else []
+    result = contacts_mgr.save_department_order(names, actor=session.get('admin_username', ''))
+    if result.get('success'):
+        write_audit_log('contact_departments_reordered', 200, {'updated': result.get('updated')})
+        return jsonify({'success': True, 'updated': result.get('updated', 0)})
+    return jsonify({'success': False, 'error': result.get('error', 'Не удалось сохранить порядок отделов')}), 400
 
 
 @app.route('/admin/contacts_kc/contacts/create', methods=['POST'])
@@ -4323,6 +4337,18 @@ def admin_contact_delete(contact_id):
     flash('Контакт удалён', 'success')
     write_audit_log('contact_deleted', 200, {'contact_id': contact_id})
     return _admin_contacts_return()
+
+
+@app.route('/admin/contacts_kc/contacts/reorder', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_contacts_reorder():
+    data = request.get_json(silent=True) or {}
+    contact_ids = data.get('contact_ids') if isinstance(data.get('contact_ids'), list) else []
+    result = contacts_mgr.save_contact_order(contact_ids, actor=session.get('admin_username', ''))
+    if result.get('success'):
+        write_audit_log('contacts_reordered', 200, {'updated': result.get('updated')})
+        return jsonify({'success': True, 'updated': result.get('updated', 0)})
+    return jsonify({'success': False, 'error': result.get('error', 'Не удалось сохранить порядок сотрудников')}), 400
 
 
 @app.route('/search_topics')
@@ -5518,22 +5544,22 @@ def api_admin_check_password():
         TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
         if TEST_MODE and password in ['admin', '123', 'test']:
             from ad_auth import ad_auth
-            lower_user = username.lower() if username else ''
+            login_key = _admin_login_key(username)
             test_permissions = []
-            if lower_user in ad_auth.super_admin_logins:
+            if login_key in ad_auth.super_admin_logins:
                 test_permissions.append('super_admin')
-            if lower_user in ad_auth.admins_manuals:
+            if login_key in ad_auth.admins_manuals:
                 test_permissions.append('admin_manuals')
-            if lower_user in ad_auth.admins_topics:
+            if login_key in ad_auth.admins_topics:
                 test_permissions.append('admin_topics')
-            if lower_user in ad_auth.admins_scenarios:
+            if login_key in ad_auth.admins_scenarios:
                 test_permissions.append('admin_scenarios')
-            if lower_user in ad_auth.admins_trainer:
+            if login_key in ad_auth.admins_trainer:
                 test_permissions.append('admin_trainer')
-            if lower_user in ad_auth.trainer_viewers:
+            if login_key in ad_auth.trainer_viewers:
                 test_permissions.append('trainer_viewer')
 
-            test_permissions, admin_role, trainer_segments = _merge_admin_permissions(username, test_permissions)
+            test_permissions, admin_role, trainer_segments = _merge_admin_permissions(login_key, test_permissions)
 
             if not test_permissions:
                 return jsonify({'success': False, 'error': 'У вас нет прав администратора'})
@@ -5541,7 +5567,7 @@ def api_admin_check_password():
                 return jsonify({'success': False, 'error': 'Нет прав для этого раздела'})
 
             session['admin_logged_in'] = True
-            session['admin_username'] = username
+            session['admin_username'] = login_key
             session['admin_role'] = admin_role
             session['admin_permissions'] = test_permissions
             session['trainer_segments'] = trainer_segments
@@ -8236,26 +8262,26 @@ def user_login():
 
                 # Определяем роли из .env (как в AD режиме)
                 from ad_auth import ad_auth
-                lower_user = username.lower()
+                login_key = _admin_login_key(username)
                 test_permissions = []
-                if lower_user in ad_auth.super_admin_logins:
+                if login_key in ad_auth.super_admin_logins:
                     test_permissions.append('super_admin')
-                if lower_user in ad_auth.admins_manuals:
+                if login_key in ad_auth.admins_manuals:
                     test_permissions.append('admin_manuals')
-                if lower_user in ad_auth.admins_topics:
+                if login_key in ad_auth.admins_topics:
                     test_permissions.append('admin_topics')
-                if lower_user in ad_auth.admins_scenarios:
+                if login_key in ad_auth.admins_scenarios:
                     test_permissions.append('admin_scenarios')
-                if lower_user in ad_auth.admins_trainer:
+                if login_key in ad_auth.admins_trainer:
                     test_permissions.append('admin_trainer')
-                if lower_user in ad_auth.trainer_viewers:
+                if login_key in ad_auth.trainer_viewers:
                     test_permissions.append('trainer_viewer')
 
-                test_permissions, admin_role, trainer_segments = _merge_admin_permissions(username, test_permissions)
+                test_permissions, admin_role, trainer_segments = _merge_admin_permissions(login_key, test_permissions)
 
                 if test_permissions:
                     session['admin_logged_in'] = True
-                    session['admin_username'] = username
+                    session['admin_username'] = login_key
                     session['admin_role'] = admin_role
                     session['admin_permissions'] = test_permissions
                     session['trainer_segments'] = trainer_segments
@@ -8366,6 +8392,11 @@ def enter_telegram_username():
     )
 
 
+def _admin_login_key(username: str | None) -> str:
+    """Единый ключ AD-логина для сверки с env/admins.json."""
+    return admins_manager.normalize_username(username)
+
+
 def _merge_admin_permissions(username: str, permissions: list[str] | None = None):
     """Дополняет права из .env правами AD-логина, назначенными через админку."""
     base_permissions = admins_manager.normalize_permissions(permissions or [])
@@ -8407,19 +8438,19 @@ def _admin_env_permissions(username: str) -> list[str]:
     """Права из env/AD-тестовых списков без повторного bind в AD."""
     try:
         from ad_auth import ad_auth
-        lower_user = str(username or '').strip().lower()
+        login_key = _admin_login_key(username)
         permissions = []
-        if lower_user in ad_auth.super_admin_logins:
+        if login_key in ad_auth.super_admin_logins:
             permissions.append(ROLE_SUPER_ADMIN)
-        if lower_user in ad_auth.admins_manuals:
+        if login_key in ad_auth.admins_manuals:
             permissions.append(ROLE_ADMIN_MANUALS)
-        if lower_user in ad_auth.admins_topics:
+        if login_key in ad_auth.admins_topics:
             permissions.append(ROLE_ADMIN_TOPICS)
-        if lower_user in ad_auth.admins_scenarios:
+        if login_key in ad_auth.admins_scenarios:
             permissions.append(ROLE_ADMIN_SCENARIOS)
-        if lower_user in ad_auth.admins_trainer:
+        if login_key in ad_auth.admins_trainer:
             permissions.append(ROLE_ADMIN_TRAINER)
-        if lower_user in ad_auth.trainer_viewers:
+        if login_key in ad_auth.trainer_viewers:
             permissions.append(ROLE_TRAINER_VIEWER)
         return admins_manager.normalize_permissions(permissions)
     except Exception:
@@ -8448,14 +8479,37 @@ def _admin_section_allowed(section: str, permissions: list[str] | None) -> bool:
 @app.before_request
 def refresh_admin_session_permissions():
     """Применяет изменённые права админа к активной сессии без повторного входа."""
-    if not session.get('admin_logged_in') or request.path.startswith('/static/'):
+    if request.path.startswith('/static/'):
         return None
 
     admin_paths = ('/admin', '/api/admin', '/api/stats')
     if not request.path.startswith(admin_paths):
         return None
 
-    username = session.get('admin_username', '')
+    if not session.get('admin_logged_in'):
+        if not session.get('authenticated'):
+            return None
+        user_info = session.get('user_info') or {}
+        username = str(user_info.get('username') or '').strip()
+        if not username:
+            return None
+        login_key = _admin_login_key(username)
+        permissions, admin_role, trainer_segments = _merge_admin_permissions(
+            login_key,
+            _admin_env_permissions(login_key)
+        )
+        if not permissions:
+            return None
+        session['admin_logged_in'] = True
+        session['admin_username'] = login_key
+        session['admin_role'] = admin_role
+        session['admin_permissions'] = permissions
+        session['trainer_segments'] = trainer_segments
+        session['admin_token'] = AdminAuth.generate_session_token()
+        session.modified = True
+        return None
+
+    username = _admin_login_key(session.get('admin_username', ''))
     if not username:
         return None
 
@@ -8529,29 +8583,29 @@ def admin_login():
         if TEST_MODE and password in ['admin', '123', 'test']:
             # Определяем роли из .env
             from ad_auth import ad_auth
-            lower_user = username.lower()
+            login_key = _admin_login_key(username)
             test_permissions = []
-            if lower_user in ad_auth.super_admin_logins:
+            if login_key in ad_auth.super_admin_logins:
                 test_permissions.append('super_admin')
-            if lower_user in ad_auth.admins_manuals:
+            if login_key in ad_auth.admins_manuals:
                 test_permissions.append('admin_manuals')
-            if lower_user in ad_auth.admins_topics:
+            if login_key in ad_auth.admins_topics:
                 test_permissions.append('admin_topics')
-            if lower_user in ad_auth.admins_scenarios:
+            if login_key in ad_auth.admins_scenarios:
                 test_permissions.append('admin_scenarios')
-            if lower_user in ad_auth.admins_trainer:
+            if login_key in ad_auth.admins_trainer:
                 test_permissions.append('admin_trainer')
-            if lower_user in ad_auth.trainer_viewers:
+            if login_key in ad_auth.trainer_viewers:
                 test_permissions.append('trainer_viewer')
 
-            test_permissions, admin_role, trainer_segments = _merge_admin_permissions(username, test_permissions)
+            test_permissions, admin_role, trainer_segments = _merge_admin_permissions(login_key, test_permissions)
 
             if not test_permissions:
                 flash('У вас нет прав администратора')
                 return redirect(url_for('admin_login'))
 
             session['admin_logged_in'] = True
-            session['admin_username'] = username
+            session['admin_username'] = login_key
             session['admin_role'] = admin_role
             session['admin_permissions'] = test_permissions
             session['trainer_segments'] = trainer_segments

@@ -149,6 +149,13 @@
             resize: vertical;
             line-height: 1.45;
         }
+        textarea.phone-input-control {
+            min-height: 46px;
+            max-height: 180px;
+            overflow-y: auto;
+            resize: vertical;
+            white-space: pre-wrap;
+        }
         .admin-layout {
             display: grid;
             grid-template-columns: minmax(0, 1fr);
@@ -177,12 +184,13 @@
             overflow-wrap: anywhere;
             word-break: break-word;
         }
-        th:nth-child(1), td:nth-child(1) { width: 29%; }
-        th:nth-child(2), td:nth-child(2) { width: 23%; }
-        th:nth-child(3), td:nth-child(3) { width: 18%; }
-        th:nth-child(4), td:nth-child(4) { width: 8%; }
-        th:nth-child(5), td:nth-child(5) { width: 9%; }
-        th:nth-child(6), td:nth-child(6) { width: 13%; }
+        th:nth-child(1), td:nth-child(1) { width: 44px; }
+        th:nth-child(2), td:nth-child(2) { width: 27%; }
+        th:nth-child(3), td:nth-child(3) { width: 22%; }
+        th:nth-child(4), td:nth-child(4) { width: 17%; }
+        th:nth-child(5), td:nth-child(5) { width: 8%; }
+        th:nth-child(6), td:nth-child(6) { width: 9%; }
+        th:nth-child(7), td:nth-child(7) { width: 13%; }
         th {
             position: sticky;
             top: 0;
@@ -249,6 +257,42 @@
             max-width: 100%;
             overflow-wrap: anywhere;
             word-break: break-word;
+        }
+        .phone-list-text {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            line-height: 1.35;
+        }
+        .drag-cell {
+            text-align: center;
+            vertical-align: middle;
+        }
+        .drag-handle {
+            display: inline-grid;
+            place-items: center;
+            width: 28px;
+            height: 32px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            cursor: grab;
+            font-size: 17px;
+            font-weight: 900;
+            line-height: 1;
+            user-select: none;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+        .sortable-item.is-dragging {
+            opacity: .45;
+        }
+        .sortable-item.is-drop-before {
+            box-shadow: inset 0 3px 0 var(--primary);
+        }
+        .sortable-item.is-drop-after {
+            box-shadow: inset 0 -3px 0 var(--primary);
         }
         .likes-pill {
             display: inline-flex;
@@ -356,11 +400,14 @@
         }
         .department-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: auto minmax(0, 1fr) auto;
             gap: 10px;
             align-items: center;
             padding: 10px 12px;
             border-bottom: 1px solid var(--border);
+        }
+        .department-row .drag-handle {
+            width: 30px;
         }
         .department-row:last-child { border-bottom: none; }
         .department-path {
@@ -623,6 +670,7 @@
                 <table>
                     <thead>
                     <tr>
+                        <th aria-label="Порядок"></th>
                         <th>Сотрудник</th>
                         <th>Группа / отдел</th>
                         <th>Контакты</th>
@@ -631,10 +679,16 @@
                         <th>Действия</th>
                     </tr>
                     </thead>
-                    <tbody>
+                    <tbody data-contact-order-list>
                     {% if contacts %}
                         {% for contact in contacts %}
-                        <tr>
+                        <tr class="sortable-item"
+                            data-contact-row
+                            data-contact-id="{{ contact.id }}"
+                            data-department-name="{{ contact.department|e }}">
+                            <td class="drag-cell">
+                                <button class="drag-handle" type="button" draggable="true" aria-label="Перетащить сотрудника" title="Перетащить">⋮⋮</button>
+                            </td>
                             <td>
                                 <div class="employee-cell">
                                     {% if contact.photo_path %}
@@ -662,7 +716,7 @@
                             </td>
                             <td>
                                 {% set contact_phone = contact.phone or contact.mobile %}
-                                {% if contact_phone %}<div>{{ contact_phone }}</div>{% endif %}
+                                {% if contact_phone %}<div class="phone-list-text">{{ contact_phone }}</div>{% endif %}
                                 {% if contact.extension %}<div class="cell-sub">вн. {{ contact.extension }}</div>{% endif %}
                                 {% if contact.nickname %}<div class="cell-sub">ник {{ contact.nickname }}</div>{% endif %}
                                 {% if contact.telegram %}<div class="cell-sub">{{ contact.telegram }}</div>{% endif %}
@@ -730,7 +784,7 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="6">
+                            <td colspan="7">
                                 <div class="empty-state">
                                     <strong>Контакты не найдены</strong>
                                     Добавьте контакт или измените фильтры.
@@ -741,6 +795,7 @@
                     </tbody>
                 </table>
             </div>
+            <div class="form-hint" data-contact-order-status></div>
 
             {% set pages = ((total + per_page - 1) // per_page) %}
             <div class="pagination">
@@ -805,7 +860,11 @@
                     </label>
                     <label>
                         <span class="form-label">Телефон</span>
-                        <input class="form-control" name="phone" data-field="phone">
+                        <textarea class="form-control phone-input-control"
+                                  name="phone"
+                                  data-field="phone"
+                                  data-auto-grow
+                                  rows="2"></textarea>
                     </label>
                     <label>
                         <span class="form-label">Внутренний номер</span>
@@ -976,18 +1035,24 @@
 
                 <div>
                     <div class="cell-title">Структура подразделений</div>
-                    <div class="form-hint">Базовые департаменты, управления, отделы и группы можно редактировать. Удаляются только добавленные вручную подразделения без сотрудников и дочерних элементов.</div>
-                    <div class="department-list">
+                    <div class="form-hint">Перетащите подразделение за ручку ⋮⋮ выше или ниже. Базовые департаменты, управления, отделы и группы можно редактировать.</div>
+                    <div class="department-list" data-department-order-list>
                         {% if department_editor_items %}
                             {% for department in department_editor_items %}
-                            <div class="department-row">
+                            <div class="department-row sortable-item"
+                                 data-department-order-row
+                                 data-department-name="{{ department.name|e }}">
+                                <button class="drag-handle" type="button" draggable="true" aria-label="Перетащить отдел" title="Перетащить">⋮⋮</button>
                                 <div>
-                                    <div class="department-path">{{ department.path|join(' / ') }}</div>
+                                    <div class="department-path">{{ department.name }}</div>
                                     <div class="department-meta">
                                         {% if department.kind == 'management' %}Управление{% elif department.kind == 'department' %}Отдел{% else %}Группа{% endif %}
                                         · сотрудников: {{ department.contacts_count }}
                                         · дочерних: {{ department.children_count }}
                                         · {{ 'добавлено вручную' if department.is_custom else 'базовая структура' }}
+                                        {% if department.path and department.path|join(' / ') != department.name %}
+                                        <br>{{ department.path|join(' / ') }}
+                                        {% endif %}
                                     </div>
                                 </div>
                                 <div class="row-actions">
@@ -1017,6 +1082,7 @@
                             <div class="department-empty">Структура подразделений пока пуста.</div>
                         {% endif %}
                     </div>
+                    <div class="form-hint" data-department-order-status></div>
                 </div>
             </div>
         </div>
@@ -1093,6 +1159,9 @@
 
 <script>
 const contactCreateUrl = "{{ url_for('admin_contact_create') }}";
+const contactReorderUrl = "{{ url_for('admin_contacts_reorder') }}";
+const departmentReorderUrl = "{{ url_for('admin_contact_departments_reorder') }}";
+const csrfToken = "{{ csrf_token() }}";
 const departmentOptions = {{ departments|map(attribute='name')|list|tojson }};
 const initialSelectedDepartment = {{ (selected_department or '')|tojson }};
 const CONTACT_PHOTO_PREVIEW_SIZE = 224;
@@ -1104,6 +1173,16 @@ let photoPreviewToken = 0;
 let activeDepartmentIndex = -1;
 let renderedDepartmentOptions = [];
 
+function resizeAutoGrowField(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+}
+
+function refreshAutoGrowFields(root = document) {
+    root.querySelectorAll('[data-auto-grow]').forEach(resizeAutoGrowField);
+}
+
 function setField(form, field, value) {
     const el = form.querySelector(`[data-field="${field}"]`);
     if (!el) return;
@@ -1111,6 +1190,7 @@ function setField(form, field, value) {
         el.checked = value === 1 || value === '1' || value === true || value === 'true';
     } else {
         el.value = value || '';
+        if (el.matches('[data-auto-grow]')) resizeAutoGrowField(el);
     }
 }
 
@@ -1645,6 +1725,7 @@ function openContactModal(button) {
     }
 
     document.getElementById('contactModal').classList.add('show');
+    refreshAutoGrowFields(form);
 }
 
 function toCamel(value) {
@@ -1674,6 +1755,113 @@ function closeImageViewer() {
     document.getElementById('imageViewerImg').src = '';
 }
 
+function sortableItems(list, itemSelector) {
+    return Array.from(list.querySelectorAll(itemSelector));
+}
+
+function sortableSignature(list, itemSelector, valueAttr) {
+    return sortableItems(list, itemSelector).map(item => item.dataset[valueAttr] || '').join('|');
+}
+
+function setOrderStatus(el, text, isError = false) {
+    if (!el) return;
+    el.textContent = text || '';
+    el.style.color = isError ? 'var(--red)' : 'var(--text-muted)';
+}
+
+async function saveJsonOrder(url, payload) {
+    const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify(payload)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Не удалось сохранить порядок');
+    }
+    return result;
+}
+
+function clearDropMarks(list, itemSelector) {
+    sortableItems(list, itemSelector).forEach(item => {
+        item.classList.remove('is-drop-before', 'is-drop-after');
+    });
+}
+
+function initDragOrder({
+    list,
+    itemSelector,
+    valueAttr,
+    endpoint,
+    payloadKey,
+    statusEl,
+    sameGroupAttr = ''
+}) {
+    if (!list) return;
+    let dragged = null;
+    let startSignature = '';
+
+    list.addEventListener('dragstart', event => {
+        const handle = event.target.closest('.drag-handle');
+        if (!handle || !list.contains(handle)) {
+            event.preventDefault();
+            return;
+        }
+        const item = handle.closest(itemSelector);
+        if (!item) {
+            event.preventDefault();
+            return;
+        }
+        dragged = item;
+        startSignature = sortableSignature(list, itemSelector, valueAttr);
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', item.dataset[valueAttr] || '');
+        setTimeout(() => item.classList.add('is-dragging'), 0);
+    });
+
+    list.addEventListener('dragover', event => {
+        if (!dragged) return;
+        const target = event.target.closest(itemSelector);
+        if (!target || target === dragged || !list.contains(target)) return;
+        if (sameGroupAttr && target.dataset[sameGroupAttr] !== dragged.dataset[sameGroupAttr]) return;
+
+        event.preventDefault();
+        const rect = target.getBoundingClientRect();
+        const insertAfter = event.clientY > rect.top + rect.height / 2;
+        clearDropMarks(list, itemSelector);
+        target.classList.add(insertAfter ? 'is-drop-after' : 'is-drop-before');
+        if (insertAfter) {
+            target.after(dragged);
+        } else {
+            target.before(dragged);
+        }
+    });
+
+    list.addEventListener('dragend', async () => {
+        if (!dragged) return;
+        const changed = startSignature !== sortableSignature(list, itemSelector, valueAttr);
+        dragged.classList.remove('is-dragging');
+        dragged = null;
+        clearDropMarks(list, itemSelector);
+        if (!changed) return;
+
+        const values = sortableItems(list, itemSelector)
+            .map(item => item.dataset[valueAttr])
+            .filter(Boolean);
+        setOrderStatus(statusEl, 'Сохраняем порядок...');
+        try {
+            await saveJsonOrder(endpoint, {[payloadKey]: values});
+            setOrderStatus(statusEl, 'Порядок сохранён');
+        } catch (error) {
+            setOrderStatus(statusEl, error.message, true);
+        }
+    });
+}
+
 document.getElementById('imageViewer').addEventListener('click', (event) => {
     if (event.target.id === 'imageViewer') closeImageViewer();
 });
@@ -1684,6 +1872,27 @@ document.addEventListener('keydown', (event) => {
 
 initPhotoDropzone();
 initDepartmentAutocomplete();
+initDragOrder({
+    list: document.querySelector('[data-contact-order-list]'),
+    itemSelector: '[data-contact-row]',
+    valueAttr: 'contactId',
+    endpoint: contactReorderUrl,
+    payloadKey: 'contact_ids',
+    statusEl: document.querySelector('[data-contact-order-status]'),
+    sameGroupAttr: 'departmentName'
+});
+initDragOrder({
+    list: document.querySelector('[data-department-order-list]'),
+    itemSelector: '[data-department-order-row]',
+    valueAttr: 'departmentName',
+    endpoint: departmentReorderUrl,
+    payloadKey: 'names',
+    statusEl: document.querySelector('[data-department-order-status]')
+});
+document.querySelectorAll('[data-auto-grow]').forEach(el => {
+    resizeAutoGrowField(el);
+    el.addEventListener('input', () => resizeAutoGrowField(el));
+});
 </script>
 </body>
 </html>

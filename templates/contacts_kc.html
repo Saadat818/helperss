@@ -129,7 +129,7 @@
             flex: 1 1 auto;
             min-width: 0;
             overflow: hidden;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 600;
             line-height: 1.24;
             overflow-wrap: anywhere;
@@ -473,6 +473,13 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .contact-action.phone-action {
+            min-height: 40px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            text-overflow: clip;
+            line-height: 1.25;
+        }
 
         .contact-action:hover {
             border-color: var(--primary);
@@ -717,7 +724,7 @@
     {% set contact_phone = contact.phone or contact.mobile %}
     <div class="contact-actions">
         {% if contact_phone %}
-        <button class="contact-action" type="button" data-copy="{{ contact_phone }}">☎ {{ contact_phone }}</button>
+        <button class="contact-action phone-action" type="button" data-copy="{{ contact_phone }}">☎ {{ contact_phone }}</button>
         {% endif %}
         {% if contact.extension and contact.extension != contact_phone %}
         <button class="contact-action" type="button" data-copy="{{ contact.extension }}">вн. {{ contact.extension }}</button>
@@ -964,7 +971,7 @@ function contactCardHtml(contact) {
     const showExtension = contact.extension &&
         extensionValue !== normalizedContactValue(primaryPhone);
     const actions = [
-        primaryPhone ? `<button class="contact-action" type="button" data-copy="${escapeHtml(primaryPhone)}">☎ ${escapeHtml(primaryPhone)}</button>` : '',
+        primaryPhone ? `<button class="contact-action phone-action" type="button" data-copy="${escapeHtml(primaryPhone)}">☎ ${escapeHtml(primaryPhone)}</button>` : '',
         showExtension ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.extension)}">вн. ${escapeHtml(contact.extension)}</button>` : '',
         contact.telegram ? `<button class="contact-action" type="button" data-copy="${escapeHtml(contact.telegram)}">${escapeHtml(contact.telegram)}</button>` : ''
     ].join('');

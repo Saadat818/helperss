@@ -281,6 +281,7 @@ class ContactsManager:
         conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0)
         conn.row_factory = sqlite3.Row
         conn.create_function("unicode_casefold", 1, lambda value: str(value or "").casefold())
+        conn.create_function("digits_only", 1, lambda value: ContactsManager._digits_only(value))
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         return conn
@@ -460,6 +461,16 @@ class ContactsManager:
             return int(value)
         except (TypeError, ValueError):
             return default
+
+    @staticmethod
+    def _digits_only(value) -> str:
+        return re.sub(r"\D+", "", str(value or ""))
+
+    @staticmethod
+    def _search_tokens(value: str, limit: int = 8) -> List[str]:
+        text = ContactsManager._clean(value, 200).casefold()
+        tokens = [token for token in re.split(r"\s+", text) if token]
+        return tokens[:limit]
 
     @staticmethod
     def _department_key(value: str) -> str:
@@ -817,8 +828,8 @@ class ContactsManager:
         position = contact.get("position") or ""
         return (
             *self._department_sort_key(department, context),
-            self._group_role_rank(contact.get("group_role") or "", position),
             self._int_value(contact.get("sort_order"), 0),
+            self._group_role_rank(contact.get("group_role") or "", position),
             str(contact.get("created_at") or ""),
             self._int_value(contact.get("id"), 0),
             str(contact.get("full_name") or "").lower(),
@@ -1233,6 +1244,77 @@ class ContactsManager:
             conn.commit()
             return {"success": True}
 
+    def save_department_order(self, names: List[str], actor: str = "") -> Dict:
+        context = self._department_context()
+        ordered_records = []
+        seen = set()
+        for name in names:
+            canonical = self._canonical_department(name, context)
+            record = self._department_record(canonical, context)
+            key = self._department_key(canonical)
+            if not record or not key or key in seen:
+                continue
+            seen.add(key)
+            ordered_records.append(record)
+
+        if not ordered_records:
+            return {"success": False, "error": "Нет отделов для сохранения порядка"}
+
+        by_parent: Dict[tuple, List[Dict]] = {}
+        for record in ordered_records:
+            parent_path = tuple(record.get("path")[:-1])
+            by_parent.setdefault(parent_path, []).append(record)
+
+        now = self._now()
+        updated = 0
+        with self._connect() as conn:
+            for siblings in by_parent.values():
+                for index, record in enumerate(siblings, start=1):
+                    sort_order = index * 10
+                    if record.get("source") == "custom":
+                        conn.execute("""
+                            UPDATE cc_departments
+                            SET sort_order = ?, updated_by = ?, updated_at = ?
+                            WHERE id = ? AND is_active = 1
+                        """, (sort_order, actor, now, int(record.get("id") or 0)))
+                        updated += 1
+                        continue
+
+                    original_name = record.get("original_name") or record.get("name") or ""
+                    parent_path = tuple(record.get("path")[:-1])
+                    parent_name = parent_path[-1] if parent_path else ""
+                    aliases = "\n".join(record.get("aliases") or ())
+                    conn.execute("""
+                        INSERT INTO cc_department_overrides (
+                            original_name, name, parent_name, kind, aliases, sort_order, is_active,
+                            created_by, updated_by, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                        ON CONFLICT(original_name) DO UPDATE SET
+                            name = excluded.name,
+                            parent_name = excluded.parent_name,
+                            kind = excluded.kind,
+                            aliases = excluded.aliases,
+                            sort_order = excluded.sort_order,
+                            is_active = 1,
+                            updated_by = excluded.updated_by,
+                            updated_at = excluded.updated_at
+                    """, (
+                        original_name,
+                        record.get("name") or original_name,
+                        parent_name,
+                        self._department_kind(record.get("kind")),
+                        aliases,
+                        sort_order,
+                        actor,
+                        actor,
+                        now,
+                        now,
+                    ))
+                    updated += 1
+            conn.commit()
+
+        return {"success": True, "updated": updated}
+
     def delete_department(self, department_id: int) -> Dict:
         with self._connect() as conn:
             row = conn.execute("""
@@ -1263,6 +1345,51 @@ class ContactsManager:
             conn.execute("DELETE FROM cc_departments WHERE id = ?", (department_id,))
             conn.commit()
             return {"success": True}
+
+    def save_contact_order(self, contact_ids: List[int], actor: str = "") -> Dict:
+        ids = []
+        seen = set()
+        for value in contact_ids:
+            try:
+                contact_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if contact_id <= 0 or contact_id in seen:
+                continue
+            seen.add(contact_id)
+            ids.append(contact_id)
+
+        if not ids:
+            return {"success": False, "error": "Нет сотрудников для сохранения порядка"}
+
+        placeholders = ",".join("?" for _ in ids)
+        now = self._now()
+        with self._connect() as conn:
+            rows = conn.execute(f"""
+                SELECT id, department
+                FROM cc_contacts
+                WHERE id IN ({placeholders})
+            """, ids).fetchall()
+            departments_by_id = {int(row["id"]): self._department_key(row["department"]) for row in rows}
+            by_department: Dict[str, List[int]] = {}
+            for contact_id in ids:
+                department_key = departments_by_id.get(contact_id)
+                if department_key is None:
+                    continue
+                by_department.setdefault(department_key, []).append(contact_id)
+
+            updated = 0
+            for department_ids in by_department.values():
+                for index, contact_id in enumerate(department_ids, start=1):
+                    conn.execute("""
+                        UPDATE cc_contacts
+                        SET sort_order = ?, updated_by = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (index * 10, actor, now, contact_id))
+                    updated += 1
+            conn.commit()
+
+        return {"success": True, "updated": updated}
 
     # ─── Контакты ─────────────────────────────────────────────────
 
@@ -1328,26 +1455,43 @@ class ContactsManager:
             params.extend(department_values)
         q = self._clean(q, 200)
         if q:
-            needle = q.casefold()
-            query += """
-                AND (
-                    instr(unicode_casefold(c.full_name), ?) > 0
-                    OR instr(unicode_casefold(c.position), ?) > 0
-                    OR instr(unicode_casefold(c.department), ?) > 0
-                    OR instr(unicode_casefold(c.phone), ?) > 0
-                    OR instr(unicode_casefold(c.extension), ?) > 0
-                    OR instr(unicode_casefold(c.mobile), ?) > 0
-                    OR instr(unicode_casefold(c.telegram), ?) > 0
-                    OR instr(unicode_casefold(c.nickname), ?) > 0
-                    OR instr(unicode_casefold(c.workplace), ?) > 0
-                    OR instr(unicode_casefold(c.responsibilities), ?) > 0
-                    OR instr(unicode_casefold(c.tags), ?) > 0
-                    OR instr(unicode_casefold(c.inactive_reason), ?) > 0
-                    OR instr(unicode_casefold(c.inactive_date), ?) > 0
-                    OR instr(unicode_casefold(c.inactive_comment), ?) > 0
+            text_expr = """
+                unicode_casefold(
+                    COALESCE(c.full_name, '') || ' ' ||
+                    COALESCE(c.position, '') || ' ' ||
+                    COALESCE(c.department, '') || ' ' ||
+                    COALESCE(c.phone, '') || ' ' ||
+                    COALESCE(c.extension, '') || ' ' ||
+                    COALESCE(c.mobile, '') || ' ' ||
+                    COALESCE(c.telegram, '') || ' ' ||
+                    COALESCE(c.nickname, '') || ' ' ||
+                    COALESCE(c.workplace, '') || ' ' ||
+                    COALESCE(c.responsibilities, '') || ' ' ||
+                    COALESCE(c.tags, '') || ' ' ||
+                    COALESCE(c.inactive_reason, '') || ' ' ||
+                    COALESCE(c.inactive_date, '') || ' ' ||
+                    COALESCE(c.inactive_comment, '')
                 )
             """
-            params.extend([needle] * 14)
+            phone_digits_expr = """
+                digits_only(
+                    COALESCE(c.phone, '') || ' ' ||
+                    COALESCE(c.extension, '') || ' ' ||
+                    COALESCE(c.mobile, '')
+                )
+            """
+            token_conditions = []
+            for token in self._search_tokens(q):
+                token_digits = self._digits_only(token)
+                condition = f"(instr({text_expr}, ?) > 0"
+                params.append(token)
+                if token_digits:
+                    condition += f" OR instr({phone_digits_expr}, ?) > 0"
+                    params.append(token_digits)
+                condition += ")"
+                token_conditions.append(condition)
+            if token_conditions:
+                query += " AND " + " AND ".join(token_conditions)
         return query, params
 
     def get_contact(self, contact_id: int) -> Optional[Dict]:

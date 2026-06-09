@@ -43,7 +43,7 @@
             <span class="nav-emoji" aria-hidden="true">☎️</span>
             <span class="nav-label">Контакты и направления КЦ</span>
         </a>
-        {% if session.get('admin_logged_in') %}
+        {% if session.get('admin_logged_in') or employee_board_public_enabled %}
             <a href="{{ url_for('employee_board') }}" class="nav-item {% if active_page == 'employee_board' %}active{% endif %}" title="Белая / Чёрная доска" aria-label="Белая / Чёрная доска">
                 <span class="nav-emoji" aria-hidden="true">◐</span>
                 <span class="nav-label">Белая / Чёрная доска</span>

@@ -424,12 +424,14 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max request size (DoS protection)
 
 BRANCH_SECTION_ENABLED = os.getenv('HELPER_BRANCH_SECTION_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+EMPLOYEE_BOARD_PUBLIC_ENABLED = os.getenv('HELPER_EMPLOYEE_BOARD_PUBLIC_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
 
 
 @app.context_processor
 def inject_feature_flags():
     return {
         'branch_section_enabled': BRANCH_SECTION_ENABLED,
+        'employee_board_public_enabled': EMPLOYEE_BOARD_PUBLIC_ENABLED,
     }
 
 
@@ -2989,7 +2991,7 @@ def handle_ticket_reject_prompt(call):
         bot.answer_callback_query(call.id, "Укажите причину отклонения ответом на заявку")
         prompt_msg = bot.send_message(
             TECH_SUPPORT_CHAT_ID,
-            f"❌ Для отклонения заявки №{ticket_number or '—'} ответьте на исходную заявку причиной:\n"
+            f"❌ Для отклонения заявки №{ticket_number or '—'} ответьте на это сообщение причиной:\n"
             f"<code>причина отклонения</code>",
             message_thread_id=NEW_TICKETS_THREAD_ID,
             parse_mode='HTML',
@@ -3583,7 +3585,7 @@ def _admin_employee_board_return(extra: dict | None = None):
 @app.route('/employee_board')
 def employee_board():
     """Белая/Чёрная доска. Пока доступна только администраторам."""
-    if not session.get('admin_logged_in'):
+    if not session.get('admin_logged_in') and not EMPLOYEE_BOARD_PUBLIC_ENABLED:
         if 'user_info' not in session or not session.get('authenticated'):
             return redirect(url_for('user_login'))
         return redirect(url_for('choose_help_type'))
@@ -5782,19 +5784,11 @@ def handle_channel_messages(message):
             actor_override = _staff_actor_from_message(message)
             problem = parsed.get('problem') or original_ticket_text
             rejection_reason = _parse_rejection_reason(message.text or '')
-            is_ticket_message = bool(re.search(
-                r'заявк[аеиу]\s*№\s*\d+',
-                original_ticket_text or '',
-                flags=re.IGNORECASE
-            ))
-            is_ticket_reply = (
-                ticket_number is not None and (prompt_context is not None or is_ticket_message)
-            )
-            plain_rejection_reason = _plain_rejection_reason(message.text or '') if is_ticket_reply else ''
+            plain_rejection_reason = _plain_rejection_reason(message.text or '') if prompt_context is not None else ''
             if not rejection_reason:
                 rejection_reason = plain_rejection_reason
             is_rejection_reply = bool(rejection_reason) and (
-                'отклон' in text or bool(plain_rejection_reason)
+                'отклон' in text or prompt_context is not None
             )
             is_ticket_action = (
                 "массовый инцидент" in text or

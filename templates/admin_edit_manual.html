@@ -575,6 +575,14 @@
                 <input type="text" id="title" name="title" value="{{ manual.title | e }}" required maxlength="200">
             </div>
 
+            <div class="form-group">
+                <label for="segment">Раздел:</label>
+                <select id="segment" name="segment">
+                    <option value="kc" {% if manual.segment|default('kc') == 'kc' %}selected{% endif %}>Контакт-центр</option>
+                    <option value="branch" {% if manual.segment|default('kc') == 'branch' %}selected{% endif %}>Филиалы</option>
+                </select>
+            </div>
+
             {% if manual.subproblems %}
                 {% for subproblem_id, subproblem in manual.subproblems.items() %}
                     <div class="subproblem-section">

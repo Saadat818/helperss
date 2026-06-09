@@ -1468,6 +1468,7 @@
         <div class="nav-section">Контент</div>
         {% if can_manuals %}
             <a class="nav-link" href="{{ url_for('admin_manuals') }}"><span class="nav-icon">M</span>Мануалы</a>
+            <a class="nav-link" href="{{ url_for('admin_branch') }}"><span class="nav-icon">F</span>Филиалы</a>
             <a class="nav-link" href="{{ url_for('admin_contacts_kc') }}"><span class="nav-icon">K</span>Контакты КЦ</a>
             <a class="nav-link" href="{{ url_for('admin_employee_board') }}"><span class="nav-icon">B</span>Белая / Чёрная доска</a>
         {% endif %}
@@ -1843,6 +1844,7 @@
                             <a class="quick-link" href="{{ url_for('admin_users') }}"><span>Администраторы и роли</span><span>Открыть</span></a>
                         {% endif %}
                         {% if can_manuals %}
+                            <a class="quick-link" href="{{ url_for('admin_branch') }}"><span>Филиалы</span><span>Открыть</span></a>
                             <a class="quick-link" href="{{ url_for('admin_contacts_kc') }}"><span>Контакты КЦ</span><span>Открыть</span></a>
                             <a class="quick-link" href="{{ url_for('admin_employee_board') }}"><span>Белая / Чёрная доска</span><span>Открыть</span></a>
                         {% endif %}

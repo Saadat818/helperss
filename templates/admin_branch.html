@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админка филиалов — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        .admin-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .stat-box {
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .feedback-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .feedback-table th,
+        .feedback-table td {
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            vertical-align: top;
+            font-size: var(--text-sm);
+        }
+        .feedback-table th {
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+        @media (max-width: 1000px) {
+            .admin-grid,
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'branch' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
+
+    <main class="main-content">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Админка</div>
+                    <h1 class="page-title">Филиалы</h1>
+                    <p class="page-subtitle">Управление филиальными мануалами, тренажёром и аналитикой понятности.</p>
+                </div>
+                <a class="btn btn-secondary" href="{{ url_for('admin_dashboard') }}">Общая админка</a>
+            </header>
+
+            <section class="admin-grid">
+                <a class="section-card" href="{{ url_for('admin_manuals', segment='branch') }}">
+                    <div class="card-body">
+                        <div class="card-title">Мануалы филиалов</div>
+                        <div class="card-desc">Создание и редактирование инструкций филиалов.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+                <a class="section-card" href="{{ url_for('admin_trainer_segment', segment='branch') }}">
+                    <div class="card-body">
+                        <div class="card-title">Тренажёр филиалов</div>
+                        <div class="card-desc">Сценарии и тесты филиального сегмента.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+                <a class="section-card" href="{{ url_for('branch_home') }}">
+                    <div class="card-body">
+                        <div class="card-title">Публичный раздел</div>
+                        <div class="card-desc">Открыть пользовательскую страницу филиалов.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+            </section>
+
+            <section class="panel panel-pad">
+                <div class="page-kicker">Аналитика мануалов</div>
+                <h2 class="card-title" style="margin-bottom:14px;">Понятность филиальных инструкций</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value">{{ feedback.summary.total }}</div>
+                        <div class="card-desc">Всего ответов</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">{{ feedback.summary.understood }}</div>
+                        <div class="card-desc">Понятно</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">{{ feedback.summary.not_understood }}</div>
+                        <div class="card-desc">Непонятно</div>
+                    </div>
+                </div>
+
+                {% if feedback.recent %}
+                    <table class="feedback-table">
+                        <thead>
+                            <tr>
+                                <th>Дата</th>
+                                <th>Мануал</th>
+                                <th>Ответ</th>
+                                <th>Пользователь</th>
+                                <th>Комментарий</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in feedback.recent %}
+                            <tr>
+                                <td>{{ row.created_at }}</td>
+                                <td>{{ row.problem }}</td>
+                                <td>{{ 'Понятно' if row.event_type == 'manual_helped' else 'Непонятно' }}</td>
+                                <td>{{ row.user_name or row.department or '—' }}</td>
+                                <td>{{ row.comment or '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-state">
+                        <strong>Ответов пока нет</strong>
+                        Данные появятся после нажатий “Понятно” или “Непонятно” в филиальных мануалах.
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+    </main>
+</div>
+</body>
+</html>

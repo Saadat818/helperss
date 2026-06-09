@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% set manual_segment = manual_segment|default('kc') %}
+    {% set segment_info = segment_info|default({'name': 'Контакт-центр'}) %}
+    {% set feedback_mode = feedback_mode|default('ticket') %}
     <title>{{ manual_title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
     <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
@@ -93,7 +96,7 @@
     </style>
 </head>
 <body>
-{% set active_page = 'manuals' %}
+{% set active_page = 'branch' if manual_segment == 'branch' else 'manuals' %}
 <div class="app-shell">
     {% include '_app_sidebar.html' %}
 
@@ -101,9 +104,15 @@
         <div class="page">
             <header class="page-header">
                 <div>
-                    <div class="page-kicker">Инструкция</div>
+                    <div class="page-kicker">Инструкция — {{ segment_info.name }}</div>
                     <h1 class="page-title">{{ manual_title | e }}</h1>
-                    <p class="page-subtitle">Выполните шаги ниже. Если инструкция не поможет, Helper отправит заявку в техподдержку.</p>
+                    <p class="page-subtitle">
+                        {% if feedback_mode == 'understanding' %}
+                            Выполните шаги ниже и отметьте, был ли мануал понятен.
+                        {% else %}
+                            Выполните шаги ниже. Если инструкция не поможет, Helper отправит заявку в техподдержку.
+                        {% endif %}
+                    </p>
                 </div>
                 {% if back_url %}
                 <a href="{{ back_url }}" class="btn btn-secondary">
@@ -124,17 +133,19 @@
                     </video>
                 </div>
 
-                <div class="feedback-panel">
-                    <div class="card-title">Видео помогло решить проблему?</div>
-                    <div class="card-desc">Если нет, покажем пошаговую инструкцию или создадим заявку.</div>
-                    <div class="button-row">
-                        <button class="btn btn-primary" type="button" onclick="handleVideoFeedback('helped')">Да, помогло</button>
-                        <button class="btn btn-secondary" type="button" onclick="handleVideoFeedback('not_helped')">Нет, показать шаги</button>
+                {% if feedback_mode != 'understanding' %}
+                    <div class="feedback-panel">
+                        <div class="card-title">Видео помогло решить проблему?</div>
+                        <div class="card-desc">Если нет, покажем пошаговую инструкцию или создадим заявку.</div>
+                        <div class="button-row">
+                            <button class="btn btn-primary" type="button" onclick="handleVideoFeedback('helped')">Да, помогло</button>
+                            <button class="btn btn-secondary" type="button" onclick="handleVideoFeedback('not_helped')">Нет, показать шаги</button>
+                        </div>
                     </div>
-                </div>
+                {% endif %}
                 {% endif %}
 
-                {% if not video_data or skip_video_feedback %}
+                {% if feedback_mode == 'understanding' or not video_data or skip_video_feedback %}
                     {% if photo_urls_with_captions %}
                         {% for photo in photo_urls_with_captions %}
                         <div class="instruction-step">
@@ -150,17 +161,32 @@
                     {% elif not video_data %}
                     <div class="empty-state panel">
                         <strong>Инструкция с фотографиями отсутствует</strong>
-                        Можно сразу создать заявку в техподдержку.
+                        {{ 'Сообщите, понятен ли мануал, чтобы администратор филиала увидел это в аналитике.' if feedback_mode == 'understanding' else 'Можно сразу создать заявку в техподдержку.' }}
                     </div>
                     {% endif %}
 
                     <div class="feedback-panel">
-                        <div class="card-title">Проблема решена?</div>
-                        <div class="card-desc">Выберите результат, чтобы закрыть обращение или отправить заявку.</div>
-                        <div class="button-row">
-                            <button class="btn btn-primary" id="btn-solved" type="button" onclick="handleSolved()">Да, решена</button>
-                            <button class="btn btn-danger" id="btn-unsolved" type="button" onclick="handleUnsolved()">Нет, создать заявку</button>
-                        </div>
+                        {% if feedback_mode == 'understanding' %}
+                            <div class="card-title">Мануал был понятен?</div>
+                            <div class="card-desc">Ответ сохранится в аналитике филиалов. Заявка в техподдержку не создаётся.</div>
+                            <form method="post" action="{{ url_for('manual_feedback') }}" id="manualFeedbackForm">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="segment" value="{{ manual_segment }}">
+                                <input type="hidden" name="result" id="manualFeedbackResult" value="">
+                                <textarea name="comment" id="manualFeedbackComment" rows="3" maxlength="1000" placeholder="Если непонятно, кратко опишите что именно" style="display:none;width:100%;margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--card);color:var(--text);"></textarea>
+                                <div class="button-row">
+                                    <button class="btn btn-primary" type="button" onclick="submitManualFeedback('understood')">Понятно</button>
+                                    <button class="btn btn-secondary" type="button" onclick="submitManualFeedback('not_understood')">Непонятно</button>
+                                </div>
+                            </form>
+                        {% else %}
+                            <div class="card-title">Проблема решена?</div>
+                            <div class="card-desc">Выберите результат, чтобы закрыть обращение или отправить заявку.</div>
+                            <div class="button-row">
+                                <button class="btn btn-primary" id="btn-solved" type="button" onclick="handleSolved()">Да, решена</button>
+                                <button class="btn btn-danger" id="btn-unsolved" type="button" onclick="handleUnsolved()">Нет, создать заявку</button>
+                            </div>
+                        {% endif %}
                     </div>
                 {% endif %}
             </section>
@@ -219,6 +245,23 @@
     function handleVideoFeedback(result) {
         if (!startProcessing()) return;
         location.href = '/video_feedback/' + result;
+    }
+
+    function submitManualFeedback(result) {
+        const resultInput = document.getElementById('manualFeedbackResult');
+        const comment = document.getElementById('manualFeedbackComment');
+        const form = document.getElementById('manualFeedbackForm');
+        if (!resultInput || !form) return;
+
+        if (result === 'not_understood' && comment && comment.style.display === 'none') {
+            comment.style.display = 'block';
+            comment.focus();
+            return;
+        }
+
+        resultInput.value = result;
+        if (!startProcessing()) return;
+        form.submit();
     }
 </script>
 </body>

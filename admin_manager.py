@@ -194,6 +194,10 @@ class AdminManager:
         if 'can_add_screenshots' in data:
             manuals[manual_id]['can_add_screenshots'] = data['can_add_screenshots']
 
+        if 'segment' in data:
+            segment = str(data.get('segment') or 'kc').strip().lower()
+            manuals[manual_id]['segment'] = segment if segment in {'kc', 'branch'} else 'kc'
+
         return self.save_manuals(manuals)
 
     def delete_manual(self, manual_id: str) -> bool:

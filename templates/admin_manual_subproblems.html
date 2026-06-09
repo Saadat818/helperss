@@ -417,7 +417,7 @@
     <div class="container">
         <div class="header">
             <h1>📚 {{ manual.title | e }}</h1>
-            <a href="{{ url_for('admin_manuals') }}" class="btn btn-secondary">← Назад к списку</a>
+            <a href="{{ url_for('admin_manuals', segment=manual.segment|default('kc')) }}" class="btn btn-secondary">← Назад к списку</a>
         </div>
 
         {% with messages = get_flashed_messages() %}
@@ -429,6 +429,24 @@
                 </div>
             {% endif %}
         {% endwith %}
+
+        <form method="POST" action="{{ url_for('admin_update_manual', manual_id=manual_id) }}" class="add-subproblem-section">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:12px;align-items:end;">
+                <div>
+                    <label for="title">Название мануала</label>
+                    <input id="title" name="title" type="text" value="{{ manual.title | e }}" required maxlength="200">
+                </div>
+                <div>
+                    <label for="segment">Раздел</label>
+                    <select id="segment" name="segment">
+                        <option value="kc" {% if manual.segment|default('kc') == 'kc' %}selected{% endif %}>Контакт-центр</option>
+                        <option value="branch" {% if manual.segment|default('kc') == 'branch' %}selected{% endif %}>Филиалы</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success">Сохранить</button>
+            </div>
+        </form>
 
         <div class="add-subproblem-section">
             <a href="{{ url_for('admin_create_subproblem', manual_id=manual_id) }}" class="btn btn-success">➕ Добавить подпроблему</a>

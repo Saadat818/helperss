@@ -418,12 +418,15 @@
     </a>
     <div class="container">
         <div class="header">
-            <h1>Панель администратора</h1>
+            {% set manual_segment = manual_segment|default('kc') %}
+            {% set segment_info = segment_info|default({'name': 'Контакт-центр'}) %}
+            <h1>Панель администратора — {{ segment_info.name }}</h1>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 {% set perms = session.get('admin_permissions', []) %}
                 <a href="{{ url_for('choose_help_type') }}" class="btn btn-primary">🏠 На Главную</a>
                 {% if 'super_admin' in perms or 'admin_manuals' in perms %}
-                    <a href="{{ url_for('admin_create_manual') }}" class="btn btn-primary">📚 Мануалы</a>
+                    <a href="{{ url_for('admin_create_manual', segment=manual_segment) }}" class="btn btn-primary">📚 Создать мануал</a>
+                    <a href="{{ url_for('admin_branch') }}" class="btn btn-primary">🏦 Филиалы</a>
                 {% endif %}
                 {% if 'super_admin' in perms or 'admin_manuals' in perms %}
                     <a href="{{ url_for('admin_contacts_kc') }}" class="btn btn-primary">☎️ Контакты КЦ</a>
@@ -457,6 +460,11 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+            <a href="{{ url_for('admin_manuals', segment='kc') }}" class="btn {% if manual_segment == 'kc' %}btn-primary{% else %}btn-secondary{% endif %}">Контакт-центр</a>
+            <a href="{{ url_for('admin_manuals', segment='branch') }}" class="btn {% if manual_segment == 'branch' %}btn-primary{% else %}btn-secondary{% endif %}">Филиалы</a>
+        </div>
 
         <!-- Виджет онлайн-статистики (только для super_admin) -->
         {% if 'super_admin' in session.get('admin_permissions', []) %}
@@ -566,6 +574,7 @@
                 {% for manual_id, manual in manuals.items() %}
                     <div class="manual-card">
                         <div class="manual-title">{{ manual.title | e }}</div>
+                        <div class="subproblems-count">Раздел: {{ 'Филиалы' if manual.segment|default('kc') == 'branch' else 'Контакт-центр' }}</div>
                         <div class="subproblems-count">
                             {% if manual.subproblems %}
                                 Подпроблем: {{ manual.subproblems | length }}
@@ -577,6 +586,7 @@
                             <a href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}" class="btn btn-primary">Редактировать</a>
                             <form method="POST" action="{{ url_for('admin_delete_manual', manual_id=manual_id) }}" style="display: inline;" onsubmit="return confirm('⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить мануал:\n{{ manual.title | e }}{%- if manual.subproblems and manual.subproblems | length > 0 %}\n\nЭтот мануал содержит {{ manual.subproblems | length }} подпроблем(ы).{%- endif %}\n\nВсе данные будут удалены безвозвратно!\n\nПродолжить удаление?');">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="return_segment" value="{{ manual_segment }}">
                                 <button type="submit" class="btn btn-danger">Удалить</button>
                             </form>
                         </div>

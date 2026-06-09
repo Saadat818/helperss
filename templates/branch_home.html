@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Филиалы — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        .branch-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        @media (max-width: 900px) {
+            .branch-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'branch' %}
+<div class="app-shell">
+    {% include '_app_sidebar.html' %}
+
+    <main class="main-content">
+        <div class="page">
+            <header class="page-header">
+                <div>
+                    <div class="page-kicker">Отдельный раздел</div>
+                    <h1 class="page-title">Филиалы</h1>
+                    <p class="page-subtitle">Материалы для сотрудников филиалов: инструкции без заявок в техподдержку и отдельный тренажёр.</p>
+                </div>
+            </header>
+
+            <section class="branch-grid">
+                <a href="{{ url_for('branch_manuals') }}" class="section-card featured">
+                    <div class="card-icon-wrap" style="background:var(--blue-light);color:var(--blue);">
+                        <span class="card-emoji" aria-hidden="true">📚</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Мануалы</div>
+                        <div class="card-desc">Частые вопросы и инструкции филиалов с фиксацией понятности.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+
+                <a href="{{ url_for('branch_trainer') }}" class="section-card">
+                    <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">
+                        <span class="card-emoji" aria-hidden="true">🎯</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">Тренажёр</div>
+                        <div class="card-desc">Практика и тестовые сценарии отдельно для филиалов.</div>
+                    </div>
+                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </a>
+            </section>
+        </div>
+    </main>
+</div>
+</body>
+</html>

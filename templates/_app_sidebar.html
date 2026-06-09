@@ -29,6 +29,10 @@
             <span class="nav-emoji" aria-hidden="true">📚</span>
             <span class="nav-label">Мануалы</span>
         </a>
+        <a href="{{ url_for('branch_home') }}" class="nav-item {% if active_page == 'branch' %}active{% endif %}" title="Филиалы" aria-label="Филиалы">
+            <span class="nav-emoji" aria-hidden="true">🏦</span>
+            <span class="nav-label">Филиалы</span>
+        </a>
         <a href="{{ url_for('search_topics') }}" class="nav-item {% if active_page == 'topics' %}active{% endif %}" title="Тематики" aria-label="Тематики">
             <span class="nav-emoji" aria-hidden="true">🏷️</span>
             <span class="nav-label">Тематики</span>

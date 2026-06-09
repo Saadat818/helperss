@@ -2300,6 +2300,60 @@ def load_manuals():
     """Загружает мануалы из JSON файла при каждом запросе"""
     return admin_manager.load_manuals()
 
+
+MANUAL_SEGMENTS = {
+    'kc': {
+        'name': 'Контакт-центр',
+        'kicker': 'База инструкций КЦ',
+        'subtitle': 'Выберите проблему. Helper покажет инструкцию или поможет отправить заявку в техподдержку.',
+        'feedback_mode': 'ticket',
+    },
+    'branch': {
+        'name': 'Филиалы',
+        'kicker': 'База инструкций филиалов',
+        'subtitle': 'Выберите вопрос. Helper покажет инструкцию и зафиксирует, был ли мануал понятен.',
+        'feedback_mode': 'understanding',
+    },
+}
+
+
+def _manual_segment(value: str | None = None) -> str:
+    segment = str(value or 'kc').strip().lower()
+    return segment if segment in MANUAL_SEGMENTS else 'kc'
+
+
+def _manual_segment_info(segment: str | None = None) -> dict:
+    return MANUAL_SEGMENTS[_manual_segment(segment)]
+
+
+def _manual_item_segment(manual: dict | None) -> str:
+    return _manual_segment((manual or {}).get('segment') or 'kc')
+
+
+def _filter_manuals_by_segment(manuals: dict, segment: str) -> dict:
+    segment = _manual_segment(segment)
+    return {
+        manual_id: manual
+        for manual_id, manual in (manuals or {}).items()
+        if _manual_item_segment(manual) == segment
+    }
+
+
+def _manual_belongs_to_segment(manual: dict | None, segment: str) -> bool:
+    return _manual_item_segment(manual) == _manual_segment(segment)
+
+
+def _manual_back_url(segment: str, problem_id: str | None = None) -> str:
+    segment = _manual_segment(segment)
+    if problem_id:
+        return (
+            url_for('select_problem_segment', segment=segment, problem_id=problem_id)
+            if segment != 'kc'
+            else url_for('select_problem', problem_id=problem_id)
+        )
+    return url_for('show_problems_segment', segment=segment) if segment != 'kc' else url_for('show_problems')
+
+
 def create_ticket_buttons():
     """Создает кнопки статусов для заявки."""
     markup = InlineKeyboardMarkup(row_width=2)
@@ -3201,6 +3255,26 @@ def choose_help_type():
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
     return render_template('choose_help_type.html', user_info=session['user_info'])
+
+
+@app.route('/branch')
+def branch_home():
+    """Раздел филиалов: отдельные мануалы и тренажер."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+    return render_template('branch_home.html', user_info=session['user_info'])
+
+
+@app.route('/branch/manuals')
+def branch_manuals():
+    """Мануалы филиалов."""
+    return _show_problems_for_segment('branch')
+
+
+@app.route('/branch/trainer')
+def branch_trainer():
+    """Тренажер филиалов."""
+    return redirect(url_for('trainer_segment_menu', segment='branch'))
 
 
 @app.route('/my_tickets')
@@ -4310,29 +4384,61 @@ def submit_pending_selected_topic():
 
 @app.route('/problems')
 def show_problems():
-    """Страница мануалов - требует указания рабочего места"""
+    """Старый маршрут мануалов: по умолчанию КЦ."""
+    return _show_problems_for_segment('kc')
+
+
+@app.route('/problems/<string:segment>')
+def show_problems_segment(segment):
+    """Страница мануалов выбранного сегмента."""
+    return _show_problems_for_segment(segment)
+
+
+def _manual_access_redirect(segment: str):
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
 
-    # Проверяем наличие workplace, если нет - запрашиваем
     if not session['user_info'].get('workplace'):
+        if _manual_segment(segment) != 'kc':
+            session['next_after_workplace_url'] = request.full_path.rstrip('?')
         session['next_after_workplace'] = 'show_problems'
         return redirect(url_for('enter_workplace'))
 
-    # Загружаем актуальные мануалы из JSON
-    return render_template('problems.html', manuals=load_manuals())
+    return None
+
+
+def _show_problems_for_segment(segment: str):
+    """Страница мануалов - требует указания рабочего места."""
+    segment = _manual_segment(segment)
+    access_redirect = _manual_access_redirect(segment)
+    if access_redirect:
+        return access_redirect
+
+    manuals = _filter_manuals_by_segment(load_manuals(), segment)
+    return render_template(
+        'problems.html',
+        manuals=manuals,
+        manual_segment=segment,
+        segment_info=_manual_segment_info(segment),
+    )
 
 @app.route('/select_problem/<string:problem_id>')
 def select_problem(problem_id):
-    # Проверяем авторизацию по сессии
-    if 'user_info' not in session or not session.get('authenticated'):
-        print("[select_problem] No user_info in session, redirecting to login")
-        return redirect(url_for('user_login'))
+    """Старый маршрут выбора проблемы: по умолчанию КЦ."""
+    return _select_problem_for_segment('kc', problem_id)
 
-    # Проверяем наличие workplace
-    if not session['user_info'].get('workplace'):
-        session['next_after_workplace'] = 'show_problems'
-        return redirect(url_for('enter_workplace'))
+
+@app.route('/select_problem/<string:segment>/<string:problem_id>')
+def select_problem_segment(segment, problem_id):
+    """Выбор проблемы в конкретном сегменте."""
+    return _select_problem_for_segment(segment, problem_id)
+
+
+def _select_problem_for_segment(segment: str, problem_id: str):
+    segment = _manual_segment(segment)
+    access_redirect = _manual_access_redirect(segment)
+    if access_redirect:
+        return access_redirect
 
     # --- Проверяем корректность problem_id ---
     if not re.match(r'^\d+$', problem_id):
@@ -4343,10 +4449,10 @@ def select_problem(problem_id):
     manuals = load_manuals()
 
     # Проверяем что мануал существует
-    if problem_id not in manuals:
-        print(f"[select_problem] problem_id not in manuals: {problem_id}")
+    if problem_id not in manuals or not _manual_belongs_to_segment(manuals.get(problem_id), segment):
+        print(f"[select_problem] problem_id not in segment manuals: {problem_id}, segment={segment}")
         flash('Выбрана несуществующая проблема.')
-        return redirect(url_for('show_problems'))
+        return redirect(_manual_back_url(segment))
 
     problem_data = manuals.get(problem_id, {})
     safe_problem_id = m_escape(problem_id)
@@ -4354,6 +4460,7 @@ def select_problem(problem_id):
     # --- Есть подпроблемы ---
     if 'subproblems' in problem_data and isinstance(problem_data['subproblems'], dict):
         session['problem_id'] = problem_id
+        session['manual_segment'] = segment
 
         sanitized_subproblems = {}
         for sid, sub in problem_data['subproblems'].items():
@@ -4391,12 +4498,16 @@ def select_problem(problem_id):
             'subproblems.html',
             subproblems=sanitized_subproblems,
             problem_id=safe_problem_id,
-            version_hints=version_hints
+            version_hints=version_hints,
+            manual_segment=segment,
+            segment_info=_manual_segment_info(segment),
+            back_url=_manual_back_url(segment),
         )
 
     # --- Нет подпроблем — показываем мануал ---
     else:
         session['problem_id'] = problem_id
+        session['manual_segment'] = segment
         session.pop('current_subproblem_id', None)  # Очищаем старый subproblem_id
 
         raw_manual_title = problem_data.get('title', 'Проблема')
@@ -4406,11 +4517,11 @@ def select_problem(problem_id):
         # Если выбрана "Другая проблема" или "CISCO" — редиректим
         raw_title = str(raw_manual_title)
         raw_title_lower = raw_title.lower()
-        if 'другая проблема' in raw_title_lower:
+        if segment == 'kc' and 'другая проблема' in raw_title_lower:
             session['other_problem_type'] = 'other'
             print(f"[select_problem] Redirecting to other_problem (other) for problem_id: {problem_id}")
             return redirect(url_for('other_problem'))
-        if 'cisco' in raw_title_lower:
+        if segment == 'kc' and 'cisco' in raw_title_lower:
             session['other_problem_type'] = 'cisco'
             print(f"[select_problem] Redirecting to other_problem (cisco) for problem_id: {problem_id}")
             return redirect(url_for('other_problem'))
@@ -4451,30 +4562,50 @@ def select_problem(problem_id):
             photo_urls_with_captions=safe_photos,
             video_data=video_data,
             problem_id=safe_problem_id,
-            back_url=url_for('show_problems')
+            back_url=_manual_back_url(segment),
+            manual_segment=segment,
+            segment_info=_manual_segment_info(segment),
+            feedback_mode=_manual_segment_info(segment)['feedback_mode'],
         )
 
 @app.route('/show_manual/<string:subproblem_id>')
 def show_manual(subproblem_id):
+    """Старый маршрут подпроблемы: по умолчанию КЦ."""
+    return _show_manual_for_segment('kc', subproblem_id)
+
+
+@app.route('/show_manual/<string:segment>/<string:subproblem_id>')
+def show_manual_segment(segment, subproblem_id):
+    """Показ подпроблемы в конкретном сегменте."""
+    return _show_manual_for_segment(segment, subproblem_id)
+
+
+def _show_manual_for_segment(segment: str, subproblem_id: str):
+    segment = _manual_segment(segment)
     if 'user_info' not in session or 'problem_id' not in session:
         return redirect(url_for('index'))
 
     problem_id = session.get('problem_id')
+    session['manual_segment'] = segment
 
     # --- Проверка формата subproblem_id (только цифра.цифра, например "1.2") ---
     if not re.match(r'^\d\.\d$', subproblem_id):
         flash('Неверный идентификатор подпроблемы.')
-        return redirect(url_for('show_problems'))
+        return redirect(_manual_back_url(segment))
 
     # Получаем данные основной проблемы - загружаем актуальные мануалы из JSON
     manuals = load_manuals()
     problem_data = manuals.get(problem_id, {})
 
+    if not _manual_belongs_to_segment(problem_data, segment):
+        flash('Выбрана несуществующая подпроблема.')
+        return redirect(_manual_back_url(segment))
+
     # Проверяем, существует ли указанная подпроблема
     subproblems = problem_data.get('subproblems', {})
     if subproblem_id not in subproblems:
         flash('Выбрана несуществующая подпроблема.')
-        return redirect(url_for('show_problems'))
+        return redirect(_manual_back_url(segment))
 
     # Получаем данные подпроблемы
     subproblem_data = subproblems.get(subproblem_id, {})
@@ -4495,7 +4626,7 @@ def show_manual(subproblem_id):
     can_add_screenshots = subproblem_data.get('can_add_screenshots', False)
 
     # Если это подпроблема с возможностью добавления скриншотов и нет фотографий
-    if can_add_screenshots and not subproblem_data.get('photos'):
+    if segment == 'kc' and can_add_screenshots and not subproblem_data.get('photos'):
         telegram_redirect = _require_telegram_username_for_ticket('show_manual', {'subproblem_id': subproblem_id})
         if telegram_redirect:
             return telegram_redirect
@@ -4537,7 +4668,10 @@ def show_manual(subproblem_id):
         photo_urls_with_captions=safe_photos,
         video_data=safe_video,
         problem_id=problem_id,
-        back_url=url_for('select_problem', problem_id=problem_id)
+        back_url=_manual_back_url(segment, problem_id=problem_id),
+        manual_segment=segment,
+        segment_info=_manual_segment_info(segment),
+        feedback_mode=_manual_segment_info(segment)['feedback_mode'],
     )
 
 
@@ -4737,6 +4871,42 @@ def finish_solved():
     except Exception as e:
         print(f"Ошибка при отправке сообщения: {e}")
         return "Произошла ошибка, но сессия сохранена."
+
+
+@app.route('/manual_feedback', methods=['POST'])
+def manual_feedback():
+    """Фиксация понятности мануала без создания заявки."""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    segment = _manual_segment(request.form.get('segment') or session.get('manual_segment'))
+    result = str(request.form.get('result') or '').strip()
+    comment = str(request.form.get('comment') or '').strip()[:1000]
+    problem_description = str(session.get('problem_title') or 'Неизвестная инструкция')[:500]
+
+    if segment != 'branch':
+        return redirect(_manual_back_url('kc'))
+
+    if result not in {'understood', 'not_understood'}:
+        flash('Не удалось сохранить ответ по мануалу.')
+        return redirect(url_for('branch_manuals'))
+
+    is_understood = result == 'understood'
+    log_ticket_event(
+        event_type='manual_helped' if is_understood else 'manual_not_helped',
+        ticket_number=None,
+        problem=problem_description,
+        details={
+            'source': 'branch_manual_feedback',
+            'segment': 'branch',
+            'feedback': 'understood' if is_understood else 'not_understood',
+            'comment': comment,
+            'next_step': 'analytics_only',
+            'ticket_delivery': 'not_applicable',
+        }
+    )
+    flash('Спасибо, ответ по мануалу сохранён.')
+    return redirect(url_for('branch_manuals'))
 
 
 @app.route('/success')
@@ -5725,10 +5895,6 @@ def trainer_segment_menu(segment):
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
 
-    # Филиалы в разработке — доступны только администраторам
-    if segment == 'branch' and not session.get('admin_logged_in'):
-        return render_template('under_construction.html', segment_name='Филиалы')
-
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
     progress = trainer_mgr.get_user_progress(user_id, segment=segment)
@@ -5748,10 +5914,6 @@ def trainer_level(segment, level_code):
 
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
-
-    # Филиалы в разработке — доступны только администраторам
-    if segment == 'branch' and not session.get('admin_logged_in'):
-        return render_template('under_construction.html', segment_name='Филиалы')
 
     user_id = session['user_info'].get('username', 'anonymous')
     level = trainer_mgr.get_level_by_code(level_code)
@@ -8098,6 +8260,10 @@ def enter_workplace():
         session.modified = True
 
         # Возвращаемся туда, откуда пришли (или на главную)
+        next_url = session.pop('next_after_workplace_url', '')
+        if next_url and str(next_url).startswith('/'):
+            session.pop('next_after_workplace', None)
+            return redirect(next_url)
         next_page = session.pop('next_after_workplace', 'choose_help_type')
         return redirect(url_for(next_page))
 
@@ -8429,22 +8595,116 @@ def admin_dashboard_new():
 @AdminAuth.manuals_required
 def admin_manuals():
     """Старая страница управления мануалами."""
-    manuals = admin_manager.load_manuals()
-    return render_template('admin_dashboard.html', manuals=manuals)
+    segment = _manual_segment(request.args.get('segment') or 'kc')
+    manuals = _filter_manuals_by_segment(admin_manager.load_manuals(), segment)
+    return render_template(
+        'admin_dashboard.html',
+        manuals=manuals,
+        manual_segment=segment,
+        segment_info=_manual_segment_info(segment),
+        manual_segments=MANUAL_SEGMENTS,
+    )
+
+
+def _branch_manual_feedback_stats(limit: int = 50) -> dict:
+    events = ('manual_helped', 'manual_not_helped')
+    summary = {'understood': 0, 'not_understood': 0, 'total': 0}
+    recent = []
+    try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT event_type, COUNT(*) AS cnt
+                        FROM ticket_events
+                        WHERE event_type = ANY(%s)
+                          AND details_json->>'segment' = 'branch'
+                        GROUP BY event_type
+                    """, (list(events),))
+                    rows = cur.fetchall()
+                    cur.execute("""
+                        SELECT created_at::text AS created_at, event_type, problem,
+                               problem_id, subproblem_id, department, user_name, workplace,
+                               details_json
+                        FROM ticket_events
+                        WHERE event_type = ANY(%s)
+                          AND details_json->>'segment' = 'branch'
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                    """, (list(events), limit))
+                    recent = [dict(row) for row in cur.fetchall()]
+        else:
+            details_filter = "(details_json LIKE '%\"segment\": \"branch\"%' OR details_json LIKE '%\"segment\":\"branch\"%')"
+            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                placeholders = ",".join("?" * len(events))
+                rows = conn.execute(f"""
+                    SELECT event_type, COUNT(*) AS cnt
+                    FROM ticket_events
+                    WHERE event_type IN ({placeholders})
+                      AND {details_filter}
+                    GROUP BY event_type
+                """, events).fetchall()
+                recent = [dict(row) for row in conn.execute(f"""
+                    SELECT created_at, event_type, problem,
+                           problem_id, subproblem_id, department, user_name, workplace,
+                           details_json
+                    FROM ticket_events
+                    WHERE event_type IN ({placeholders})
+                      AND {details_filter}
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (*events, limit)).fetchall()]
+
+        for row in rows:
+            row_data = dict(row)
+            count = int(row_data.get('cnt') or 0)
+            if row_data.get('event_type') == 'manual_helped':
+                summary['understood'] += count
+            elif row_data.get('event_type') == 'manual_not_helped':
+                summary['not_understood'] += count
+        summary['total'] = summary['understood'] + summary['not_understood']
+        for row in recent:
+            details = row.get('details_json') or {}
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except Exception:
+                    details = {}
+            row['feedback'] = details.get('feedback') or ''
+            row['comment'] = details.get('comment') or ''
+        return {'summary': summary, 'recent': recent}
+    except Exception as e:
+        print(f"[branch_manual_feedback] Ошибка загрузки аналитики: {e}")
+        return {'summary': summary, 'recent': []}
+
+
+@app.route('/admin/branch')
+@AdminAuth.manuals_required
+def admin_branch():
+    """Админ-раздел филиалов."""
+    feedback = _branch_manual_feedback_stats(limit=80)
+    return render_template('admin_branch.html', feedback=feedback)
 
 
 @app.route('/admin/manual/create', methods=['GET', 'POST'])
 @AdminAuth.manuals_required
 def admin_create_manual():
     """Создание нового мануала"""
+    selected_segment = _manual_segment(request.values.get('segment') or 'kc')
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
         manual_type = request.form.get('manual_type', 'with_subproblems').strip()
+        selected_segment = _manual_segment(request.form.get('segment') or selected_segment)
 
         # Валидация
         if not title:
             flash('Название обязательно для заполнения')
-            return render_template('admin_create_manual.html')
+            return render_template(
+                'admin_create_manual.html',
+                manual_segments=MANUAL_SEGMENTS,
+                selected_segment=selected_segment,
+            )
 
         # Загружаем существующие мануалы
         manuals = admin_manager.load_manuals()
@@ -8472,12 +8732,14 @@ def admin_create_manual():
             # Простой мануал без подпроблем
             manuals[manual_id] = {
                 "title": sanitized_title,
+                "segment": selected_segment,
                 "photos": []
             }
         else:
             # Мануал с подпроблемами
             manuals[manual_id] = {
                 "title": sanitized_title,
+                "segment": selected_segment,
                 "subproblems": {}
             }
 
@@ -8487,10 +8749,18 @@ def admin_create_manual():
             return redirect(url_for('admin_edit_manual', manual_id=manual_id))
         else:
             flash('Ошибка при сохранении мануала')
-            return render_template('admin_create_manual.html')
+            return render_template(
+                'admin_create_manual.html',
+                manual_segments=MANUAL_SEGMENTS,
+                selected_segment=selected_segment,
+            )
 
     # GET request - показываем форму
-    return render_template('admin_create_manual.html')
+    return render_template(
+        'admin_create_manual.html',
+        manual_segments=MANUAL_SEGMENTS,
+        selected_segment=selected_segment,
+    )
 
 
 @app.route('/admin/manual/<string:manual_id>/edit')
@@ -8509,7 +8779,13 @@ def admin_edit_manual(manual_id):
 
     # Если есть поле subproblems - показываем список подпроблем (даже если пустой)
     if 'subproblems' in manual:
-        return render_template('admin_manual_subproblems.html', manual_id=manual_id, manual=manual)
+        return render_template(
+            'admin_manual_subproblems.html',
+            manual_id=manual_id,
+            manual=manual,
+            manual_segment=_manual_item_segment(manual),
+            segment_info=_manual_segment_info(manual.get('segment')),
+        )
 
     # Если нет поля subproblems - это простой мануал
     return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
@@ -8582,15 +8858,16 @@ def admin_create_subproblem(manual_id):
 @AdminAuth.manuals_required
 def admin_delete_manual(manual_id):
     """Удаление мануала"""
+    return_segment = _manual_segment(request.form.get('return_segment') or 'kc')
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_manuals'))
+        return redirect(url_for('admin_manuals', segment=return_segment))
 
     manuals = admin_manager.load_manuals()
 
     if manual_id not in manuals:
         flash('Мануал не найден')
-        return redirect(url_for('admin_manuals'))
+        return redirect(url_for('admin_manuals', segment=return_segment))
 
     manual_title = manuals[manual_id].get('title', 'Неизвестный мануал')
 
@@ -8602,7 +8879,7 @@ def admin_delete_manual(manual_id):
     else:
         flash('Ошибка при удалении мануала')
 
-    return redirect(url_for('admin_manuals'))
+    return redirect(url_for('admin_manuals', segment=return_segment))
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/delete', methods=['POST'])
@@ -8756,6 +9033,7 @@ def admin_update_manual(manual_id):
 
     # Обновляем только заголовок
     manual['title'] = title
+    manual['segment'] = _manual_segment(request.form.get('segment') or manual.get('segment') or 'kc')
 
     # Сохраняем изменения
     if admin_manager.update_manual(manual_id, title, manual):

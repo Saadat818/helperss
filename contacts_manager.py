@@ -1364,13 +1364,19 @@ class ContactsManager:
 
         placeholders = ",".join("?" for _ in ids)
         now = self._now()
+        context = self._department_context()
         with self._connect() as conn:
             rows = conn.execute(f"""
                 SELECT id, department
                 FROM cc_contacts
                 WHERE id IN ({placeholders})
             """, ids).fetchall()
-            departments_by_id = {int(row["id"]): self._department_key(row["department"]) for row in rows}
+            departments_by_id = {
+                int(row["id"]): self._department_key(
+                    self._canonical_department(row["department"] or "", context)
+                )
+                for row in rows
+            }
             by_department: Dict[str, List[int]] = {}
             for contact_id in ids:
                 department_key = departments_by_id.get(contact_id)
@@ -1378,8 +1384,34 @@ class ContactsManager:
                     continue
                 by_department.setdefault(department_key, []).append(contact_id)
 
+            affected_departments = set(by_department.keys())
+            all_rows = [
+                self._decorate_contact(dict(row), context)
+                for row in conn.execute("""
+                    SELECT id, department, position, group_role, sort_order, created_at, full_name
+                    FROM cc_contacts
+                """).fetchall()
+            ]
+            all_rows.sort(key=lambda item: self._contact_sort_key(item, context))
+            current_by_department: Dict[str, List[int]] = {}
+            for row in all_rows:
+                department_key = self._department_key(row.get("department") or "")
+                if department_key in affected_departments:
+                    current_by_department.setdefault(department_key, []).append(int(row.get("id") or 0))
+
             updated = 0
-            for department_ids in by_department.values():
+            for department_key, ordered_ids in by_department.items():
+                current_ids = current_by_department.get(department_key) or []
+                ordered_ids = [contact_id for contact_id in ordered_ids if contact_id in current_ids]
+                if not ordered_ids:
+                    continue
+
+                ordered_set = set(ordered_ids)
+                slots = [index for index, contact_id in enumerate(current_ids) if contact_id in ordered_set]
+                department_ids = list(current_ids)
+                for slot, contact_id in zip(slots, ordered_ids):
+                    department_ids[slot] = contact_id
+
                 for index, contact_id in enumerate(department_ids, start=1):
                     conn.execute("""
                         UPDATE cc_contacts

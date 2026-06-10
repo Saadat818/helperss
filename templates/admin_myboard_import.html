@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyBoard — импорт сценариев</title>
+    <style>
+        :root {
+            --bg:#0c0c0c; --card:#1a1a1a; --card2:#202020; --text:#e8e8e8;
+            --muted:#a8a8a8; --border:#2a2a2a; --green:#00a651;
+            --blue:#2196F3; --red:#e53935; --yellow:#f2b705;
+        }
+        body.light { --bg:#dde2ea; --card:#fff; --card2:#f8f9fa; --text:#1a1a2e; --muted:#606070; --border:#b8c4d0; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { min-height:100vh; background:var(--bg); color:var(--text); font-family:"Segoe UI",system-ui,Arial; }
+        .header { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px; padding:14px 20px; background:var(--card); border-bottom:1px solid var(--border); }
+        .back-btn { color:var(--muted); text-decoration:none; font-size:14px; padding:6px 12px; border-radius:8px; border:1px solid var(--border); }
+        .back-btn:hover { color:var(--text); border-color:var(--green); }
+        .header-title { font-size:17px; font-weight:800; }
+        .container { max-width:1080px; margin:0 auto; padding:24px 16px; }
+        .btn, .action-btn {
+            display:inline-flex; align-items:center; justify-content:center; gap:6px;
+            border:0; cursor:pointer; text-decoration:none; white-space:nowrap;
+            font-family:inherit; font-weight:700;
+        }
+        .btn { min-height:36px; padding:0 14px; border-radius:8px; font-size:14px; }
+        .action-btn { padding:6px 10px; border-radius:6px; font-size:12px; border:1px solid var(--border); background:var(--card2); color:var(--text); }
+        .btn-gray { background:var(--card2); color:var(--text); border:1px solid var(--border); }
+        .action-btn.blue { background:rgba(33,150,243,.15); color:var(--blue); border-color:rgba(33,150,243,.3); }
+        .action-btn.green { background:rgba(0,166,81,.15); color:var(--green); border-color:rgba(0,166,81,.3); }
+        .action-btn.yellow { background:rgba(242,183,5,.15); color:var(--yellow); border-color:rgba(242,183,5,.3); }
+        .action-btn[disabled] { opacity:.45; cursor:not-allowed; }
+        .flash { padding:12px 16px; border-radius:8px; margin-bottom:16px; font-size:14px; }
+        .flash.error { background:rgba(229,57,53,.15); color:var(--red); border:1px solid rgba(229,57,53,.3); }
+        .flash.success { background:rgba(0,166,81,.15); color:var(--green); border:1px solid rgba(0,166,81,.3); }
+        .status-card { display:grid; gap:10px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:18px; }
+        .status-title { font-size:14px; font-weight:800; }
+        .status-line { display:flex; flex-wrap:wrap; gap:8px; color:var(--muted); font-size:12px; }
+        .pill { background:var(--card2); border:1px solid var(--border); border-radius:5px; padding:4px 7px; }
+        .toolbar { display:flex; gap:10px; margin-bottom:14px; }
+        .search-input { flex:1; min-width:220px; background:var(--card); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 12px; outline:none; }
+        .table-wrap { overflow:hidden; border:1px solid var(--border); border-radius:12px; background:var(--card); }
+        table { width:100%; border-collapse:collapse; }
+        th { padding:11px 14px; text-align:left; color:var(--muted); background:var(--card2); border-bottom:1px solid var(--border); font-size:12px; text-transform:uppercase; letter-spacing:.4px; }
+        td { padding:13px 14px; border-bottom:1px solid var(--border); vertical-align:middle; font-size:14px; }
+        tr:last-child td { border-bottom:0; }
+        .title { font-weight:800; margin-bottom:4px; }
+        .meta { color:var(--muted); font-size:12px; }
+        .actions { display:flex; flex-wrap:wrap; gap:6px; }
+        .empty { padding:56px 20px; color:var(--muted); text-align:center; }
+        .badge { display:inline-block; padding:3px 7px; border-radius:4px; font-size:11px; font-weight:800; }
+        .badge-ok { background:rgba(0,166,81,.15); color:var(--green); }
+        .badge-warn { background:rgba(242,183,5,.15); color:var(--yellow); }
+        .badge-conflict { background:rgba(229,57,53,.15); color:var(--red); }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="{{ url_for('admin_scenarios') }}" class="back-btn">← Сценарии</a>
+        <div class="header-title">MyBoard — импорт сценариев</div>
+    </div>
+
+    <div class="container">
+        {% for cat, msg in get_flashed_messages(with_categories=true) %}
+        <div class="flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+        {% if error %}
+        <div class="flash error">{{ error }}</div>
+        {% endif %}
+
+        <div class="status-card">
+            <div class="status-title">Настройки интеграции</div>
+            <div class="status-line">
+                <span class="pill">Sync: {{ 'включён' if myboard_config.enabled else 'выключен' }}</span>
+                <span class="pill">URL: {{ myboard_config.api_url or 'не задан' }}</span>
+                <span class="pill">Token: {{ myboard_config.api_token_masked }}</span>
+                <span class="pill">Webhook: {{ myboard_config.webhook_secret_masked }}</span>
+                <span class="pill">Поля задаются через env</span>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <input type="text" class="search-input" id="searchInput" placeholder="Поиск по названию или id" oninput="filterBoards()">
+            <a href="{{ url_for('admin_scenarios_myboard') }}" class="btn btn-gray">Обновить список</a>
+        </div>
+
+        <div class="table-wrap">
+            {% if boards %}
+            <table id="boardsTable">
+                <thead>
+                    <tr>
+                        <th>Доска MyBoard</th>
+                        <th>Версия</th>
+                        <th>Статус в Helper</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for board in boards %}
+                {% set existing = board.helper_scenario %}
+                <tr data-title="{{ (board.title ~ ' ' ~ board.id)|lower }}">
+                    <td>
+                        <div class="title">{{ board.title or 'Без названия' }}</div>
+                        <div class="meta">{{ board.id }} · {{ board.updated_at or 'без даты' }}</div>
+                    </td>
+                    <td>v{{ board.version or '—' }}</td>
+                    <td>
+                        {% if existing %}
+                            {% if existing.has_local_changes %}
+                            <span class="badge badge-conflict">Есть локальные изменения</span>
+                            {% elif board.has_newer_version %}
+                            <span class="badge badge-warn">Есть новая версия</span>
+                            {% else %}
+                            <span class="badge badge-ok">Синхронизирован</span>
+                            {% endif %}
+                            <div class="meta" style="margin-top:5px;">Helper #{{ existing.id }} · v{{ existing.myboard_version or '—' }}</div>
+                        {% else %}
+                            <span class="badge badge-warn">Не импортирован</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="actions">
+                            {% if existing and existing.has_local_changes %}
+                            <form method="post" action="{{ url_for('admin_scenarios_myboard_import') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="board_id" value="{{ board.id }}">
+                                <input type="hidden" name="action" value="overwrite">
+                                <button class="action-btn blue" type="submit">Обновить из MyBoard</button>
+                            </form>
+                            <form method="post" action="{{ url_for('admin_scenarios_myboard_import') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="board_id" value="{{ board.id }}">
+                                <input type="hidden" name="action" value="copy">
+                                <button class="action-btn" type="submit">Создать копию</button>
+                            </form>
+                            <form method="post" action="{{ url_for('admin_scenarios_myboard_import') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="board_id" value="{{ board.id }}">
+                                <input type="hidden" name="action" value="keep">
+                                <button class="action-btn yellow" type="submit">Оставить локальную</button>
+                            </form>
+                            {% elif existing and not board.has_newer_version %}
+                            <button class="action-btn" disabled>Актуально</button>
+                            <a href="{{ url_for('admin_scenario_edit', scenario_id=existing.id) }}" class="action-btn">Открыть</a>
+                            {% else %}
+                            <form method="post" action="{{ url_for('admin_scenarios_myboard_import') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="board_id" value="{{ board.id }}">
+                                <input type="hidden" name="action" value="overwrite">
+                                <button class="action-btn green" type="submit">{{ 'Синхронизировать' if existing else 'Импортировать' }}</button>
+                            </form>
+                            {% if existing %}
+                            <a href="{{ url_for('admin_scenario_edit', scenario_id=existing.id) }}" class="action-btn">Открыть</a>
+                            {% endif %}
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty">Нет опубликованных досок MyBoard</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function filterBoards() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            document.querySelectorAll('#boardsTable tbody tr').forEach(row => {
+                row.style.display = !q || row.dataset.title.includes(q) ? '' : 'none';
+            });
+        }
+        (function() { if (localStorage.getItem('theme') === 'light') document.body.classList.add('light'); })();
+    </script>
+</body>
+</html>

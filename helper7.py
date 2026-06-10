@@ -73,11 +73,20 @@ except OSError:
     pass
 
 from flask_wtf.csrf import CSRFProtect
-from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER, ALL_ADMIN_ROLES
+from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER, ROLE_SUPERADMIN_BRANCH, ROLE_ADMIN_BRANCH_MANUALS, ROLE_ADMIN_BRANCH_TRAINER, ROLE_ADMIN_BRANCH_STATS, ALL_ADMIN_ROLES
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
 from trainer_manager import TrainerManager
 from scenario_manager import ScenarioManager
+from myboard_scenarios import (
+    MyBoardApiError,
+    MyBoardClient,
+    convert_myboard_export,
+    get_myboard_config,
+    is_webhook_timestamp_fresh,
+    masked_config_for_ui,
+    verify_webhook_signature,
+)
 from contacts_manager import ContactsManager
 from employee_board_manager import EmployeeBoardManager
 try:
@@ -4459,9 +4468,7 @@ def _manual_access_redirect(segment: str):
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
 
-    if not session['user_info'].get('workplace'):
-        if _manual_segment(segment) != 'kc':
-            session['next_after_workplace_url'] = request.full_path.rstrip('?')
+    if _manual_segment(segment) == 'kc' and not session['user_info'].get('workplace'):
         session['next_after_workplace'] = 'show_problems'
         return redirect(url_for('enter_workplace'))
 
@@ -4469,7 +4476,7 @@ def _manual_access_redirect(segment: str):
 
 
 def _show_problems_for_segment(segment: str):
-    """Страница мануалов - требует указания рабочего места."""
+    """Страница мануалов. Рабочее место требуется только для КЦ."""
     segment = _manual_segment(segment)
     if _branch_section_blocked(segment):
         return _branch_section_redirect()
@@ -5558,6 +5565,14 @@ def api_admin_check_password():
                 test_permissions.append('admin_trainer')
             if login_key in ad_auth.trainer_viewers:
                 test_permissions.append('trainer_viewer')
+            if login_key in getattr(ad_auth, 'superadmin_branch_logins', []):
+                test_permissions.append(ROLE_SUPERADMIN_BRANCH)
+            if login_key in getattr(ad_auth, 'admins_branch_manuals', []):
+                test_permissions.append(ROLE_ADMIN_BRANCH_MANUALS)
+            if login_key in getattr(ad_auth, 'admins_branch_trainer', []):
+                test_permissions.append(ROLE_ADMIN_BRANCH_TRAINER)
+            if login_key in getattr(ad_auth, 'admins_branch_stats', []):
+                test_permissions.append(ROLE_ADMIN_BRANCH_STATS)
 
             test_permissions, admin_role, trainer_segments = _merge_admin_permissions(login_key, test_permissions)
 
@@ -5612,7 +5627,10 @@ def api_admin_check_password():
             session['admin_username'] = admin_data.get('username', admin_username)
             session['admin_role'] = admins_manager.role_from_permissions(admin_permissions)
             session['admin_permissions'] = admin_permissions
-            session['trainer_segments'] = admin_data.get('trainer_segments', ['kc', 'branch'])
+            session['trainer_segments'] = _admin_trainer_segments_for_permissions(
+                admin_permissions,
+                admin_data.get('trainer_segments', ['kc', 'branch'])
+            )
             session['admin_token'] = AdminAuth.generate_session_token()
             return jsonify({'success': True})
 
@@ -5935,10 +5953,10 @@ def handle_channel_messages(message):
 
 @app.route('/trainer')
 def trainer_menu():
-    """Страница выбора сегмента тренажера (КЦ / Филиалы)"""
+    """Вход в тренажер КЦ без промежуточного выбора сегмента."""
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
-    return render_template('trainer_segments.html', is_admin=session.get('admin_logged_in', False))
+    return redirect(url_for('trainer_segment_menu', segment='kc'))
 
 
 TRAINER_SEGMENTS = {
@@ -6483,15 +6501,63 @@ def _admin_trainer_redirect(scenario_id=None, segment=None):
     return redirect(url_for('admin_trainer'))
 
 
+def _can_manage_trainer_segment(segment: str, permissions: list[str] | None = None) -> bool:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    if ROLE_SUPER_ADMIN in permissions or ROLE_ADMIN_TRAINER in permissions:
+        return True
+    if segment == 'branch' and _has_branch_trainer_access(permissions):
+        return True
+    return False
+
+
+def _can_view_trainer_stats_segment(segment: str, permissions: list[str] | None = None) -> bool:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    if ROLE_SUPER_ADMIN in permissions or ROLE_ADMIN_TRAINER in permissions or ROLE_TRAINER_VIEWER in permissions:
+        return True
+    if segment == 'branch' and _has_branch_stats_access(permissions):
+        return True
+    return False
+
+
+def _trainer_segment_access_denied_response(segment: str):
+    return render_template(
+        'admin_access_denied.html',
+        message='У вас нет доступа к этому сегменту тренажёра.',
+        back_url=url_for('admin_branch') if segment == 'branch' else url_for('admin_dashboard'),
+        login_url=url_for('admin_login'),
+    ), 403
+
+
+def _trainer_scenario_access_denied(scenario_id: int):
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    segment = scenario.get('segment', 'kc') if scenario else 'kc'
+    if not _can_manage_trainer_segment(segment):
+        return _trainer_segment_access_denied_response(segment)
+    return None
+
+
+def _allowed_admin_trainer_segments() -> list[str]:
+    allowed_segments = session.get('trainer_segments', ['kc', 'branch'])
+    if not isinstance(allowed_segments, list):
+        allowed_segments = ['kc', 'branch']
+    allowed_segments = [s for s in allowed_segments if s in TRAINER_SEGMENTS]
+    if not BRANCH_SECTION_ENABLED:
+        allowed_segments = [s for s in allowed_segments if s != 'branch']
+    return allowed_segments
+
+
+def _default_admin_trainer_segment() -> str:
+    for segment in _allowed_admin_trainer_segments():
+        if _can_manage_trainer_segment(segment):
+            return segment
+    return 'kc'
+
+
 @app.route('/admin/trainer')
 @AdminAuth.trainer_required
 def admin_trainer():
     """Редирект в первый доступный сегмент"""
-    allowed_segments = session.get('trainer_segments', ['kc', 'branch'])
-    if not BRANCH_SECTION_ENABLED:
-        allowed_segments = [s for s in allowed_segments if s != 'branch']
-    first_segment = allowed_segments[0] if allowed_segments else 'kc'
-    return redirect(url_for('admin_trainer_segment', segment=first_segment))
+    return redirect(url_for('admin_trainer_segment', segment=_default_admin_trainer_segment()))
 
 
 @app.route('/admin/trainer/<segment>')
@@ -6503,6 +6569,8 @@ def admin_trainer_segment(segment):
     if _trainer_branch_blocked(segment):
         flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('admin_trainer_segment', segment='kc'))
+    if not _can_manage_trainer_segment(segment):
+        return _trainer_segment_access_denied_response(segment)
 
     # Проверяем доступ к сегменту
     allowed_segments = session.get('trainer_segments', ['kc', 'branch'])
@@ -6574,6 +6642,13 @@ def admin_trainer_create():
     """Создание нового сценария"""
     levels = trainer_mgr.get_all_levels()
     categories = trainer_mgr.get_all_categories()
+    selected_segment = request.values.get('segment') or _default_admin_trainer_segment()
+    if selected_segment not in TRAINER_SEGMENTS:
+        selected_segment = _default_admin_trainer_segment()
+    if _trainer_branch_blocked(selected_segment):
+        selected_segment = 'kc'
+    if not _can_manage_trainer_segment(selected_segment):
+        return _trainer_segment_access_denied_response(selected_segment)
 
     if request.method == 'POST':
         is_draft = 1 if request.form.get('is_draft') else 0
@@ -6587,15 +6662,29 @@ def admin_trainer_create():
             'is_active': 0 if is_draft else (1 if request.form.get('is_active') else 0),
             'order_num': request.form.get('order_num', 0, type=int),
             'is_draft': is_draft,
-            'segment': request.form.get('segment', 'kc'),
+            'segment': request.form.get('segment') or selected_segment,
         }
+        if data['segment'] not in TRAINER_SEGMENTS:
+            data['segment'] = selected_segment
         if _trainer_branch_blocked(data['segment']):
             data['segment'] = 'kc'
+        if not _can_manage_trainer_segment(data['segment']):
+            return _trainer_segment_access_denied_response(data['segment'])
 
         if not data['title']:
             flash('Название обязательно')
             tags = trainer_mgr.get_all_tags()
-            return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[], tags=tags, scenario_tag_ids=[])
+            return render_template(
+                'admin_trainer_edit.html',
+                scenario=None,
+                levels=levels,
+                categories=categories,
+                steps=[],
+                tags=tags,
+                scenario_tag_ids=[],
+                selected_segment=data['segment'],
+                allowed_trainer_segments=_allowed_admin_trainer_segments()
+            )
 
         result = trainer_mgr.create_scenario(data)
 
@@ -6620,7 +6709,17 @@ def admin_trainer_create():
             flash(f'Ошибка: {result.get("error")}')
 
     tags = trainer_mgr.get_all_tags()
-    return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[], tags=tags, scenario_tag_ids=[])
+    return render_template(
+        'admin_trainer_edit.html',
+        scenario=None,
+        levels=levels,
+        categories=categories,
+        steps=[],
+        tags=tags,
+        scenario_tag_ids=[],
+        selected_segment=selected_segment,
+        allowed_trainer_segments=_allowed_admin_trainer_segments()
+    )
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/edit', methods=['GET', 'POST'])
@@ -6637,6 +6736,8 @@ def admin_trainer_edit(scenario_id):
     if _trainer_branch_blocked(sc_segment):
         flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('admin_trainer'))
+    if not _can_manage_trainer_segment(sc_segment):
+        return _trainer_segment_access_denied_response(sc_segment)
     levels = trainer_mgr.get_all_levels()
     categories = trainer_mgr.get_all_categories()
 
@@ -6834,7 +6935,9 @@ def admin_trainer_edit(scenario_id):
                          scenario_tag_ids=scenario_tag_ids,
                          correct_topics=correct_topics,
                          version_history=version_history,
-                         avatar_images=avatar_images)
+                         avatar_images=avatar_images,
+                         selected_segment=scenario.get('segment', 'kc'),
+                         allowed_trainer_segments=_allowed_admin_trainer_segments())
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/versions')
@@ -6900,6 +7003,8 @@ def admin_trainer_delete(scenario_id):
 def admin_trainer_drafts():
     """Черновики сценариев"""
     segment = request.args.get('segment', 'kc')
+    if not _can_manage_trainer_segment(segment):
+        return _trainer_segment_access_denied_response(segment)
     seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
     drafts = trainer_mgr.get_draft_scenarios(segment=segment)
     for d in drafts:
@@ -6919,6 +7024,9 @@ def admin_trainer_drafts():
 @AdminAuth.login_required
 def admin_trainer_publish(scenario_id):
     """Опубликовать черновик"""
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
     result = trainer_mgr.publish_draft(scenario_id)
@@ -6942,6 +7050,9 @@ def admin_trainer_publish(scenario_id):
 @AdminAuth.login_required
 def admin_trainer_archive(scenario_id):
     """Отправить сценарий в архив"""
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
     result = trainer_mgr.archive_scenario(scenario_id)
@@ -6965,6 +7076,9 @@ def admin_trainer_archive(scenario_id):
 @AdminAuth.login_required
 def admin_trainer_restore(scenario_id):
     """Восстановить сценарий из архива"""
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
     result = trainer_mgr.restore_from_archive(scenario_id)
@@ -6988,6 +7102,9 @@ def admin_trainer_restore(scenario_id):
 @AdminAuth.login_required
 def admin_trainer_duplicate(scenario_id):
     """Дублировать сценарий в черновики"""
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     result = trainer_mgr.duplicate_scenario(scenario_id)
     if result['success']:
@@ -7012,6 +7129,9 @@ def admin_trainer_duplicate(scenario_id):
 @AdminAuth.trainer_required
 def admin_trainer_create_step(scenario_id):
     """Создание шага сценария"""
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return denied
     data = {
         'client_message': request.form.get('client_message', 'Сообщение клиента'),
         'client_avatar': request.form.get('client_avatar', '👤'),
@@ -7084,6 +7204,9 @@ def admin_trainer_delete_answer(answer_id):
 @AdminAuth.trainer_required
 def admin_trainer_visual(scenario_id):
     """Визуальный редактор сценария (No-Code)"""
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     if not scenario:
         flash('Сценарий не найден')
@@ -7105,6 +7228,9 @@ def admin_trainer_visual_save(scenario_id):
     """Сохранение визуальной структуры сценария"""
     import json
 
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return jsonify({'success': False, 'error': 'Нет доступа к этому сегменту'}), 403
     scenario = trainer_mgr.get_scenario(scenario_id)
     if not scenario:
         return jsonify({'success': False, 'error': 'Сценарий не найден'})
@@ -7267,6 +7393,9 @@ def admin_trainer_visual_load(scenario_id):
     """Загрузка визуальной структуры сценария с синхронизацией из БД"""
     import json
 
+    denied = _trainer_scenario_access_denied(scenario_id)
+    if denied:
+        return jsonify({'success': False, 'error': 'Нет доступа к этому сегменту'}), 403
     scenario = trainer_mgr.get_scenario(scenario_id)
     if not scenario:
         return jsonify({'success': False, 'error': 'Сценарий не найден'})
@@ -7385,6 +7514,10 @@ def admin_trainer_visual_load(scenario_id):
 def admin_trainer_stats():
     """Статистика тренажера"""
     segment = request.args.get('segment', 'kc')
+    if _trainer_branch_blocked(segment):
+        segment = 'kc'
+    if not _can_view_trainer_stats_segment(segment):
+        return _trainer_segment_access_denied_response(segment)
     seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
     stats = trainer_mgr.get_statistics(segment=segment)
     heatmap = trainer_mgr.get_step_error_heatmap(limit=20, segment=segment)
@@ -8261,22 +8394,8 @@ def user_login():
                 session['authenticated'] = True
 
                 # Определяем роли из .env (как в AD режиме)
-                from ad_auth import ad_auth
                 login_key = _admin_login_key(username)
-                test_permissions = []
-                if login_key in ad_auth.super_admin_logins:
-                    test_permissions.append('super_admin')
-                if login_key in ad_auth.admins_manuals:
-                    test_permissions.append('admin_manuals')
-                if login_key in ad_auth.admins_topics:
-                    test_permissions.append('admin_topics')
-                if login_key in ad_auth.admins_scenarios:
-                    test_permissions.append('admin_scenarios')
-                if login_key in ad_auth.admins_trainer:
-                    test_permissions.append('admin_trainer')
-                if login_key in ad_auth.trainer_viewers:
-                    test_permissions.append('trainer_viewer')
-
+                test_permissions = _admin_env_permissions(login_key)
                 test_permissions, admin_role, trainer_segments = _merge_admin_permissions(login_key, test_permissions)
 
                 if test_permissions:
@@ -8410,11 +8529,89 @@ def _merge_admin_permissions(username: str, permissions: list[str] | None = None
         base_permissions = admins_manager.normalize_permissions(base_permissions + local_permissions)
 
     role = admins_manager.role_from_permissions(base_permissions)
-    trainer_segments = (local_admin or {}).get('trainer_segments', ['kc', 'branch'])
-    if role == ROLE_SUPER_ADMIN:
-        trainer_segments = ['kc', 'branch']
+    trainer_segments = _admin_trainer_segments_for_permissions(
+        base_permissions,
+        (local_admin or {}).get('trainer_segments', ['kc', 'branch'])
+    )
 
     return base_permissions, role, trainer_segments
+
+
+def _has_any_permission(permissions: list[str] | None, *required: str) -> bool:
+    normalized = admins_manager.normalize_permissions(permissions or [])
+    return any(permission in normalized for permission in required)
+
+
+def _has_branch_admin_access(permissions: list[str] | None = None) -> bool:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    return _has_any_permission(
+        permissions,
+        ROLE_SUPER_ADMIN,
+        ROLE_SUPERADMIN_BRANCH,
+        ROLE_ADMIN_BRANCH_MANUALS,
+        ROLE_ADMIN_BRANCH_TRAINER,
+        ROLE_ADMIN_BRANCH_STATS,
+    )
+
+
+def _has_branch_manuals_access(permissions: list[str] | None = None) -> bool:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    return _has_any_permission(permissions, ROLE_SUPER_ADMIN, ROLE_SUPERADMIN_BRANCH, ROLE_ADMIN_BRANCH_MANUALS)
+
+
+def _has_branch_trainer_access(permissions: list[str] | None = None) -> bool:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    return _has_any_permission(permissions, ROLE_SUPER_ADMIN, ROLE_SUPERADMIN_BRANCH, ROLE_ADMIN_BRANCH_TRAINER)
+
+
+def _has_branch_stats_access(permissions: list[str] | None = None) -> bool:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    return _has_any_permission(
+        permissions,
+        ROLE_SUPER_ADMIN,
+        ROLE_SUPERADMIN_BRANCH,
+        ROLE_ADMIN_BRANCH_STATS,
+        ROLE_ADMIN_BRANCH_TRAINER,
+    )
+
+
+def _admin_trainer_segments_for_permissions(permissions: list[str] | None, stored_segments: list[str] | None = None) -> list[str]:
+    permissions = admins_manager.normalize_permissions(permissions or [])
+    stored_segments = stored_segments or ['kc', 'branch']
+    if ROLE_SUPER_ADMIN in permissions or ROLE_ADMIN_TRAINER in permissions:
+        trainer_segments = ['kc', 'branch']
+    elif ROLE_SUPERADMIN_BRANCH in permissions or ROLE_ADMIN_BRANCH_TRAINER in permissions or ROLE_ADMIN_BRANCH_STATS in permissions:
+        trainer_segments = ['branch']
+    else:
+        trainer_segments = stored_segments
+    if not BRANCH_SECTION_ENABLED:
+        trainer_segments = [s for s in trainer_segments if s != 'branch']
+    return [s for s in trainer_segments if s in ('kc', 'branch')]
+
+
+def _manual_segment_access_denied_response(segment: str):
+    return render_template(
+        'admin_access_denied.html',
+        message='У вас нет доступа к этому сегменту мануалов.',
+        back_url=url_for('admin_branch') if segment == 'branch' else url_for('admin_dashboard'),
+        login_url=url_for('admin_login'),
+    ), 403
+
+
+def _can_manage_manual_segment(segment: str, permissions: list[str] | None = None) -> bool:
+    permissions = admins_manager.normalize_permissions(permissions or session.get('admin_permissions', []))
+    if ROLE_SUPER_ADMIN in permissions or ROLE_ADMIN_MANUALS in permissions:
+        return True
+    if segment == 'branch' and _has_branch_manuals_access(permissions):
+        return True
+    return False
+
+
+def _manual_item_access_denied(manual: dict | None):
+    segment = _manual_item_segment(manual or {})
+    if _can_manage_manual_segment(segment):
+        return None
+    return _manual_segment_access_denied_response(segment)
 
 
 def _admin_default_endpoint(permissions: list[str] | None = None) -> str:
@@ -8431,6 +8628,8 @@ def _admin_default_endpoint(permissions: list[str] | None = None) -> str:
         return 'admin_trainer'
     if ROLE_TRAINER_VIEWER in permissions:
         return 'admin_trainer_stats'
+    if _has_branch_admin_access(permissions):
+        return 'admin_branch'
     return 'admin_login'
 
 
@@ -8452,6 +8651,14 @@ def _admin_env_permissions(username: str) -> list[str]:
             permissions.append(ROLE_ADMIN_TRAINER)
         if login_key in ad_auth.trainer_viewers:
             permissions.append(ROLE_TRAINER_VIEWER)
+        if login_key in getattr(ad_auth, 'superadmin_branch_logins', []):
+            permissions.append(ROLE_SUPERADMIN_BRANCH)
+        if login_key in getattr(ad_auth, 'admins_branch_manuals', []):
+            permissions.append(ROLE_ADMIN_BRANCH_MANUALS)
+        if login_key in getattr(ad_auth, 'admins_branch_trainer', []):
+            permissions.append(ROLE_ADMIN_BRANCH_TRAINER)
+        if login_key in getattr(ad_auth, 'admins_branch_stats', []):
+            permissions.append(ROLE_ADMIN_BRANCH_STATS)
         return admins_manager.normalize_permissions(permissions)
     except Exception:
         return []
@@ -8469,6 +8676,10 @@ def _admin_section_allowed(section: str, permissions: list[str] | None) -> bool:
         'scenarios': [ROLE_ADMIN_SCENARIOS],
         'trainer': [ROLE_ADMIN_TRAINER],
         'trainer_stats': [ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER],
+        'branch': [ROLE_SUPERADMIN_BRANCH, ROLE_ADMIN_BRANCH_MANUALS, ROLE_ADMIN_BRANCH_TRAINER, ROLE_ADMIN_BRANCH_STATS],
+        'branch_manuals': [ROLE_SUPERADMIN_BRANCH, ROLE_ADMIN_BRANCH_MANUALS],
+        'branch_trainer': [ROLE_SUPERADMIN_BRANCH, ROLE_ADMIN_BRANCH_TRAINER],
+        'branch_stats': [ROLE_SUPERADMIN_BRANCH, ROLE_ADMIN_BRANCH_STATS, ROLE_ADMIN_BRANCH_TRAINER],
     }
     required = required_by_section.get(str(section or '').strip())
     if required:
@@ -8530,7 +8741,10 @@ def refresh_admin_session_permissions():
                 new_permissions = admins_manager.normalize_permissions(env_permissions + local_permissions)
             else:
                 new_permissions = local_permissions
-            trainer_segments = local_admin.get('trainer_segments', trainer_segments)
+            trainer_segments = _admin_trainer_segments_for_permissions(
+                new_permissions,
+                local_admin.get('trainer_segments', trainer_segments)
+            )
     elif env_permissions:
         new_permissions = env_permissions
 
@@ -8543,8 +8757,7 @@ def refresh_admin_session_permissions():
         session.modified = True
         return redirect(url_for('admin_login'))
 
-    if ROLE_SUPER_ADMIN in new_permissions:
-        trainer_segments = ['kc', 'branch']
+    trainer_segments = _admin_trainer_segments_for_permissions(new_permissions, trainer_segments)
 
     current_permissions = admins_manager.normalize_permissions(session.get('admin_permissions', []))
     if current_permissions != new_permissions or session.get('trainer_segments') != trainer_segments:
@@ -8582,22 +8795,8 @@ def admin_login():
 
         if TEST_MODE and password in ['admin', '123', 'test']:
             # Определяем роли из .env
-            from ad_auth import ad_auth
             login_key = _admin_login_key(username)
-            test_permissions = []
-            if login_key in ad_auth.super_admin_logins:
-                test_permissions.append('super_admin')
-            if login_key in ad_auth.admins_manuals:
-                test_permissions.append('admin_manuals')
-            if login_key in ad_auth.admins_topics:
-                test_permissions.append('admin_topics')
-            if login_key in ad_auth.admins_scenarios:
-                test_permissions.append('admin_scenarios')
-            if login_key in ad_auth.admins_trainer:
-                test_permissions.append('admin_trainer')
-            if login_key in ad_auth.trainer_viewers:
-                test_permissions.append('trainer_viewer')
-
+            test_permissions = _admin_env_permissions(login_key)
             test_permissions, admin_role, trainer_segments = _merge_admin_permissions(login_key, test_permissions)
 
             if not test_permissions:
@@ -8664,11 +8863,10 @@ def admin_login():
             session['admin_role'] = admins_manager.role_from_permissions(admin_permissions)
             session['admin_permissions'] = admin_permissions
             session['admin_token'] = AdminAuth.generate_session_token()
-            # Сегменты тренажёра: супер-админ всегда видит все
-            if ROLE_SUPER_ADMIN in admin_permissions:
-                session['trainer_segments'] = ['kc', 'branch']
-            else:
-                session['trainer_segments'] = admin_data.get('trainer_segments', ['kc', 'branch'])
+            session['trainer_segments'] = _admin_trainer_segments_for_permissions(
+                admin_permissions,
+                admin_data.get('trainer_segments', ['kc', 'branch'])
+            )
             session.permanent = True
             flash(f'Успешная авторизация. Роль: {ROLE_NAMES.get(admin_data.get("role"), "Редактор")}')
             return redirect(url_for(_admin_default_endpoint(admin_permissions)))
@@ -8715,6 +8913,8 @@ def admin_manuals():
     if _branch_section_blocked(segment):
         flash('Раздел «Филиалы» временно отключен.')
         return redirect(url_for('admin_manuals', segment='kc'))
+    if not _can_manage_manual_segment(segment):
+        return _manual_segment_access_denied_response(segment)
     manuals = _filter_manuals_by_segment(admin_manager.load_manuals(), segment)
     return render_template(
         'admin_dashboard.html',
@@ -8799,13 +8999,27 @@ def _branch_manual_feedback_stats(limit: int = 50) -> dict:
 
 
 @app.route('/admin/branch')
-@AdminAuth.manuals_required
 def admin_branch():
     """Админ-раздел филиалов."""
     if not BRANCH_SECTION_ENABLED:
         return _branch_section_redirect(admin=True)
+    admin_permissions = admins_manager.normalize_permissions(session.get('admin_permissions', []))
+    if not session.get('admin_logged_in') or not _has_branch_admin_access(admin_permissions):
+        return render_template(
+            'admin_access_denied.html',
+            message='У вас нет доступа к админке филиалов.',
+            back_url=url_for('branch_home'),
+            login_url=url_for('admin_login'),
+        ), 403
     feedback = _branch_manual_feedback_stats(limit=80)
-    return render_template('admin_branch.html', feedback=feedback)
+    return render_template(
+        'admin_branch.html',
+        feedback=feedback,
+        admin_permissions=admin_permissions,
+        can_branch_manuals=_has_branch_manuals_access(admin_permissions),
+        can_branch_trainer=_has_branch_trainer_access(admin_permissions),
+        can_branch_stats=_has_branch_stats_access(admin_permissions),
+    )
 
 
 @app.route('/admin/manual/create', methods=['GET', 'POST'])
@@ -8815,12 +9029,16 @@ def admin_create_manual():
     selected_segment = _manual_segment(request.values.get('segment') or 'kc')
     if _branch_section_blocked(selected_segment):
         selected_segment = 'kc'
+    if not _can_manage_manual_segment(selected_segment):
+        return _manual_segment_access_denied_response(selected_segment)
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
         manual_type = request.form.get('manual_type', 'with_subproblems').strip()
         selected_segment = _manual_segment(request.form.get('segment') or selected_segment)
         if _branch_section_blocked(selected_segment):
             selected_segment = 'kc'
+        if not _can_manage_manual_segment(selected_segment):
+            return _manual_segment_access_denied_response(selected_segment)
 
         # Валидация
         if not title:
@@ -8901,6 +9119,9 @@ def admin_edit_manual(manual_id):
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     # Если есть поле subproblems - показываем список подпроблем (даже если пустой)
     if 'subproblems' in manual:
@@ -8931,6 +9152,9 @@ def admin_create_subproblem(manual_id):
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
@@ -8993,6 +9217,9 @@ def admin_delete_manual(manual_id):
     if manual_id not in manuals:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals', segment=return_segment))
+    denied = _manual_item_access_denied(manuals.get(manual_id))
+    if denied:
+        return denied
 
     manual_title = manuals[manual_id].get('title', 'Неизвестный мануал')
 
@@ -9025,6 +9252,9 @@ def admin_delete_subproblem(manual_id, subproblem_id):
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
         flash('Подпроблема не найдена')
@@ -9055,6 +9285,9 @@ def admin_edit_simple_manual(manual_id):
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     # Проверяем что это простой мануал
     if 'subproblems' in manual:
@@ -9103,6 +9336,9 @@ def admin_edit_subproblem(manual_id, subproblem_id):
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     # Проверяем существование подпроблемы
     if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
@@ -9155,11 +9391,16 @@ def admin_update_manual(manual_id):
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     # Обновляем только заголовок
     manual['title'] = title
     selected_segment = _manual_segment(request.form.get('segment') or manual.get('segment') or 'kc')
     manual['segment'] = 'kc' if _branch_section_blocked(selected_segment) else selected_segment
+    if not _can_manage_manual_segment(manual['segment']):
+        return _manual_segment_access_denied_response(manual['segment'])
 
     # Сохраняем изменения
     if admin_manager.update_manual(manual_id, title, manual):
@@ -9183,6 +9424,9 @@ def admin_update_subproblem(manual_id, subproblem_id):
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     # Определяем тип мануала и получаем нужный объект
     if 'subproblems' in manual:
@@ -9243,6 +9487,9 @@ def admin_delete_photo():
 
     # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
     manual_check = admin_manager.get_manual(manual_id)
+    denied = _manual_item_access_denied(manual_check)
+    if denied:
+        return denied
     if manual_check and 'subproblems' in manual_check:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
@@ -9298,6 +9545,9 @@ def admin_delete_step():
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_manuals'))
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
 
     # Определяем тип мануала и получаем нужный объект
     if 'subproblems' in manual:
@@ -9356,6 +9606,9 @@ def admin_delete_video():
 
     # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
     manual_check = admin_manager.get_manual(manual_id)
+    denied = _manual_item_access_denied(manual_check)
+    if denied:
+        return denied
     if manual_check and 'subproblems' in manual_check:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
@@ -9390,6 +9643,9 @@ def admin_upload_photo():
 
         # Для простых мануалов subproblem_id = manual_id (только цифры), пропускаем проверку формата X.Y
         manual = admin_manager.get_manual(manual_id)
+        denied = _manual_item_access_denied(manual)
+        if denied:
+            return denied
         if manual and 'subproblems' in manual:
             if not admin_manager.validate_subproblem_id(subproblem_id):
                 flash('Некорректный ID подпроблемы')
@@ -9420,6 +9676,9 @@ def admin_upload_photo():
 
     # Для простых мануалов subproblem_id = manual_id, пропускаем проверку формата X.Y
     manual_for_check = admin_manager.get_manual(manual_id)
+    denied = _manual_item_access_denied(manual_for_check)
+    if denied:
+        return denied
     if manual_for_check and 'subproblems' in manual_for_check:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
@@ -9481,6 +9740,9 @@ def admin_upload_photo():
             if not manual:
                 flash('Мануал не найден')
                 return redirect(url_for('admin_manuals'))
+            denied = _manual_item_access_denied(manual)
+            if denied:
+                return denied
 
             current_caption = ""
             if 'subproblems' in manual and subproblem_id in manual['subproblems']:
@@ -9522,6 +9784,9 @@ def admin_add_new_step():
 
     # Для простых мануалов subproblem_id = manual_id, для подпроблем проверяем формат X.Y
     manual = admin_manager.get_manual(manual_id)
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
     if manual and 'subproblems' in manual:
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
@@ -9583,6 +9848,10 @@ def admin_upload_video():
         # if not admin_manager.validate_subproblem_id(subproblem_id):
         #     flash('Некорректный ID подпроблемы')
         #     return redirect(url_for('admin_manuals'))
+        manual = admin_manager.get_manual(manual_id)
+        denied = _manual_item_access_denied(manual)
+        if denied:
+            return denied
 
         return render_template('admin_upload_video.html',
                              manual_id=manual_id,
@@ -9602,6 +9871,10 @@ def admin_upload_video():
     # if not admin_manager.validate_subproblem_id(subproblem_id):
     #     flash('Некорректный ID подпроблемы')
     #     return redirect(url_for('admin_manuals'))
+    manual_for_check = admin_manager.get_manual(manual_id)
+    denied = _manual_item_access_denied(manual_for_check)
+    if denied:
+        return denied
 
     # Security Fix: Improved video upload validation
     allowed_video_types = {'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
@@ -9664,6 +9937,9 @@ def admin_upload_video():
 
     # Редиректим правильно в зависимости от типа мануала
     manual = admin_manager.get_manual(manual_id)
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return denied
     if manual and 'subproblems' in manual:
         # Мануал с подпроблемами - редирект на страницу редактирования подпроблемы
         _rurl = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
@@ -12397,6 +12673,10 @@ def admin_users():
         (ROLE_ADMIN_SCENARIOS, ROLE_NAMES.get(ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_SCENARIOS)),
         (ROLE_ADMIN_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_TRAINER, ROLE_ADMIN_TRAINER)),
         (ROLE_TRAINER_VIEWER, ROLE_NAMES.get(ROLE_TRAINER_VIEWER, ROLE_TRAINER_VIEWER)),
+        (ROLE_SUPERADMIN_BRANCH, ROLE_NAMES.get(ROLE_SUPERADMIN_BRANCH, ROLE_SUPERADMIN_BRANCH)),
+        (ROLE_ADMIN_BRANCH_MANUALS, ROLE_NAMES.get(ROLE_ADMIN_BRANCH_MANUALS, ROLE_ADMIN_BRANCH_MANUALS)),
+        (ROLE_ADMIN_BRANCH_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_BRANCH_TRAINER, ROLE_ADMIN_BRANCH_TRAINER)),
+        (ROLE_ADMIN_BRANCH_STATS, ROLE_NAMES.get(ROLE_ADMIN_BRANCH_STATS, ROLE_ADMIN_BRANCH_STATS)),
     ]
     normalized_admins = []
     for admin in admins:
@@ -12460,6 +12740,10 @@ def admin_add_user():
         (ROLE_ADMIN_SCENARIOS, ROLE_NAMES.get(ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_SCENARIOS)),
         (ROLE_ADMIN_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_TRAINER, ROLE_ADMIN_TRAINER)),
         (ROLE_TRAINER_VIEWER, ROLE_NAMES.get(ROLE_TRAINER_VIEWER, ROLE_TRAINER_VIEWER)),
+        (ROLE_SUPERADMIN_BRANCH, ROLE_NAMES.get(ROLE_SUPERADMIN_BRANCH, ROLE_SUPERADMIN_BRANCH)),
+        (ROLE_ADMIN_BRANCH_MANUALS, ROLE_NAMES.get(ROLE_ADMIN_BRANCH_MANUALS, ROLE_ADMIN_BRANCH_MANUALS)),
+        (ROLE_ADMIN_BRANCH_TRAINER, ROLE_NAMES.get(ROLE_ADMIN_BRANCH_TRAINER, ROLE_ADMIN_BRANCH_TRAINER)),
+        (ROLE_ADMIN_BRANCH_STATS, ROLE_NAMES.get(ROLE_ADMIN_BRANCH_STATS, ROLE_ADMIN_BRANCH_STATS)),
     ]
     return render_template('admin_add_user.html', permission_choices=permission_choices, role_names=ROLE_NAMES)
 
@@ -12693,6 +12977,18 @@ def _require_scenario_admin():
     return None
 
 
+def _format_myboard_report(converted: dict) -> str:
+    warnings = converted.get('warnings') or []
+    if not warnings:
+        return 'Импорт завершён'
+    return 'Импорт завершён с предупреждениями: ' + '; '.join(warnings[:5])
+
+
+def _can_manage_myboard_settings() -> bool:
+    perms = admins_manager.normalize_permissions(session.get('admin_permissions', []))
+    return ROLE_SUPER_ADMIN in perms
+
+
 @app.route('/admin/scenarios')
 def admin_scenarios():
     """Список всех сценариев в админке"""
@@ -12703,7 +12999,176 @@ def admin_scenarios():
     categories = scenario_mgr.get_categories()
     return render_template('admin_scenarios.html',
                            scenarios=scenarios,
-                           categories=categories)
+                           categories=categories,
+                           myboard_config=masked_config_for_ui(),
+                           can_manage_myboard_settings=_can_manage_myboard_settings())
+
+
+@app.route('/admin/settings/integrations/myboard')
+@AdminAuth.super_admin_required
+def admin_myboard_settings():
+    return render_template(
+        'admin_myboard_settings.html',
+        myboard_config=masked_config_for_ui(),
+    )
+
+
+@app.route('/admin/scenarios/myboard')
+def admin_scenarios_myboard():
+    err = _require_scenario_admin()
+    if err:
+        return err
+
+    cfg = get_myboard_config()
+    boards = []
+    imported_index = scenario_mgr.get_imported_myboard_index()
+    error = ''
+    if cfg.ready_for_api:
+        try:
+            boards = MyBoardClient(cfg).list_all_boards()
+        except MyBoardApiError as e:
+            error = e.admin_message
+    else:
+        error = 'Интеграция MyBoard выключена или не настроены MYBOARD_API_URL/MYBOARD_API_TOKEN'
+
+    for board in boards:
+        board_id = str(board.get('id') or '')
+        existing = imported_index.get(board_id)
+        board['helper_scenario'] = existing
+        try:
+            remote_version = int(board.get('version') or 0)
+        except (TypeError, ValueError):
+            remote_version = 0
+        local_version = int((existing or {}).get('myboard_version') or 0)
+        board['has_newer_version'] = bool(existing and remote_version > local_version)
+
+    return render_template(
+        'admin_myboard_import.html',
+        boards=boards,
+        error=error,
+        myboard_config=masked_config_for_ui(cfg),
+    )
+
+
+@app.route('/admin/scenarios/myboard/import', methods=['POST'])
+def admin_scenarios_myboard_import():
+    err = _require_scenario_admin()
+    if err:
+        return err
+
+    board_id = (request.form.get('board_id') or '').strip()
+    action = (request.form.get('action') or 'import').strip()
+    if not board_id:
+        flash('Не выбран сценарий MyBoard', 'error')
+        return redirect(url_for('admin_scenarios_myboard'))
+
+    cfg = get_myboard_config()
+    if not cfg.ready_for_api:
+        flash('Интеграция MyBoard выключена или не настроены env-переменные', 'error')
+        return redirect(url_for('admin_scenarios_myboard'))
+
+    existing = scenario_mgr.get_scenario_by_myboard_id(board_id)
+    if existing and existing.get('has_local_changes') and action not in ('overwrite', 'copy', 'keep'):
+        scenario_mgr.set_myboard_state(existing['id'], 'conflict')
+        flash('Есть локальные изменения. Выберите: обновить из MyBoard, оставить локальную версию или создать копию.', 'error')
+        return redirect(url_for('admin_scenarios_myboard'))
+    if action == 'keep':
+        if existing:
+            scenario_mgr.set_myboard_state(existing['id'], 'conflict')
+        flash('Локальная версия оставлена без изменений', 'success')
+        return redirect(url_for('admin_scenarios'))
+
+    try:
+        payload = MyBoardClient(cfg).export_board(board_id)
+        converted = convert_myboard_export(payload)
+    except MyBoardApiError as e:
+        flash(e.admin_message, 'error')
+        return redirect(url_for('admin_scenarios_myboard'))
+
+    if not converted.get('ok'):
+        flash('Импорт запрещён: ' + '; '.join(converted.get('errors') or []), 'error')
+        return redirect(url_for('admin_scenarios_myboard'))
+
+    username = session.get('admin_username', '')
+    try:
+        if existing and action == 'copy':
+            new_id = scenario_mgr.import_myboard_scenario(
+                converted,
+                imported_by=username,
+                copy_from_scenario_id=existing['id'],
+            )
+            flash(_format_myboard_report(converted), 'success')
+            return redirect(url_for('admin_scenario_edit', scenario_id=new_id))
+        if existing:
+            scenario_id = scenario_mgr.import_myboard_scenario(
+                converted,
+                imported_by=username,
+                overwrite_scenario_id=existing['id'],
+            )
+        else:
+            scenario_id = scenario_mgr.import_myboard_scenario(converted, imported_by=username)
+    except Exception as e:
+        flash(f'Ошибка импорта MyBoard: {e}', 'error')
+        return redirect(url_for('admin_scenarios_myboard'))
+
+    flash(_format_myboard_report(converted), 'success')
+    return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/myboard/sync', methods=['POST'])
+def admin_scenario_myboard_sync(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+
+    scenario = scenario_mgr.get_scenario(scenario_id)
+    if not scenario or not scenario.get('myboard_id'):
+        flash('Сценарий не привязан к MyBoard', 'error')
+        return redirect(url_for('admin_scenarios'))
+
+    action = (request.form.get('action') or 'overwrite').strip()
+    if scenario.get('has_local_changes') and action not in ('overwrite', 'copy', 'keep'):
+        scenario_mgr.set_myboard_state(scenario_id, 'conflict')
+        flash('Есть локальные изменения. Нужно выбрать способ синхронизации.', 'error')
+        return redirect(url_for('admin_scenarios'))
+    if action == 'keep':
+        scenario_mgr.set_myboard_state(scenario_id, 'conflict')
+        flash('Локальная версия оставлена без изменений', 'success')
+        return redirect(url_for('admin_scenarios'))
+
+    cfg = get_myboard_config()
+    if not cfg.ready_for_api:
+        flash('Интеграция MyBoard выключена или не настроены env-переменные', 'error')
+        return redirect(url_for('admin_scenarios'))
+
+    try:
+        payload = MyBoardClient(cfg).export_board(scenario['myboard_id'])
+        converted = convert_myboard_export(payload)
+    except MyBoardApiError as e:
+        flash(e.admin_message, 'error')
+        return redirect(url_for('admin_scenarios'))
+
+    if not converted.get('ok'):
+        flash('Синхронизация запрещена: ' + '; '.join(converted.get('errors') or []), 'error')
+        return redirect(url_for('admin_scenarios'))
+
+    username = session.get('admin_username', '')
+    if action == 'copy':
+        new_id = scenario_mgr.import_myboard_scenario(
+            converted,
+            imported_by=username,
+            copy_from_scenario_id=scenario_id,
+        )
+        flash(_format_myboard_report(converted), 'success')
+        return redirect(url_for('admin_scenario_edit', scenario_id=new_id))
+
+    scenario_mgr.import_myboard_scenario(
+        converted,
+        imported_by=username,
+        overwrite_scenario_id=scenario_id,
+    )
+    flash(_format_myboard_report(converted), 'success')
+    return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
 
 
 @app.route('/admin/scenarios/create', methods=['GET', 'POST'])
@@ -12768,6 +13233,7 @@ def admin_scenario_edit(scenario_id):
         username = session.get('admin_username', '')
         scenario_mgr.update_scenario(scenario_id, title, description,
                                      category_id, tags, username)
+        scenario_mgr.mark_scenario_local_change(scenario_id, username)
         flash('Сохранено', 'success')
         return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
 
@@ -12783,6 +13249,7 @@ def admin_scenario_publish(scenario_id):
         return err
     username = session.get('admin_username', '')
     scenario_mgr.publish_scenario(scenario_id, username)
+    scenario_mgr.mark_scenario_local_change(scenario_id, username)
     flash('Сценарий опубликован', 'success')
     return redirect(url_for('admin_scenarios'))
 
@@ -12794,6 +13261,7 @@ def admin_scenario_archive(scenario_id):
         return err
     username = session.get('admin_username', '')
     scenario_mgr.archive_scenario(scenario_id, username)
+    scenario_mgr.mark_scenario_local_change(scenario_id, username)
     flash('Сценарий архивирован', 'success')
     return redirect(url_for('admin_scenarios'))
 
@@ -12805,6 +13273,7 @@ def admin_scenario_unarchive(scenario_id):
         return err
     username = session.get('admin_username', '')
     scenario_mgr.unarchive_scenario(scenario_id, username)
+    scenario_mgr.mark_scenario_local_change(scenario_id, username)
     flash('Сценарий восстановлен', 'success')
     return redirect(url_for('admin_scenarios'))
 
@@ -12851,6 +13320,7 @@ def api_scenario_meta_update(scenario_id):
         tags=data.get('tags', ''),
         updated_by=admin
     )
+    scenario_mgr.mark_scenario_local_change(scenario_id, admin)
     return jsonify({'success': True})
 
 
@@ -12880,8 +13350,17 @@ def api_scenario_node_create(scenario_id):
         node_type=data.get('node_type', 'question'),
         title=data.get('title', 'Новый узел'),
         content=data.get('content', ''),
-        is_root=data.get('is_root', False)
+        is_root=data.get('is_root', False),
+        sort_order=data.get('sort_order', 0),
+        answer_text=data.get('answer_text', ''),
+        final_answer=data.get('final_answer', ''),
+        internal_note=data.get('internal_note', ''),
+        documents=data.get('documents', ''),
+        links=data.get('links', ''),
+        pos_x=data.get('pos_x', 0),
+        pos_y=data.get('pos_y', 0)
     )
+    scenario_mgr.mark_scenario_local_change(scenario_id, session.get('admin_username', ''))
     return jsonify({'success': True, 'node_id': node_id})
 
 
@@ -12892,12 +13371,14 @@ def api_scenario_node_update(scenario_id, node_id):
     if err:
         return jsonify({'success': False}), 403
     # Проверяем принадлежность узла сценарию
+    node = scenario_mgr.get_node(node_id)
     if scenario_id is not None:
-        node = scenario_mgr.get_node(node_id)
         if not node or node['scenario_id'] != scenario_id:
             return jsonify({'success': False, 'error': 'Узел не принадлежит сценарию'}), 403
     data = request.get_json() or {}
     scenario_mgr.update_node(node_id, data)
+    if node:
+        scenario_mgr.mark_scenario_local_change(node['scenario_id'], session.get('admin_username', ''))
     return jsonify({'success': True})
 
 
@@ -12908,11 +13389,13 @@ def api_scenario_node_delete(scenario_id, node_id):
     if err:
         return jsonify({'success': False}), 403
     # Проверяем принадлежность узла сценарию
+    node = scenario_mgr.get_node(node_id)
     if scenario_id is not None:
-        node = scenario_mgr.get_node(node_id)
         if not node or node['scenario_id'] != scenario_id:
             return jsonify({'success': False, 'error': 'Узел не принадлежит сценарию'}), 403
     scenario_mgr.delete_node(node_id)
+    if node:
+        scenario_mgr.mark_scenario_local_change(node['scenario_id'], session.get('admin_username', ''))
     return jsonify({'success': True})
 
 
@@ -12927,8 +13410,10 @@ def api_scenario_edge_create(scenario_id):
         from_node_id=data['from_node_id'],
         to_node_id=data['to_node_id'],
         label=data.get('label', ''),
-        sort_order=data.get('sort_order', 0)
+        sort_order=data.get('sort_order', 0),
+        condition=data.get('condition', '')
     )
+    scenario_mgr.mark_scenario_local_change(scenario_id, session.get('admin_username', ''))
     return jsonify({'success': True, 'edge_id': edge_id})
 
 
@@ -12939,12 +13424,14 @@ def api_scenario_edge_update(scenario_id, edge_id):
     if err:
         return jsonify({'success': False}), 403
     # Проверяем принадлежность ребра сценарию
+    edge = scenario_mgr.get_edge(edge_id)
     if scenario_id is not None:
-        edge = scenario_mgr.get_edge(edge_id)
         if not edge or edge['scenario_id'] != scenario_id:
             return jsonify({'success': False, 'error': 'Ребро не принадлежит сценарию'}), 403
     data = request.get_json() or {}
-    scenario_mgr.update_edge(edge_id, data.get('label', ''), data.get('sort_order', 0))
+    scenario_mgr.update_edge(edge_id, data.get('label', ''), data.get('sort_order', 0), data.get('condition', ''))
+    if edge:
+        scenario_mgr.mark_scenario_local_change(edge['scenario_id'], session.get('admin_username', ''))
     return jsonify({'success': True})
 
 
@@ -12955,11 +13442,13 @@ def api_scenario_edge_delete(scenario_id, edge_id):
     if err:
         return jsonify({'success': False}), 403
     # Проверяем принадлежность ребра сценарию
+    edge = scenario_mgr.get_edge(edge_id)
     if scenario_id is not None:
-        edge = scenario_mgr.get_edge(edge_id)
         if not edge or edge['scenario_id'] != scenario_id:
             return jsonify({'success': False, 'error': 'Ребро не принадлежит сценарию'}), 403
     scenario_mgr.delete_edge(edge_id)
+    if edge:
+        scenario_mgr.mark_scenario_local_change(edge['scenario_id'], session.get('admin_username', ''))
     return jsonify({'success': True})
 
 
@@ -12974,6 +13463,7 @@ def api_scenario_layout(scenario_id):
     data = request.get_json() or {}
     positions = data.get('positions', [])
     scenario_mgr.update_layout(positions)
+    scenario_mgr.mark_scenario_local_change(scenario_id, session.get('admin_username', ''))
     return jsonify({'success': True})
 
 
@@ -13006,6 +13496,87 @@ def api_scenario_category_delete(cat_id):
         return jsonify({'success': False}), 403
     scenario_mgr.delete_category(cat_id)
     return jsonify({'success': True})
+
+
+@app.route('/api/integrations/myboard/webhook', methods=['POST'])
+@csrf.exempt
+def api_myboard_webhook():
+    cfg = get_myboard_config()
+    if not cfg.enable_sync:
+        return jsonify({'success': True, 'ignored': 'sync_disabled'})
+    if not cfg.webhook_secret:
+        return jsonify({'success': False, 'error': 'webhook_secret_not_configured'}), 503
+
+    raw_body = request.get_data(cache=True)
+    signature = request.headers.get('X-MyBoard-Signature')
+    timestamp = request.headers.get('X-MyBoard-Timestamp')
+    if not verify_webhook_signature(cfg.webhook_secret, raw_body, signature):
+        return jsonify({'success': False, 'error': 'invalid_signature'}), 401
+    if not is_webhook_timestamp_fresh(timestamp):
+        return jsonify({'success': False, 'error': 'invalid_timestamp'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({'success': False, 'error': 'invalid_json'}), 400
+    event_id = str(payload.get('event_id') or '').strip()
+    board_id = str(payload.get('board_id') or '').strip()
+    event_type = str(payload.get('event') or '').strip()
+    if not event_id or not board_id:
+        return jsonify({'success': False, 'error': 'missing_event_id_or_board_id'}), 400
+
+    if scenario_mgr.start_webhook_event(event_id) == 'processed':
+        return jsonify({'success': True, 'idempotent': True})
+
+    scenario = scenario_mgr.get_scenario_by_myboard_id(board_id)
+    if not scenario:
+        scenario_mgr.finish_webhook_event(event_id, 'processed')
+        return jsonify({'success': True, 'ignored': 'board_not_imported'})
+
+    try:
+        remote_version = int(payload.get('version') or 0) or None
+    except (TypeError, ValueError):
+        remote_version = None
+    remote_updated_at = str(payload.get('updated_at') or '').strip() or None
+
+    if event_type in ('board.archived', 'board.deleted'):
+        scenario_mgr.set_myboard_state(
+            scenario['id'],
+            'detached',
+            remote_version=remote_version,
+            remote_updated_at=remote_updated_at,
+        )
+        scenario_mgr.finish_webhook_event(event_id, 'processed')
+        return jsonify({'success': True, 'status': 'detached'})
+
+    if event_type not in ('board.published', 'board.updated'):
+        scenario_mgr.finish_webhook_event(event_id, 'processed')
+        return jsonify({'success': True, 'ignored': 'unknown_event'})
+
+    if scenario.get('has_local_changes'):
+        scenario_mgr.set_myboard_state(
+            scenario['id'],
+            'conflict',
+            remote_updated_at=remote_updated_at,
+        )
+        scenario_mgr.finish_webhook_event(event_id, 'processed')
+        return jsonify({'success': True, 'status': 'conflict'})
+
+    try:
+        payload_export = MyBoardClient(cfg).export_board(board_id)
+        converted = convert_myboard_export(payload_export)
+        if not converted.get('ok'):
+            raise RuntimeError('; '.join(converted.get('errors') or []))
+        scenario_mgr.import_myboard_scenario(
+            converted,
+            imported_by='myboard_webhook',
+            overwrite_scenario_id=scenario['id'],
+        )
+    except Exception as e:
+        scenario_mgr.finish_webhook_event(event_id, 'failed', str(e)[:500])
+        return jsonify({'success': False, 'error': 'sync_failed'}), 502
+
+    scenario_mgr.finish_webhook_event(event_id, 'processed')
+    return jsonify({'success': True, 'status': 'synced'})
 
 
 # --- Запуск ---

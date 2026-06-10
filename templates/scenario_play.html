@@ -604,7 +604,7 @@ function renderCurrent() {
     updatePath();
     if (!currentNode) return;
 
-    if (currentNode.node_type === 'final') {
+    if (['final', 'end'].includes(currentNode.node_type)) {
         renderFinal(currentNode);
     } else {
         renderStep(currentNode, currentChoices);
@@ -612,15 +612,17 @@ function renderCurrent() {
 }
 
 function nodeKind(node) {
-    if (node.node_type === 'final') return ['Финальный ответ', 'badge-final'];
-    if (node.node_type === 'info') return ['Инструкция', 'badge-info'];
+    if (['final', 'end'].includes(node.node_type)) return ['Финальный ответ', 'badge-final'];
+    if (['info', 'message', 'action', 'media', 'note', 'group'].includes(node.node_type)) return ['Инструкция', 'badge-info'];
     if (node.node_type === 'start') return ['Начало', 'badge-start'];
+    if (node.node_type === 'condition') return ['Условие', 'badge-question'];
+    if (node.node_type === 'unknown') return ['Неизвестный тип', 'badge-info'];
     return ['Вопрос', 'badge-question'];
 }
 
 function renderStep(node, choices) {
     const [label, cls] = nodeKind(node);
-    const isInstruction = node.node_type === 'info' || node.node_type === 'start';
+    const isInstruction = ['info', 'start', 'message', 'action', 'media', 'note', 'group', 'unknown'].includes(node.node_type);
     const hasSingleNext = isInstruction && choices.length === 1;
     const hint = node.content ? `<p class="node-hint">${esc(node.content)}</p>` : '';
     let body = '';

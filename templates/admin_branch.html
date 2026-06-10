@@ -70,6 +70,7 @@
             </header>
 
             <section class="admin-grid">
+                {% if can_branch_manuals %}
                 <a class="section-card" href="{{ url_for('admin_manuals', segment='branch') }}">
                     <div class="card-body">
                         <div class="card-title">Мануалы филиалов</div>
@@ -77,6 +78,8 @@
                     </div>
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
+                {% endif %}
+                {% if can_branch_trainer %}
                 <a class="section-card" href="{{ url_for('admin_trainer_segment', segment='branch') }}">
                     <div class="card-body">
                         <div class="card-title">Тренажёр филиалов</div>
@@ -84,6 +87,7 @@
                     </div>
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
+                {% endif %}
                 <a class="section-card" href="{{ url_for('branch_home') }}">
                     <div class="card-body">
                         <div class="card-title">Публичный раздел</div>
@@ -93,6 +97,7 @@
                 </a>
             </section>
 
+            {% if can_branch_stats %}
             <section class="panel panel-pad">
                 <div class="page-kicker">Аналитика мануалов</div>
                 <h2 class="card-title" style="margin-bottom:14px;">Понятность филиальных инструкций</h2>
@@ -141,6 +146,7 @@
                     </div>
                 {% endif %}
             </section>
+            {% endif %}
         </div>
     </main>
 </div>

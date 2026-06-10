@@ -9,8 +9,9 @@
     <style>
         .trainer-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: minmax(0, 720px);
             gap: 16px;
+            max-width: 760px;
         }
 
         .trainer-card {
@@ -88,7 +89,7 @@
                 <div>
                     <div class="page-kicker">Тренажёр</div>
                     <h1 class="page-title">Тренажёр специалиста</h1>
-                    <p class="page-subtitle">Выберите направление и переходите к сценариям с уровнями, прогрессом и рейтингом.</p>
+                    <p class="page-subtitle">Переходите к сценариям Контакт-центра с уровнями, прогрессом и рейтингом.</p>
                 </div>
                 {% if is_admin %}
                 <a class="btn btn-secondary" href="{{ url_for('admin_trainer') }}">
@@ -110,20 +111,6 @@
                         </div>
                     </div>
                 </a>
-
-                {% if branch_section_enabled %}
-                    <a class="section-card trainer-card" style="--trainer-accent:#0891b2;--trainer-bg:var(--blue-light);" href="{{ url_for('trainer_segment_menu', segment='branch') }}">
-                        <div class="card-icon-wrap"><span class="card-emoji">🏦</span></div>
-                        <div class="card-body">
-                            <div class="card-title">Филиалы</div>
-                            <div class="card-desc">Сценарии для офисного обслуживания, консультаций и операционных ситуаций.</div>
-                            <div class="trainer-card-footer">
-                                Открыть направление
-                                <svg class="card-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
-                            </div>
-                        </div>
-                    </a>
-                {% endif %}
             </section>
         </div>
     </main>

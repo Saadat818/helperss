@@ -79,6 +79,16 @@
         .status-active { background: rgba(0,166,81,.15); color: var(--green); }
         .status-draft { background: rgba(242,183,5,.15); color: var(--yellow); }
         .status-archived { background: rgba(255,255,255,.08); color: var(--muted); }
+        .sync-badge {
+            display: inline-block; margin-top: 5px; padding: 3px 7px; border-radius: 4px;
+            font-size: 11px; font-weight: 700;
+            background: rgba(255,255,255,.08); color: var(--muted);
+        }
+        .sync-synced { background: rgba(0,166,81,.15); color: var(--green); }
+        .sync-local_modified { background: rgba(242,183,5,.15); color: var(--yellow); }
+        .sync-myboard_update_available { background: rgba(33,150,243,.15); color: var(--blue); }
+        .sync-conflict { background: rgba(229,57,53,.15); color: var(--red); }
+        .sync-detached { background: rgba(255,255,255,.08); color: var(--muted); }
 
         .actions { display: flex; gap: 6px; flex-wrap: wrap; }
         .action-btn {
@@ -98,6 +108,14 @@
         .flash { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
         .flash.success { background: rgba(0,166,81,.15); color: var(--green); border: 1px solid rgba(0,166,81,.3); }
         .flash.error { background: rgba(229,57,53,.15); color: var(--red); border: 1px solid rgba(229,57,53,.3); }
+        .integration-card {
+            display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px;
+            align-items: center; background: var(--card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;
+        }
+        .integration-title { font-size: 14px; font-weight: 800; margin-bottom: 7px; }
+        .integration-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; }
+        .integration-pill { background: var(--card2); border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; }
 
         /* Категории */
         .section-title { font-size: 15px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 24px 0 12px; }
@@ -122,6 +140,7 @@
         <a href="{{ url_for('admin_dashboard') }}" class="back-btn">← Админка</a>
         <div class="header-title">🗂️ Сценарии консультаций</div>
         <div class="header-actions">
+            <a href="{{ url_for('admin_scenarios_myboard') }}" class="btn btn-blue">⇣ Стянуть из MyBoard</a>
             <a href="{{ url_for('admin_scenario_create') }}" class="btn btn-green">+ Создать сценарий</a>
         </div>
     </div>
@@ -130,6 +149,24 @@
         {% for cat, msgs in get_flashed_messages(with_categories=true) %}
         <div class="flash {{ cat }}">{{ msgs }}</div>
         {% endfor %}
+
+        <div class="integration-card">
+            <div>
+                <div class="integration-title">MyBoard</div>
+                <div class="integration-meta">
+                    <span class="integration-pill">Sync: {{ 'включён' if myboard_config.enabled else 'выключен' }}</span>
+                    <span class="integration-pill">URL: {{ myboard_config.api_url or 'не задан' }}</span>
+                    <span class="integration-pill">Token: {{ myboard_config.api_token_masked }}</span>
+                    <span class="integration-pill">Webhook: {{ myboard_config.webhook_secret_masked }}</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                {% if can_manage_myboard_settings %}
+                <a href="{{ url_for('admin_myboard_settings') }}" class="btn btn-gray">Настройки</a>
+                {% endif %}
+                <a href="{{ url_for('admin_scenarios_myboard') }}" class="btn btn-gray">Открыть импорт</a>
+            </div>
+        </div>
 
         <!-- Фильтры -->
         <div class="filters">
@@ -174,6 +211,17 @@
                             {% endif %}{% endfor %}
                         </div>
                         {% endif %}
+                        {% if s.is_imported_from_myboard or s.edit_mode in ['local_modified','conflict','detached','myboard_update_available'] %}
+                        <div>
+                            <span class="sync-badge sync-{{ s.edit_mode or 'synced' }}">
+                                {% if s.edit_mode == 'local_modified' %}Есть локальные изменения
+                                {% elif s.edit_mode == 'myboard_update_available' %}Есть обновление из MyBoard
+                                {% elif s.edit_mode == 'conflict' %}Конфликт версий
+                                {% elif s.edit_mode == 'detached' %}Откреплён от MyBoard
+                                {% else %}Синхронизирован{% endif %}
+                            </span>
+                        </div>
+                        {% endif %}
                     </td>
                     <td>{{ s.category_icon or '' }} {{ s.category_name or '—' }}</td>
                     <td>
@@ -213,6 +261,31 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="action-btn">📋 Копия</button>
                             </form>
+                            {% if s.myboard_id %}
+                                {% if s.edit_mode == 'conflict' %}
+                                <form method="post" action="{{ url_for('admin_scenario_myboard_sync', scenario_id=s.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="action" value="overwrite">
+                                    <button type="submit" class="action-btn blue">⇣ Обновить</button>
+                                </form>
+                                <form method="post" action="{{ url_for('admin_scenario_myboard_sync', scenario_id=s.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="action" value="copy">
+                                    <button type="submit" class="action-btn">Копия MyBoard</button>
+                                </form>
+                                <form method="post" action="{{ url_for('admin_scenario_myboard_sync', scenario_id=s.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="action" value="keep">
+                                    <button type="submit" class="action-btn yellow">Оставить</button>
+                                </form>
+                                {% elif s.edit_mode == 'myboard_update_available' %}
+                                <form method="post" action="{{ url_for('admin_scenario_myboard_sync', scenario_id=s.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="action" value="overwrite">
+                                    <button type="submit" class="action-btn blue">⇣ Синхронизировать</button>
+                                </form>
+                                {% endif %}
+                            {% endif %}
                             <form method="post" action="{{ url_for('admin_scenario_delete', scenario_id=s.id) }}" style="display:inline;"
                                   onsubmit="return confirm('Удалить сценарий «{{ s.title }}»?')">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

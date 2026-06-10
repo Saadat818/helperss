@@ -197,19 +197,6 @@
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
 
-                {% if branch_section_enabled %}
-                    <a href="{{ url_for('branch_home') }}" class="section-card">
-                        <div class="card-icon-wrap" style="background:var(--blue-light);color:var(--blue);">
-                            <span class="card-emoji" aria-hidden="true">🏦</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="card-title">Филиалы</div>
-                            <div class="card-desc">Отдельные мануалы и тренажёр для сотрудников филиалов.</div>
-                        </div>
-                        <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                    </a>
-                {% endif %}
-
                 <a href="{{ url_for('contacts_kc') }}" class="section-card">
                     <div class="card-icon-wrap" style="background:var(--primary-light);color:var(--primary-dark);">
                         <span class="card-emoji" aria-hidden="true">☎️</span>
@@ -245,7 +232,7 @@
                     </a>
                 {% endif %}
 
-                <a href="{{ url_for('trainer_menu') }}" class="section-card">
+                <a href="{{ url_for('trainer_segment_menu', segment='kc') }}" class="section-card">
                     <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">
                         <span class="card-emoji" aria-hidden="true">🎯</span>
                     </div>
@@ -255,6 +242,19 @@
                     </div>
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
+
+                {% if branch_section_enabled %}
+                    <a href="{{ url_for('branch_home') }}" class="section-card">
+                        <div class="card-icon-wrap" style="background:var(--blue-light);color:var(--blue);">
+                            <span class="card-emoji" aria-hidden="true">🏦</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="card-title">Филиалы</div>
+                            <div class="card-desc">Отдельные мануалы и тренажёр для сотрудников филиалов.</div>
+                        </div>
+                        <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    </a>
+                {% endif %}
             </section>
 
             <section class="panel panel-pad support-note">

@@ -785,10 +785,14 @@
 
                     <div class="form-group">
                         <label for="segment">Сегмент *</label>
+                        {% set form_segment = scenario.get('segment', 'kc') if scenario else selected_segment|default('kc') %}
+                        {% set segment_options = allowed_trainer_segments|default(['kc', 'branch']) %}
                         <select id="segment" name="segment" required>
-                            <option value="kc" {% if not scenario or scenario.get('segment', 'kc') == 'kc' %}selected{% endif %}>🎧 Контакт Центр</option>
-                            {% if branch_section_enabled %}
-                                <option value="branch" {% if scenario and scenario.get('segment') == 'branch' %}selected{% endif %}>🏦 Филиалы</option>
+                            {% if 'kc' in segment_options %}
+                                <option value="kc" {% if form_segment == 'kc' %}selected{% endif %}>🎧 Контакт Центр</option>
+                            {% endif %}
+                            {% if branch_section_enabled and 'branch' in segment_options %}
+                                <option value="branch" {% if form_segment == 'branch' %}selected{% endif %}>🏦 Филиалы</option>
                             {% endif %}
                         </select>
                     </div>

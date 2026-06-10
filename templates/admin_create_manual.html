@@ -374,6 +374,9 @@
         </div>
 
         {% set selected_segment = selected_segment|default('kc') %}
+        {% set perms = session.get('admin_permissions', []) %}
+        {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
+        {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
         <form method="POST" action="{{ url_for('admin_create_manual') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -386,8 +389,10 @@
             <div class="form-group">
                 <label for="segment">Раздел *</label>
                 <select id="segment" name="segment" required style="width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
+                    {% if can_kc_manuals %}
                     <option value="kc" {% if selected_segment == 'kc' %}selected{% endif %}>Контакт-центр</option>
-                    {% if branch_section_enabled %}
+                    {% endif %}
+                    {% if branch_section_enabled and can_branch_manuals %}
                         <option value="branch" {% if selected_segment == 'branch' %}selected{% endif %}>Филиалы</option>
                     {% endif %}
                 </select>
@@ -407,7 +412,7 @@
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Создать мануал</button>
-                <a href="{{ url_for('admin_manuals') }}" class="btn btn-secondary">Отмена</a>
+                <a href="{{ url_for('admin_manuals', segment=selected_segment) }}" class="btn btn-secondary">Отмена</a>
             </div>
         </form>
     </div>

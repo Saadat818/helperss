@@ -4,8 +4,8 @@
 Таблицы: cs_* (consultation scenarios)
 """
 
-import sqlite3
 import json
+import sqlite3
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -23,6 +23,11 @@ class ScenarioManager:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
+
+    def _ensure_column(self, cursor, table: str, column: str, definition: str):
+        existing = {row['name'] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in existing:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def _init_db(self):
         with self._connect() as conn:
@@ -56,6 +61,19 @@ class ScenarioManager:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            for column, definition in (
+                ("myboard_id", "TEXT"),
+                ("myboard_version", "INTEGER"),
+                ("myboard_updated_at", "TEXT"),
+                ("last_synced_at", "TEXT"),
+                ("has_local_changes", "INTEGER DEFAULT 0"),
+                ("edit_mode", "TEXT DEFAULT 'synced'"),
+                ("is_imported_from_myboard", "INTEGER DEFAULT 0"),
+                ("copied_from_scenario_id", "INTEGER"),
+                ("copied_from_myboard_id", "TEXT"),
+                ("copied_from_myboard_version", "INTEGER"),
+            ):
+                self._ensure_column(c, "cs_scenarios", column, definition)
 
             # Узлы сценария (шаги дерева решений)
             c.execute("""
@@ -77,15 +95,14 @@ class ScenarioManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            # Миграция: добавить pos_x/pos_y если таблица уже существует
-            try:
-                c.execute("ALTER TABLE cs_nodes ADD COLUMN pos_x REAL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                c.execute("ALTER TABLE cs_nodes ADD COLUMN pos_y REAL DEFAULT 0")
-            except Exception:
-                pass
+            for column, definition in (
+                ("pos_x", "REAL DEFAULT 0"),
+                ("pos_y", "REAL DEFAULT 0"),
+                ("source_node_id", "TEXT DEFAULT ''"),
+                ("source_type", "TEXT DEFAULT ''"),
+                ("raw_data", "TEXT DEFAULT ''"),
+            ):
+                self._ensure_column(c, "cs_nodes", column, definition)
 
             # Переходы между узлами (ребра дерева)
             c.execute("""
@@ -98,6 +115,11 @@ class ScenarioManager:
                     sort_order INTEGER DEFAULT 0
                 )
             """)
+            for column, definition in (
+                ("condition", "TEXT DEFAULT ''"),
+                ("source_edge_id", "TEXT DEFAULT ''"),
+            ):
+                self._ensure_column(c, "cs_edges", column, definition)
 
             # Версии сценариев (снапшоты)
             c.execute("""
@@ -121,8 +143,20 @@ class ScenarioManager:
                 )
             """)
 
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS processed_webhook_events (
+                    event_id TEXT PRIMARY KEY,
+                    status TEXT DEFAULT 'processing',
+                    received_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    processed_at TEXT,
+                    last_error TEXT DEFAULT ''
+                )
+            """)
+
             # Индексы
             c.execute("CREATE INDEX IF NOT EXISTS idx_cs_scenarios_status ON cs_scenarios(status)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_scenarios_myboard_id ON cs_scenarios(myboard_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_scenarios_edit_mode ON cs_scenarios(edit_mode)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cs_nodes_scenario ON cs_nodes(scenario_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cs_edges_scenario ON cs_edges(scenario_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cs_views_scenario ON cs_views(scenario_id)")
@@ -199,7 +233,8 @@ class ScenarioManager:
         """Все сценарии для админа включая черновики и архив"""
         with self._connect() as conn:
             rows = conn.execute("""
-                SELECT s.*, c.name as category_name, c.icon as category_icon
+                SELECT s.*, c.name as category_name, c.icon as category_icon,
+                    (SELECT COUNT(*) FROM cs_nodes n WHERE n.scenario_id = s.id) as node_count
                 FROM cs_scenarios s
                 LEFT JOIN cs_categories c ON s.category_id = c.id
                 ORDER BY s.updated_at DESC
@@ -215,6 +250,30 @@ class ScenarioManager:
                 WHERE s.id = ?
             """, (scenario_id,)).fetchone()
             return dict(row) if row else None
+
+    def get_scenario_by_myboard_id(self, myboard_id: str) -> Optional[Dict]:
+        if not myboard_id:
+            return None
+        with self._connect() as conn:
+            row = conn.execute("""
+                SELECT s.*, c.name as category_name, c.icon as category_icon
+                FROM cs_scenarios s
+                LEFT JOIN cs_categories c ON s.category_id = c.id
+                WHERE s.myboard_id = ?
+                ORDER BY s.id DESC
+                LIMIT 1
+            """, (myboard_id,)).fetchone()
+            return dict(row) if row else None
+
+    def get_imported_myboard_index(self) -> Dict[str, Dict]:
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT id, title, myboard_id, myboard_version, myboard_updated_at,
+                       has_local_changes, edit_mode, last_synced_at
+                FROM cs_scenarios
+                WHERE is_imported_from_myboard = 1 AND myboard_id IS NOT NULL
+            """).fetchall()
+            return {str(r['myboard_id']): dict(r) for r in rows if r['myboard_id']}
 
     def create_scenario(self, title: str, description: str = '', category_id: int = None,
                         tags: str = '', created_by: str = '') -> int:
@@ -236,6 +295,36 @@ class ScenarioManager:
                     updated_by=?, updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
             """, (title, description, category_id, tags, updated_by, scenario_id))
+            conn.commit()
+
+    def mark_scenario_local_change(self, scenario_id: int, updated_by: str = ''):
+        with self._connect() as conn:
+            conn.execute("""
+                UPDATE cs_scenarios
+                SET has_local_changes = 1,
+                    edit_mode = CASE
+                        WHEN edit_mode = 'conflict' THEN 'conflict'
+                        WHEN edit_mode = 'detached' THEN 'detached'
+                        ELSE 'local_modified'
+                    END,
+                    updated_by = CASE WHEN ? != '' THEN ? ELSE updated_by END,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND is_imported_from_myboard = 1
+            """, (updated_by, updated_by, scenario_id))
+            conn.commit()
+
+    def set_myboard_state(self, scenario_id: int, edit_mode: str,
+                          remote_version: int | None = None,
+                          remote_updated_at: str | None = None):
+        with self._connect() as conn:
+            conn.execute("""
+                UPDATE cs_scenarios
+                SET edit_mode = ?,
+                    myboard_version = COALESCE(?, myboard_version),
+                    myboard_updated_at = COALESCE(?, myboard_updated_at),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (edit_mode, remote_version, remote_updated_at, scenario_id))
             conn.commit()
 
     def publish_scenario(self, scenario_id: int, updated_by: str = ''):
@@ -293,11 +382,24 @@ class ScenarioManager:
             if not orig:
                 return None
             cur = conn.execute("""
-                INSERT INTO cs_scenarios (title, description, category_id, tags,
-                    status, version, created_by, updated_by)
-                VALUES (?, ?, ?, ?, 'draft', 1, ?, ?)
-            """, (f"{orig['title']} (копия)", orig['description'],
-                  orig['category_id'], orig['tags'], created_by, created_by))
+                INSERT INTO cs_scenarios (
+                    title, description, category_id, tags, status, version,
+                    created_by, updated_by, edit_mode, is_imported_from_myboard,
+                    copied_from_scenario_id, copied_from_myboard_id,
+                    copied_from_myboard_version
+                )
+                VALUES (?, ?, ?, ?, 'draft', 1, ?, ?, 'detached', 0, ?, ?, ?)
+            """, (
+                f"{orig['title']} (копия)",
+                orig['description'],
+                orig['category_id'],
+                orig['tags'],
+                created_by,
+                created_by,
+                scenario_id,
+                orig['myboard_id'],
+                orig['myboard_version'],
+            ))
             new_id = cur.lastrowid
 
             # Копируем узлы
@@ -308,12 +410,14 @@ class ScenarioManager:
             for node in nodes:
                 c2 = conn.execute("""
                     INSERT INTO cs_nodes (scenario_id, node_type, title, content, is_root,
-                        sort_order, answer_text, final_answer, internal_note, documents, links)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        sort_order, answer_text, final_answer, internal_note, documents, links,
+                        pos_x, pos_y, source_node_id, source_type, raw_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (new_id, node['node_type'], node['title'], node['content'],
                       node['is_root'], node['sort_order'], node['answer_text'],
                       node['final_answer'], node['internal_note'],
-                      node['documents'], node['links']))
+                      node['documents'], node['links'], node['pos_x'], node['pos_y'],
+                      node['source_node_id'], node['source_type'], node['raw_data']))
                 node_map[node['id']] = c2.lastrowid
 
             # Копируем рёбра
@@ -325,9 +429,15 @@ class ScenarioManager:
                 new_to = node_map.get(edge['to_node_id'])
                 if new_from and new_to:
                     conn.execute("""
-                        INSERT INTO cs_edges (scenario_id, from_node_id, to_node_id, label, sort_order)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (new_id, new_from, new_to, edge['label'], edge['sort_order']))
+                        INSERT INTO cs_edges (
+                            scenario_id, from_node_id, to_node_id, label,
+                            sort_order, condition, source_edge_id
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        new_id, new_from, new_to, edge['label'], edge['sort_order'],
+                        edge['condition'], edge['source_edge_id']
+                    ))
 
             conn.commit()
             return new_id
@@ -374,19 +484,32 @@ class ScenarioManager:
             return [dict(r) for r in rows]
 
     def create_node(self, scenario_id: int, node_type: str = 'question',
-                    title: str = '', content: str = '', is_root: bool = False) -> int:
+                    title: str = '', content: str = '', is_root: bool = False,
+                    sort_order: int = 0, answer_text: str = '',
+                    final_answer: str = '', internal_note: str = '',
+                    documents: str = '', links: str = '', pos_x: float = 0,
+                    pos_y: float = 0, source_node_id: str = '',
+                    source_type: str = '', raw_data: str = '') -> int:
         with self._connect() as conn:
             cur = conn.execute("""
-                INSERT INTO cs_nodes (scenario_id, node_type, title, content, is_root)
-                VALUES (?, ?, ?, ?, ?)
-            """, (scenario_id, node_type, title, content, 1 if is_root else 0))
+                INSERT INTO cs_nodes (
+                    scenario_id, node_type, title, content, is_root, sort_order,
+                    answer_text, final_answer, internal_note, documents, links,
+                    pos_x, pos_y, source_node_id, source_type, raw_data
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                scenario_id, node_type, title, content, 1 if is_root else 0,
+                sort_order, answer_text, final_answer, internal_note, documents, links,
+                pos_x, pos_y, source_node_id, source_type, raw_data
+            ))
             conn.commit()
             return cur.lastrowid
 
     def update_node(self, node_id: int, data: dict):
         allowed = ['node_type', 'title', 'content', 'is_root', 'sort_order',
                    'answer_text', 'final_answer', 'internal_note', 'documents', 'links',
-                   'pos_x', 'pos_y']
+                   'pos_x', 'pos_y', 'source_node_id', 'source_type', 'raw_data']
         fields = {k: v for k, v in data.items() if k in allowed}
         if not fields:
             return
@@ -418,12 +541,19 @@ class ScenarioManager:
     # ─── Рёбра ─────────────────────────────────────────────────────
 
     def create_edge(self, scenario_id: int, from_node_id: int,
-                    to_node_id: int, label: str = '', sort_order: int = 0) -> int:
+                    to_node_id: int, label: str = '', sort_order: int = 0,
+                    condition: str = '', source_edge_id: str = '') -> int:
         with self._connect() as conn:
             cur = conn.execute("""
-                INSERT INTO cs_edges (scenario_id, from_node_id, to_node_id, label, sort_order)
-                VALUES (?, ?, ?, ?, ?)
-            """, (scenario_id, from_node_id, to_node_id, label, sort_order))
+                INSERT INTO cs_edges (
+                    scenario_id, from_node_id, to_node_id, label,
+                    sort_order, condition, source_edge_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                scenario_id, from_node_id, to_node_id, label,
+                sort_order, condition, source_edge_id
+            ))
             conn.commit()
             return cur.lastrowid
 
@@ -434,17 +564,171 @@ class ScenarioManager:
             ).fetchone()
             return dict(row) if row else None
 
-    def update_edge(self, edge_id: int, label: str, sort_order: int = 0):
+    def update_edge(self, edge_id: int, label: str, sort_order: int = 0, condition: str = ''):
         with self._connect() as conn:
             conn.execute(
-                "UPDATE cs_edges SET label=?, sort_order=? WHERE id=?",
-                (label, sort_order, edge_id)
+                "UPDATE cs_edges SET label=?, sort_order=?, condition=? WHERE id=?",
+                (label, sort_order, condition, edge_id)
             )
             conn.commit()
 
     def delete_edge(self, edge_id: int):
         with self._connect() as conn:
             conn.execute("DELETE FROM cs_edges WHERE id=?", (edge_id,))
+            conn.commit()
+
+    # ─── MyBoard import / sync ─────────────────────────────────────
+
+    def import_myboard_scenario(self, converted: dict, imported_by: str = '',
+                                overwrite_scenario_id: int | None = None,
+                                copy_from_scenario_id: int | None = None) -> int:
+        """Создать или перезаписать сценарий из нормализованного экспорта MyBoard."""
+        title = converted.get('title') or 'Без названия'
+        description = converted.get('description') or ''
+        myboard_id = converted.get('myboard_id') or converted.get('id') or ''
+        myboard_version = converted.get('version')
+        myboard_updated_at = converted.get('updated_at') or ''
+        status = 'active' if converted.get('status') in ('published', 'active') else 'draft'
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        linked_myboard_id = None if copy_from_scenario_id else myboard_id
+        imported_flag = 0 if copy_from_scenario_id else 1
+        edit_mode = 'detached' if copy_from_scenario_id else 'synced'
+
+        with self._connect() as conn:
+            if overwrite_scenario_id:
+                existing = conn.execute(
+                    "SELECT * FROM cs_scenarios WHERE id=?",
+                    (overwrite_scenario_id,),
+                ).fetchone()
+                if not existing:
+                    raise ValueError('Scenario not found')
+                scenario_id = overwrite_scenario_id
+                conn.execute("""
+                    UPDATE cs_scenarios
+                    SET title=?, description=?, status=?, myboard_id=?,
+                        myboard_version=?, myboard_updated_at=?,
+                        last_synced_at=?, has_local_changes=0,
+                        edit_mode='synced', is_imported_from_myboard=1,
+                        updated_by=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                """, (
+                    title, description, status, myboard_id, myboard_version,
+                    myboard_updated_at, now, imported_by, scenario_id
+                ))
+                conn.execute("DELETE FROM cs_edges WHERE scenario_id=?", (scenario_id,))
+                conn.execute("DELETE FROM cs_nodes WHERE scenario_id=?", (scenario_id,))
+            else:
+                cur = conn.execute("""
+                    INSERT INTO cs_scenarios (
+                        title, description, category_id, status, version, tags,
+                        created_by, updated_by, myboard_id, myboard_version,
+                        myboard_updated_at, last_synced_at, has_local_changes,
+                        edit_mode, is_imported_from_myboard, copied_from_scenario_id,
+                        copied_from_myboard_id, copied_from_myboard_version
+                    )
+                    VALUES (?, ?, NULL, ?, 1, '', ?, ?, ?, ?, ?, ?, 0,
+                            ?, ?, ?, ?, ?)
+                """, (
+                    title, description, status, imported_by, imported_by,
+                    linked_myboard_id, myboard_version, myboard_updated_at, now,
+                    edit_mode, imported_flag,
+                    copy_from_scenario_id, myboard_id if copy_from_scenario_id else None,
+                    myboard_version if copy_from_scenario_id else None
+                ))
+                scenario_id = cur.lastrowid
+
+            node_map: dict[str, int] = {}
+            for idx, node in enumerate(converted.get('nodes') or []):
+                node_type = node.get('node_type') or 'question'
+                text = node.get('text') or ''
+                final_answer = node.get('final_answer') or ''
+                if node_type in ('final', 'end') and not final_answer:
+                    final_answer = text
+                cur = conn.execute("""
+                    INSERT INTO cs_nodes (
+                        scenario_id, node_type, title, content, is_root,
+                        sort_order, answer_text, final_answer, internal_note,
+                        documents, links, pos_x, pos_y, source_node_id,
+                        source_type, raw_data
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    scenario_id,
+                    node_type,
+                    node.get('title') or '',
+                    text,
+                    1 if node.get('is_root') else 0,
+                    idx,
+                    node.get('answer_text') or '',
+                    final_answer,
+                    node.get('internal_note') or '',
+                    node.get('documents') or '',
+                    node.get('links') or '',
+                    node.get('x') or 0,
+                    node.get('y') or 0,
+                    node.get('source_node_id') or '',
+                    node.get('source_type') or '',
+                    node.get('raw_data') or '',
+                ))
+                source_node_id = str(node.get('source_node_id') or '')
+                if source_node_id:
+                    node_map[source_node_id] = cur.lastrowid
+
+            for idx, edge in enumerate(converted.get('edges') or []):
+                from_id = node_map.get(str(edge.get('from') or ''))
+                to_id = node_map.get(str(edge.get('to') or ''))
+                if not from_id or not to_id:
+                    continue
+                conn.execute("""
+                    INSERT INTO cs_edges (
+                        scenario_id, from_node_id, to_node_id, label,
+                        sort_order, condition, source_edge_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    scenario_id,
+                    from_id,
+                    to_id,
+                    edge.get('label') or '',
+                    idx,
+                    edge.get('condition') or '',
+                    edge.get('source_edge_id') or '',
+                ))
+
+            conn.commit()
+            return scenario_id
+
+    def start_webhook_event(self, event_id: str):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT status FROM processed_webhook_events WHERE event_id=?",
+                (event_id,),
+            ).fetchone()
+            if row and row['status'] == 'processed':
+                return 'processed'
+            if row:
+                conn.execute("""
+                    UPDATE processed_webhook_events
+                    SET status='processing', received_at=CURRENT_TIMESTAMP,
+                        processed_at=NULL, last_error=''
+                    WHERE event_id=?
+                """, (event_id,))
+            else:
+                conn.execute("""
+                    INSERT INTO processed_webhook_events (event_id, status, received_at)
+                    VALUES (?, 'processing', CURRENT_TIMESTAMP)
+                """, (event_id,))
+            conn.commit()
+            return 'processing'
+
+    def finish_webhook_event(self, event_id: str, status: str = 'processed',
+                             last_error: str = ''):
+        with self._connect() as conn:
+            conn.execute("""
+                UPDATE processed_webhook_events
+                SET status=?, processed_at=CURRENT_TIMESTAMP, last_error=?
+                WHERE event_id=?
+            """, (status, last_error, event_id))
             conn.commit()
 
     # ─── Просмотры / рейтинг ──────────────────────────────────────

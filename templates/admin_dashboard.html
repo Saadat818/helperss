@@ -420,15 +420,18 @@
         <div class="header">
             {% set manual_segment = manual_segment|default('kc') %}
             {% set segment_info = segment_info|default({'name': 'Контакт-центр'}) %}
+            {% set perms = session.get('admin_permissions', []) %}
+            {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
+            {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
+            {% set can_create_current = can_kc_manuals if manual_segment == 'kc' else can_branch_manuals %}
             <h1>Панель администратора — {{ segment_info.name }}</h1>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                {% set perms = session.get('admin_permissions', []) %}
                 <a href="{{ url_for('choose_help_type') }}" class="btn btn-primary">🏠 На Главную</a>
-                {% if 'super_admin' in perms or 'admin_manuals' in perms %}
+                {% if can_create_current %}
                     <a href="{{ url_for('admin_create_manual', segment=manual_segment) }}" class="btn btn-primary">📚 Создать мануал</a>
-                    {% if branch_section_enabled %}
-                        <a href="{{ url_for('admin_branch') }}" class="btn btn-primary">🏦 Филиалы</a>
-                    {% endif %}
+                {% endif %}
+                {% if branch_section_enabled and can_branch_manuals %}
+                    <a href="{{ url_for('admin_branch') }}" class="btn btn-primary">🏦 Филиалы</a>
                 {% endif %}
                 {% if 'super_admin' in perms or 'admin_manuals' in perms %}
                     <a href="{{ url_for('admin_contacts_kc') }}" class="btn btn-primary">☎️ Контакты КЦ</a>
@@ -464,8 +467,10 @@
         {% endwith %}
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
-            <a href="{{ url_for('admin_manuals', segment='kc') }}" class="btn {% if manual_segment == 'kc' %}btn-primary{% else %}btn-secondary{% endif %}">Контакт-центр</a>
-            {% if branch_section_enabled %}
+            {% if can_kc_manuals %}
+                <a href="{{ url_for('admin_manuals', segment='kc') }}" class="btn {% if manual_segment == 'kc' %}btn-primary{% else %}btn-secondary{% endif %}">Контакт-центр</a>
+            {% endif %}
+            {% if branch_section_enabled and can_branch_manuals %}
                 <a href="{{ url_for('admin_manuals', segment='branch') }}" class="btn {% if manual_segment == 'branch' %}btn-primary{% else %}btn-secondary{% endif %}">Филиалы</a>
             {% endif %}
         </div>
@@ -601,6 +606,11 @@
             <div class="empty-state">
                 <div class="empty-state-icon">📝</div>
                 <p>Мануалов пока нет</p>
+                {% if can_create_current %}
+                    <div style="margin-top:18px;">
+                        <a href="{{ url_for('admin_create_manual', segment=manual_segment) }}" class="btn btn-primary">📚 Создать первый мануал</a>
+                    </div>
+                {% endif %}
             </div>
         {% endif %}
     </div>

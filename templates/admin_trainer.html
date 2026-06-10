@@ -430,7 +430,7 @@
                 <a href="{{ url_for('admin_trainer_stats', segment=segment) }}" class="btn btn-primary">📊 Статистика</a>
                 <a href="{{ url_for('admin_trainer_drafts', segment=segment) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); position:relative;">✏️ Черновики{% if draft_count %}<span style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ draft_count }}</span>{% endif %}</a>
                 {# <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a> #}
-                <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">+ Создать сценарий</a>
+                <a href="{{ url_for('admin_trainer_create', segment=segment) }}" class="btn btn-success">+ Создать сценарий</a>
             </div>
         </div>
 
@@ -587,7 +587,7 @@
             <div class="empty-state-icon">📝</div>
             <p>Сценариев пока нет</p>
             <p style="margin-top: 10px;">
-                <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">Создать первый сценарий</a>
+                <a href="{{ url_for('admin_trainer_create', segment=segment) }}" class="btn btn-success">Создать первый сценарий</a>
             </p>
         </div>
         {% endif %}

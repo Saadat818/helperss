@@ -70,6 +70,7 @@
         .add-question { color: var(--blue); border-color: rgba(77,159,255,.4); background: rgba(77,159,255,.1); }
         .add-final { color: var(--green); border-color: rgba(0,192,107,.4); background: rgba(0,192,107,.1); }
         .add-info { color: var(--yellow); border-color: rgba(255,184,0,.4); background: rgba(255,184,0,.1); }
+        .add-message { color: var(--orange); border-color: rgba(249,115,22,.35); background: rgba(249,115,22,.1); }
         .nodebar-right { margin-left: auto; font-size: 11px; color: var(--muted); }
 
         /* Рабочая область */
@@ -111,6 +112,14 @@
         .flow-node.type-question > * { position: relative; z-index: 1; }
         .flow-node.type-final   { background: var(--node-f); border-color: var(--node-f-border); box-shadow: inset 0 0 0 4px rgba(22,163,74,.12); }
         .flow-node.type-info    { background: var(--node-i); border-color: var(--node-i-border); }
+        .flow-node.type-end     { background: var(--node-f); border-color: var(--node-f-border); box-shadow: inset 0 0 0 4px rgba(22,163,74,.12); }
+        .flow-node.type-message,
+        .flow-node.type-action,
+        .flow-node.type-media   { background: var(--card); border-color: var(--blue); }
+        .flow-node.type-condition { background: var(--node-q); border-color: var(--node-q-border); }
+        .flow-node.type-note,
+        .flow-node.type-group   { background: var(--node-i); border-color: var(--node-i-border); }
+        .flow-node.type-unknown { background: var(--card2); border-color: var(--red); border-style: dashed; }
 
         .node-header { padding: 7px 10px 4px; display: flex; align-items: center; gap: 5px; }
         .node-type-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; background: rgba(255,255,255,.65); border: 1px solid rgba(16,24,40,.08); }
@@ -118,6 +127,14 @@
         .type-question .node-type-badge { color: var(--node-q-border); }
         .type-final .node-type-badge    { color: var(--node-f-border); }
         .type-info .node-type-badge     { color: var(--node-i-border); }
+        .type-end .node-type-badge      { color: var(--node-f-border); }
+        .type-message .node-type-badge,
+        .type-action .node-type-badge,
+        .type-media .node-type-badge    { color: var(--blue); }
+        .type-condition .node-type-badge { color: var(--node-q-border); }
+        .type-note .node-type-badge,
+        .type-group .node-type-badge    { color: var(--node-i-border); }
+        .type-unknown .node-type-badge  { color: var(--red); }
         .type-question .node-header { justify-content: center; padding: 22px 22px 0; }
         .node-root-badge { font-size: 9px; background: rgba(157,113,255,.2); color: var(--purple); padding: 1px 4px; border-radius: 3px; font-weight: 700; }
         .node-hdr-actions { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
@@ -246,6 +263,7 @@
     <span class="nodebar-label">+ Блок:</span>
     <button class="add-node-btn add-start"    onclick="addNode('start')">🟣 Старт</button>
     <button class="add-node-btn add-question" onclick="addNode('question')">🔵 Вопрос</button>
+    <button class="add-node-btn add-message"  onclick="addNode('message')">🟠 Сообщение</button>
     <button class="add-node-btn add-final"    onclick="addNode('final')">🟢 Финал</button>
     <button class="add-node-btn add-info"     onclick="addNode('info')">🟡 Комментарий</button>
     <div class="nodebar-right">
@@ -369,6 +387,7 @@ let nodes = {}, edges = {};
         pos_x:{{ n.pos_x or 0 }}, pos_y:{{ n.pos_y or 0 }},
         final_answer:{{ n.final_answer|tojson }}, internal_note:{{ n.internal_note|tojson }},
         documents:{{ n.documents|tojson }}, links:{{ n.links|tojson }},
+        source_type:{{ n.source_type|tojson }}, raw_data:{{ n.raw_data|tojson }},
     };{% endfor %}
     {% for e in edges %}
     edges[{{ e.id }}] = {
@@ -444,7 +463,9 @@ function updateMM(){
     const ctx=mc.getContext('2d');
     ctx.clearRect(0,0,160,100);
     const sc=0.038;
-    const cols={start:'#9d71ff',question:'#4d9fff',final:'#00c06b',info:'#ffb800'};
+    const cols={start:'#9d71ff',question:'#4d9fff',final:'#00c06b',info:'#ffb800',
+        message:'#f97316',condition:'#c84a63',action:'#2563eb',end:'#00c06b',
+        media:'#2563eb',note:'#ffb800',group:'#ffb800',unknown:'#dc3545'};
     Object.values(nodes).forEach(n=>{
         ctx.fillStyle=cols[n.node_type]||'#4d9fff';
         ctx.fillRect(n.pos_x*sc,n.pos_y*sc,180*sc,70*sc);
@@ -456,8 +477,11 @@ function updateMM(){
 }
 
 // ── Рендер узла ──────────────────────────────────────────────────
-const TL={start:'Старт',question:'Вопрос',final:'Финал',info:'Инфо'};
-const TI={start:'🟣',question:'🔵',final:'🟢',info:'🟡'};
+const TL={start:'Старт',question:'Вопрос',message:'Сообщение',condition:'Условие',
+    action:'Действие',final:'Финал',end:'Завершение',info:'Инфо',media:'Медиа',
+    note:'Заметка',group:'Группа',unknown:'Неизвестный'};
+const TI={start:'🟣',question:'🔵',message:'🟠',condition:'🔷',action:'🔧',
+    final:'🟢',end:'🟢',info:'🟡',media:'🖼',note:'📝',group:'📦',unknown:'⚠'};
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function tr(s,n){return s&&s.length>n?s.slice(0,n)+'…':(s||'');}
 
@@ -483,7 +507,7 @@ function renderNode(n){
         <div class="node-title">${esc(tr(n.title||'(без названия)',55))}</div>
         ${n.content?`<div class="node-content">${esc(tr(n.content,85))}</div>`:''}
         ${n.final_answer?`<div class="node-final-label">💬 ${esc(tr(n.final_answer,55))}</div>`:''}
-        ${n.node_type!=='final'?`<div class="port port-out" data-port="${n.id}"></div>`:''}
+        ${!['final','end'].includes(n.node_type)?`<div class="port port-out" data-port="${n.id}"></div>`:''}
         <div class="port port-in"></div>
     </div>`;
 }
@@ -748,9 +772,18 @@ function renderNodePanel(n){
     <select class="fs" onchange="updF(${n.id},'node_type',this.value)">
         <option value="start"    ${n.node_type==='start'?'selected':''}>🟣 Старт</option>
         <option value="question" ${n.node_type==='question'?'selected':''}>🔵 Вопрос</option>
+        <option value="message"  ${n.node_type==='message'?'selected':''}>🟠 Сообщение</option>
+        <option value="condition" ${n.node_type==='condition'?'selected':''}>🔷 Условие</option>
+        <option value="action"   ${n.node_type==='action'?'selected':''}>🔧 Действие</option>
         <option value="final"    ${n.node_type==='final'?'selected':''}>🟢 Финальный ответ</option>
+        <option value="end"      ${n.node_type==='end'?'selected':''}>🟢 Завершение</option>
         <option value="info"     ${n.node_type==='info'?'selected':''}>🟡 Комментарий</option>
+        <option value="media"    ${n.node_type==='media'?'selected':''}>🖼 Медиа</option>
+        <option value="note"     ${n.node_type==='note'?'selected':''}>📝 Заметка</option>
+        <option value="group"    ${n.node_type==='group'?'selected':''}>📦 Группа</option>
+        <option value="unknown"  ${n.node_type==='unknown'?'selected':''}>⚠ Неизвестный</option>
     </select></div>
+    ${n.node_type==='unknown'?`<div class="fg"><div class="fl">Исходный тип MyBoard</div><input class="fi" value="${esc(n.source_type||'unknown')}" readonly></div>`:''}
     <div class="fg"><div class="fl">Заголовок</div>
     <input class="fi" id="pf-title-${n.id}" value="${esc(n.title||'')}" oninput="updF(${n.id},'title',this.value)"></div>
     <div class="fg"><div class="fl">Текст вопроса / содержание</div>

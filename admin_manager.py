@@ -420,6 +420,10 @@ ROLE_ADMIN_TOPICS = 'admin_topics'
 ROLE_ADMIN_SCENARIOS = 'admin_scenarios'
 ROLE_ADMIN_TRAINER = 'admin_trainer'
 ROLE_TRAINER_VIEWER = 'trainer_viewer'
+ROLE_SUPERADMIN_BRANCH = 'superadmin_branch'
+ROLE_ADMIN_BRANCH_MANUALS = 'admin_branch_manuals'
+ROLE_ADMIN_BRANCH_TRAINER = 'admin_branch_trainer'
+ROLE_ADMIN_BRANCH_STATS = 'admin_branch_stats'
 ROLE_EDITOR = 'editor'  # Обратная совместимость
 
 ROLE_NAMES = {
@@ -429,12 +433,38 @@ ROLE_NAMES = {
     ROLE_ADMIN_SCENARIOS: 'Админ сценариев',
     ROLE_ADMIN_TRAINER: 'Админ тренажёра',
     ROLE_TRAINER_VIEWER: 'Наблюдатель тренажёра',
+    ROLE_SUPERADMIN_BRANCH: 'Супер-админ филиалов',
+    ROLE_ADMIN_BRANCH_MANUALS: 'Филиалы: мануалы',
+    ROLE_ADMIN_BRANCH_TRAINER: 'Филиалы: тренажёр',
+    ROLE_ADMIN_BRANCH_STATS: 'Филиалы: аналитика',
     ROLE_EDITOR: 'Редактор'
 }
 
-ALL_ADMIN_ROLES = {ROLE_SUPER_ADMIN, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER}
+ALL_ADMIN_ROLES = {
+    ROLE_SUPER_ADMIN,
+    ROLE_ADMIN_MANUALS,
+    ROLE_ADMIN_TOPICS,
+    ROLE_ADMIN_SCENARIOS,
+    ROLE_ADMIN_TRAINER,
+    ROLE_TRAINER_VIEWER,
+    ROLE_SUPERADMIN_BRANCH,
+    ROLE_ADMIN_BRANCH_MANUALS,
+    ROLE_ADMIN_BRANCH_TRAINER,
+    ROLE_ADMIN_BRANCH_STATS,
+}
 ROLE_EDITOR_PERMISSIONS = [ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS]
-ADMIN_PERMISSION_ORDER = [ROLE_SUPER_ADMIN, ROLE_ADMIN_MANUALS, ROLE_ADMIN_TOPICS, ROLE_ADMIN_SCENARIOS, ROLE_ADMIN_TRAINER, ROLE_TRAINER_VIEWER]
+ADMIN_PERMISSION_ORDER = [
+    ROLE_SUPER_ADMIN,
+    ROLE_ADMIN_MANUALS,
+    ROLE_ADMIN_TOPICS,
+    ROLE_ADMIN_SCENARIOS,
+    ROLE_ADMIN_TRAINER,
+    ROLE_TRAINER_VIEWER,
+    ROLE_SUPERADMIN_BRANCH,
+    ROLE_ADMIN_BRANCH_MANUALS,
+    ROLE_ADMIN_BRANCH_TRAINER,
+    ROLE_ADMIN_BRANCH_STATS,
+]
 
 
 class AdminsManager:
@@ -884,10 +914,15 @@ class AdminAuth:
 
     @staticmethod
     def manuals_required(f):
-        """Декоратор: доступ к мануалам (super_admin или admin_manuals)"""
+        """Декоратор: доступ к мануалам КЦ или филиалов."""
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            check = AdminAuth._check_permission('super_admin', 'admin_manuals')
+            check = AdminAuth._check_permission(
+                'super_admin',
+                'admin_manuals',
+                'superadmin_branch',
+                'admin_branch_manuals',
+            )
             if check:
                 return check
             return f(*args, **kwargs)
@@ -906,10 +941,15 @@ class AdminAuth:
 
     @staticmethod
     def trainer_required(f):
-        """Декоратор: доступ к тренажёру — редактирование (super_admin или admin_trainer)"""
+        """Декоратор: доступ к тренажёру КЦ или филиалов."""
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            check = AdminAuth._check_permission('super_admin', 'admin_trainer')
+            check = AdminAuth._check_permission(
+                'super_admin',
+                'admin_trainer',
+                'superadmin_branch',
+                'admin_branch_trainer',
+            )
             if check:
                 return check
             return f(*args, **kwargs)
@@ -917,10 +957,17 @@ class AdminAuth:
 
     @staticmethod
     def trainer_view_required(f):
-        """Декоратор: доступ к статистике тренажёра (super_admin, admin_trainer или trainer_viewer)"""
+        """Декоратор: доступ к статистике тренажёра КЦ или филиалов."""
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            check = AdminAuth._check_permission('super_admin', 'admin_trainer', 'trainer_viewer')
+            check = AdminAuth._check_permission(
+                'super_admin',
+                'admin_trainer',
+                'trainer_viewer',
+                'superadmin_branch',
+                'admin_branch_trainer',
+                'admin_branch_stats',
+            )
             if check:
                 return check
             return f(*args, **kwargs)

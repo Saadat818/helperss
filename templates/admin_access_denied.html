@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Нет доступа — Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
+    <style>
+        .denied-page {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: var(--bg);
+        }
+
+        .denied-panel {
+            width: min(100%, 520px);
+            padding: 28px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-md);
+        }
+
+        .denied-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 22px;
+        }
+    </style>
+</head>
+<body>
+    <main class="denied-page">
+        <section class="denied-panel">
+            <div class="page-kicker">Админка</div>
+            <h1 class="page-title">Нет доступа</h1>
+            <p class="page-subtitle">{{ message or 'У вас нет доступа к этому разделу.' }}</p>
+            <div class="denied-actions">
+                <a class="btn btn-primary" href="{{ back_url or url_for('choose_help_type') }}">Назад</a>
+                {% if login_url %}
+                <a class="btn btn-secondary" href="{{ login_url }}">Войти в админку</a>
+                {% endif %}
+            </div>
+        </section>
+    </main>
+</body>
+</html>

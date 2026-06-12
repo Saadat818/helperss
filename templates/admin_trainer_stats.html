@@ -242,6 +242,32 @@
             box-shadow: 0 4px 12px rgba(11, 177, 124, 0.3);
         }
 
+        .branch-filter {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            color: #999;
+        }
+
+        .filter-pill {
+            padding: 8px 14px;
+            border: 1px solid #2a2a3e;
+            border-radius: 999px;
+            background: #16213e;
+            color: #aaa;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .filter-pill.active {
+            border-color: #00d4aa;
+            background: #00d4aa22;
+            color: #00d4aa;
+        }
+
         .empty-state {
             text-align: center;
             padding: 40px;
@@ -400,7 +426,7 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('admin_trainer_segment', segment=segment or 'kc') }}" class="back-link">
+    <a href="{{ url_for('admin_trainer_segment', segment=segment or 'kc', branch_area=selected_branch_area) if selected_branch_area else url_for('admin_trainer_segment', segment=segment or 'kc') }}" class="back-link">
         &larr; К тренажеру
     </a>
 
@@ -409,6 +435,16 @@
             <h1>📊 Статистика — {{ seg_info.name if seg_info else 'Тренажер' }}</h1>
             <a href="{{ url_for('admin_trainer_export') }}" class="btn btn-success">📥 Экспорт в Excel</a>
         </div>
+
+        {% if segment == 'branch' %}
+        <div class="branch-filter">
+            <span>Ветка:</span>
+            <a class="filter-pill {% if not selected_branch_area %}active{% endif %}" href="{{ url_for('admin_trainer_stats', segment=segment) }}">Все</a>
+            {% for area_key, area_info in branch_manual_areas.items() %}
+            <a class="filter-pill {% if selected_branch_area == area_key %}active{% endif %}" href="{{ url_for('admin_trainer_stats', segment=segment, branch_area=area_key) }}">{{ area_info.name }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
 
         <!-- Main Stats -->
         <div class="stats-grid">

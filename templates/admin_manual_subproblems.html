@@ -4,491 +4,219 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Редактирование мануала - {{ manual.title | e }}</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0c0c0c;
-            background-attachment: fixed;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
-        }
-
-        h1 {
-            color: #007b7e;
-            font-size: 28px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s;
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-            color: white;
-        }
-
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
-        }
-
-        .add-subproblem-section {
-            margin-bottom: 20px;
-            padding: 20px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-radius: 12px;
-            border-left: 4px solid #28a745;
-        }
-
-        .subproblem-list {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .subproblem-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            padding: 20px;
-            border-radius: 12px;
-            border-left: 4px solid #0bb17c;
-            transition: all 0.3s;
-            cursor: pointer;
-        }
-
-        .subproblem-card:hover {
-            transform: translateX(5px);
-            box-shadow: 0 5px 20px rgba(11, 177, 124, 0.2);
-        }
-
-        .subproblem-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .subproblem-id {
-            font-size: 18px;
-            font-weight: 700;
-            color: #007b7e;
-        }
-
-        .subproblem-title {
-            font-size: 16px;
-            color: #333;
-            margin-bottom: 10px;
-        }
-
-        .subproblem-stats {
-            display: flex;
-            gap: 15px;
-            font-size: 13px;
-            color: #666;
-        }
-
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .btn-edit {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            padding: 8px 16px;
-            font-size: 13px;
-        }
-
-        .btn-edit:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-            padding: 8px 16px;
-            font-size: 13px;
-        }
-
-        .btn-danger:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
-        }
-
-        .subproblem-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .flash-messages {
-            margin-bottom: 20px;
-        }
-
-        .flash {
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            font-weight: 500;
-        }
-
-        .flash-success {
-            background: #d4edda;
-            color: #155724;
-            border-left: 4px solid #28a745;
-        }
-
-        .flash-error {
-            background: #f8d7da;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
-        }
-    
-        /* Admin Dark Theme */
-        :root {
-            --bg: #0c0c0c;
-            --panel: #1a1a1a;
-            --panel-2: #202020;
-            --panel-3: #141414;
-            --text: #e8e8e8;
-            --muted: #b5b5b5;
-            --border: #242424;
-            --accent: #00a651;
-            --accent-2: #009448;
-            --danger: #e94b5a;
-            --warning: #f2b705;
-        }
-
-        body {
-            background: var(--bg) !important;
-            color: var(--text);
-        }
-
-        .container {
-            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
-            border: 1px solid #151515;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        }
-
-        .header,
-        .form-actions {
-            border-bottom: 1px solid #2a2a2a !important;
-            border-top: 1px solid #2a2a2a !important;
-        }
-
-        h1, h2, h3, h4 {
-            color: var(--text) !important;
-        }
-
-        .subtitle,
-        .stat-label,
-        .subproblems-count,
-        .helper-text,
-        .help-text,
-        .info-text,
-        .warning-text,
-        .error-text,
-        .role-description,
-        label {
-            color: var(--muted) !important;
-        }
-
-        .stat-card,
-        .manual-card,
-        .form-section,
-        .info-box,
-        .warning-box,
-        .error-card,
-        .subproblem-card,
-        .problem-item,
-        .upload-form,
-        .modal-content,
-        .preview-container,
-        .photo-item,
-        .video-item,
-        .stats-summary,
-        .stat-item {
-            background: var(--panel-3) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 14px;
-            color: var(--text);
-        }
-
-        .warning-box {
-            border-color: rgba(242, 183, 5, 0.4) !important;
-            background: rgba(242, 183, 5, 0.08) !important;
-        }
-
-        .error-card {
-            border-color: rgba(233, 75, 90, 0.4) !important;
-            background: rgba(233, 75, 90, 0.08) !important;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="password"],
-        input[type="email"],
-        textarea,
-        select {
-            background: #111 !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-        }
-
-        input:focus,
-        textarea:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent) !important;
-            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
-        }
-
-        table {
-            color: var(--text);
-        }
-
-        th {
-            background: #1f1f1f !important;
-            color: var(--text) !important;
-            border-bottom: 1px solid #2a2a2a !important;
-        }
-
-        td {
-            background: #141414 !important;
-            border-bottom: 1px solid #242424 !important;
-        }
-
-        tr:nth-child(even) td {
-            background: #171717 !important;
-        }
-
-        .btn {
-            border-radius: 12px !important;
-        }
-
-        .btn-primary,
-        .btn-success {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
-        }
-
-        .btn-primary:hover,
-        .btn-success:hover {
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-        }
-
-        .btn-secondary,
-        .btn-logout {
-            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
-        }
-
-        .btn-danger,
-        .btn-delete {
-            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
-            color: #1b1b1b !important;
-            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
-        }
-
-        .alert-success {
-            background-color: rgba(0, 166, 81, 0.12) !important;
-            color: #bfe8d1 !important;
-            border: 1px solid rgba(0, 166, 81, 0.25) !important;
-        }
-
-        .alert-danger,
-        .danger {
-            background-color: rgba(233, 75, 90, 0.12) !important;
-            color: #f3c0c6 !important;
-            border: 1px solid rgba(233, 75, 90, 0.25) !important;
-        }
-
-        .back-link {
-            background: rgba(26, 26, 26, 0.95) !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        .back-link:hover {
-            border-color: var(--accent) !important;
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
-        }
-
-        /* Текст карточек подпроблем в тёмной теме */
-        .subproblem-title { color: var(--text) !important; }
-        .subproblem-id { color: var(--accent) !important; }
-        .subproblem-stats, .subproblem-stats .stat-item {
-            color: var(--muted) !important;
-            background: transparent !important;
-            border: none !important;
-        }
-
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
-        }
-
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
-    </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_manual_editor.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <div class="container">
-        <div class="header">
-            <h1>📚 {{ manual.title | e }}</h1>
-            <a href="{{ url_for('admin_manuals', segment=manual.segment|default('kc')) }}" class="btn btn-secondary">← Назад к списку</a>
+    {% set manual_segment = manual_segment|default(manual.segment|default('kc')) %}
+    {% set selected_branch_area = selected_branch_area|default(manual.branch_area|default('oper')) %}
+    {% set branch_manual_areas = branch_manual_areas|default({'cash': {'name': 'Касса'}, 'oper': {'name': 'Опер. блок'}}) %}
+    {% set subproblems = manual.subproblems|default({}) %}
+    {% set perms = session.get('admin_permissions', []) %}
+    {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
+    {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
+    {% set stats = namespace(steps=0, videos=0, missing=0) %}
+    {% for sid, subproblem in subproblems.items() %}
+        {% set stats.steps = stats.steps + (subproblem.photos|length if subproblem.photos else 0) %}
+        {% if subproblem.video %}
+            {% set stats.videos = stats.videos + 1 %}
+        {% endif %}
+        {% for photo in subproblem.photos|default([]) %}
+            {% if not photo.id %}
+                {% set stats.missing = stats.missing + 1 %}
+            {% endif %}
+        {% endfor %}
+    {% endfor %}
+    {% if manual_segment == 'branch' %}
+        {% set back_url = url_for('admin_manuals', segment='branch', branch_area=selected_branch_area) %}
+    {% else %}
+        {% set back_url = url_for('admin_manuals', segment='kc') %}
+    {% endif %}
+
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">☾</button>
+
+    <main class="manual-page">
+        <div class="manual-topbar">
+            <nav class="manual-breadcrumb">
+                <a href="{{ url_for('admin_dashboard') }}">Админка</a>
+                <span>/</span>
+                <a href="{{ back_url }}">Мануалы</a>
+                <span>/</span>
+                <span>{{ manual.title | e }}</span>
+            </nav>
+            <div class="manual-actions">
+                <a class="manual-btn manual-btn-secondary" href="{{ back_url }}">Назад к списку</a>
+                <a class="manual-btn manual-btn-primary" href="{{ url_for('admin_create_subproblem', manual_id=manual_id) }}">Создать подпроблему</a>
+            </div>
         </div>
+
+        <section class="manual-hero">
+            <div>
+                <div class="manual-kicker">
+                    {{ 'Филиалы' if manual_segment == 'branch' else 'Контакт-центр' }}
+                    {% if manual_segment == 'branch' %} / {{ branch_manual_areas.get(selected_branch_area, {}).get('name', 'Опер. блок') }}{% endif %}
+                </div>
+                <h1 class="manual-title">{{ manual.title | e }}</h1>
+                <p class="manual-subtitle">
+                    Это мануал-контейнер. Внутри создаются отдельные подпроблемы, а уже в них добавляются шаги, фото и видео.
+                </p>
+            </div>
+        </section>
 
         {% with messages = get_flashed_messages() %}
             {% if messages %}
-                <div class="flash-messages">
+                <div class="manual-alerts">
                     {% for message in messages %}
-                        <div class="flash flash-success">{{ message }}</div>
+                        <div class="manual-alert">{{ message }}</div>
                     {% endfor %}
                 </div>
             {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('admin_update_manual', manual_id=manual_id) }}" class="add-subproblem-section">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div style="display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:12px;align-items:end;">
-                <div>
-                    <label for="title">Название мануала</label>
-                    <input id="title" name="title" type="text" value="{{ manual.title | e }}" required maxlength="200">
-                </div>
-                <div>
-                    <label for="segment">Раздел</label>
-                    <select id="segment" name="segment">
-                        <option value="kc" {% if manual.segment|default('kc') == 'kc' %}selected{% endif %}>Контакт-центр</option>
-                        {% if branch_section_enabled %}
-                            <option value="branch" {% if manual.segment|default('kc') == 'branch' %}selected{% endif %}>Филиалы</option>
-                        {% endif %}
-                    </select>
-                </div>
-                <button type="submit" class="btn btn-success">Сохранить</button>
-            </div>
-        </form>
+        <div class="manual-grid-wide">
+            <aside class="manual-side">
+                <h2 class="manual-panel-title">Настройки мануала</h2>
+                <form class="manual-form" method="POST" action="{{ url_for('admin_update_manual', manual_id=manual_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <div class="add-subproblem-section">
-            <a href="{{ url_for('admin_create_subproblem', manual_id=manual_id) }}" class="btn btn-success">➕ Добавить подпроблему</a>
-        </div>
-
-        <div class="subproblem-list">
-            {% for subproblem_id, subproblem in manual.subproblems.items() %}
-                <div class="subproblem-card" onclick="window.location.href='{{ url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}'">
-                    <div class="subproblem-header">
-                        <div class="subproblem-id">{{ subproblem_id }}</div>
-                        <div class="subproblem-actions">
-                            <a href="{{ url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}"
-                               class="btn btn-edit"
-                               onclick="event.stopPropagation()">
-                                Редактировать
-                            </a>
-                            <form method="POST" action="{{ url_for('admin_delete_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}"
-                                  style="display: inline;"
-                                  onsubmit="event.stopPropagation(); return confirm('⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить подпроблему:\n{{ subproblem.title | e }}{%- if subproblem.photos and subproblem.photos | length > 0 %}\n\nБудет удалено {{ subproblem.photos | length }} шаг(ов) с фото и описаниями.{%- endif %}{%- if subproblem.video %}\n\nТакже будет удалено видео.{%- endif %}\n\nВсе данные будут удалены безвозвратно!\n\nПродолжить удаление?');"
-                                  onclick="event.stopPropagation();">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-danger">Удалить</button>
-                            </form>
-                        </div>
+                    <div class="manual-field">
+                        <label for="title">Название</label>
+                        <input id="title" name="title" type="text" value="{{ manual.title | e }}" required maxlength="200">
                     </div>
-                    <div class="subproblem-title">{{ subproblem.title | e }}</div>
-                    <div class="subproblem-stats">
-                        <div class="stat-item">
-                            📷 Шагов: {{ subproblem.photos|length if subproblem.photos else 0 }}
-                        </div>
-                        {% if subproblem.video %}
-                            <div class="stat-item">
-                                🎥 Есть видео
-                            </div>
-                        {% endif %}
+
+                    <div class="manual-field">
+                        <label for="segment">Раздел</label>
+                        <select id="segment" name="segment">
+                            {% if can_kc_manuals or manual_segment == 'kc' %}
+                                <option value="kc" {% if manual_segment == 'kc' %}selected{% endif %}>Контакт-центр</option>
+                            {% endif %}
+                            {% if branch_section_enabled and (can_branch_manuals or manual_segment == 'branch') %}
+                                <option value="branch" {% if manual_segment == 'branch' %}selected{% endif %}>Филиалы</option>
+                            {% endif %}
+                        </select>
+                    </div>
+
+                    <div class="manual-field" id="branchAreaGroup" {% if manual_segment != 'branch' %}style="display:none;"{% endif %}>
+                        <label for="branch_area">Ветка филиалов</label>
+                        <select id="branch_area" name="branch_area">
+                            {% for area_key, area in branch_manual_areas.items() %}
+                                <option value="{{ area_key }}" {% if selected_branch_area == area_key %}selected{% endif %}>{{ area.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <button type="submit" class="manual-btn manual-btn-primary">Сохранить настройки</button>
+                </form>
+
+                <div class="manual-stats" style="margin-top:18px;">
+                    <div class="manual-stat">
+                        <span class="manual-stat-value">{{ subproblems|length }}</span>
+                        <span class="manual-stat-label">подпроблем</span>
+                    </div>
+                    <div class="manual-stat">
+                        <span class="manual-stat-value">{{ stats.steps }}</span>
+                        <span class="manual-stat-label">шагов</span>
+                    </div>
+                    <div class="manual-stat">
+                        <span class="manual-stat-value">{{ stats.videos }}</span>
+                        <span class="manual-stat-label">видео</span>
                     </div>
                 </div>
-            {% endfor %}
+
+                {% if stats.missing %}
+                    <div class="manual-note" style="margin-top:18px;">
+                        <strong>Есть шаги без фото</strong><br>
+                        Таких шагов: {{ stats.missing }}. Они будут отображаться пользователю с заглушкой.
+                    </div>
+                {% endif %}
+            </aside>
+
+            <section class="manual-panel">
+                <div class="manual-subproblem-head" style="margin-bottom:16px;">
+                    <div>
+                        <h2 class="manual-panel-title" style="margin-bottom:6px;">Подпроблемы</h2>
+                        <div class="manual-muted">Откройте подпроблему, чтобы редактировать шаги, фото и видео.</div>
+                    </div>
+                    <a class="manual-btn manual-btn-primary" href="{{ url_for('admin_create_subproblem', manual_id=manual_id) }}">Добавить</a>
+                </div>
+
+                {% if subproblems %}
+                    <div class="manual-list">
+                        {% for subproblem_id, subproblem in subproblems.items() %}
+                            {% set steps_count = subproblem.photos|length if subproblem.photos else 0 %}
+                            {% set missing = namespace(count=0) %}
+                            {% for photo in subproblem.photos|default([]) %}
+                                {% if not photo.id %}
+                                    {% set missing.count = missing.count + 1 %}
+                                {% endif %}
+                            {% endfor %}
+                            <article class="manual-subproblem-card" data-href="{{ url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}">
+                                <div class="manual-subproblem-head">
+                                    <div>
+                                        <div class="manual-meta" style="margin-bottom:10px;">
+                                            <span class="manual-id">{{ subproblem_id }}</span>
+                                            <span class="manual-pill">{{ steps_count }} шагов</span>
+                                            {% if subproblem.video %}
+                                                <span class="manual-pill">есть видео</span>
+                                            {% else %}
+                                                <span class="manual-pill">без видео</span>
+                                            {% endif %}
+                                            {% if missing.count %}
+                                                <span class="manual-pill manual-pill-warning">без фото: {{ missing.count }}</span>
+                                            {% endif %}
+                                        </div>
+                                        <h3 class="manual-card-title">{{ subproblem.title | e }}</h3>
+                                    </div>
+                                    <div class="manual-inline-actions">
+                                        <a class="manual-btn manual-btn-small manual-btn-primary"
+                                           href="{{ url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}"
+                                           data-stop-card>
+                                            Открыть
+                                        </a>
+                                        <form method="POST"
+                                              action="{{ url_for('admin_delete_subproblem', manual_id=manual_id, subproblem_id=subproblem_id) }}"
+                                              data-stop-card
+                                              onsubmit="return confirm('Удалить подпроблему: {{ subproblem.title | e }}? Все шаги, фото и видео будут удалены.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="manual-btn manual-btn-small manual-btn-danger">Удалить</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="manual-empty">
+                        <h3 class="manual-empty-title">Подпроблем пока нет</h3>
+                        <p class="manual-empty-text">Создайте первую подпроблему, затем добавьте в неё шаги, скриншоты и видео.</p>
+                        <a class="manual-btn manual-btn-primary" href="{{ url_for('admin_create_subproblem', manual_id=manual_id) }}">Создать подпроблему</a>
+                    </div>
+                {% endif %}
+            </section>
         </div>
-    </div>
+    </main>
+
+    <script>
+        const segmentSelect = document.getElementById('segment');
+        const branchAreaGroup = document.getElementById('branchAreaGroup');
+        function syncBranchAreaVisibility() {
+            if (!segmentSelect || !branchAreaGroup) return;
+            branchAreaGroup.style.display = segmentSelect.value === 'branch' ? '' : 'none';
+        }
+        if (segmentSelect) {
+            segmentSelect.addEventListener('change', syncBranchAreaVisibility);
+            syncBranchAreaVisibility();
+        }
+
+        document.querySelectorAll('[data-href]').forEach((card) => {
+            card.addEventListener('click', () => {
+                window.location.href = card.dataset.href;
+            });
+        });
+        document.querySelectorAll('[data-stop-card]').forEach((node) => {
+            node.addEventListener('click', (event) => event.stopPropagation());
+        });
+    </script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

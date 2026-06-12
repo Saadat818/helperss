@@ -6,6 +6,7 @@
     {% set manual_segment = manual_segment|default('kc') %}
     {% set segment_info = segment_info|default({'name': 'Контакт-центр'}) %}
     {% set feedback_mode = feedback_mode|default('ticket') %}
+    {% set branch_area = branch_area|default('') %}
     <title>{{ manual_title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
     <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
@@ -172,6 +173,7 @@
                             <form method="post" action="{{ url_for('manual_feedback') }}" id="manualFeedbackForm">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="segment" value="{{ manual_segment }}">
+                                <input type="hidden" name="branch_area" value="{{ branch_area }}">
                                 <input type="hidden" name="result" id="manualFeedbackResult" value="">
                                 <textarea name="comment" id="manualFeedbackComment" rows="3" maxlength="1000" placeholder="Если непонятно, кратко опишите что именно" style="display:none;width:100%;margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--card);color:var(--text);"></textarea>
                                 <div class="button-row">

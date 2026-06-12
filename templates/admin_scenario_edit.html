@@ -44,6 +44,8 @@
         .status-draft { background: rgba(255,184,0,.15); color: var(--yellow); }
         .status-active { background: rgba(0,192,107,.15); color: var(--green); }
         .status-archived { background: rgba(136,136,170,.15); color: var(--muted); }
+        .status-unsaved { background: rgba(37,99,235,.15); color: var(--blue); }
+        .status-error { background: rgba(220,53,69,.15); color: var(--red); }
         .sep { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
         .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 650; cursor: pointer; border: none; transition: all .15s ease; text-decoration: none; white-space: nowrap; }
         .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(16,24,40,.08); }
@@ -201,9 +203,16 @@
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
         .modal-overlay.show { display: flex; }
         .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; max-width: 360px; width: 92%; }
+        .modal-wide { max-width: 780px; max-height: 82vh; overflow: auto; }
         .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 9px; }
         .modal p { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
         .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .version-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+        .version-table th, .version-table td { padding: 9px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+        .version-table th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+        .version-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .validation-list { margin: 8px 0 0 18px; color: var(--red); font-size: 12px; line-height: 1.45; }
+        .validation-list.warning { color: var(--yellow); }
 
         /* Edge label popup */
         .edge-popup { position: fixed; z-index: 500; background: var(--card); border: 1px solid var(--blue); border-radius: 8px; padding: 10px; display: none; flex-direction: column; gap: 7px; box-shadow: 0 8px 24px rgba(0,0,0,.4); min-width: 220px; }
@@ -234,20 +243,32 @@
         {% elif scenario.status == 'draft' %}✏️ Черновик
         {% else %}📦 Архив{% endif %}
     </span>
+    <span class="status-pill {% if validation and validation.errors %}status-error{% elif scenario.has_draft_changes %}status-unsaved{% elif scenario.status == 'active' %}status-active{% else %}status-draft{% endif %}" id="draftStatus">
+        {% if validation and validation.errors %}Ошибка валидации
+        {% elif scenario.has_draft_changes %}Сохранено в черновик
+        {% elif scenario.status == 'active' %}Опубликовано
+        {% else %}Черновик{% endif %}
+    </span>
     <div class="sep"></div>
     <button class="btn btn-gray btn-sm" onclick="undoAction()" title="Ctrl+Z">↩</button>
-    <button class="btn btn-gray btn-sm" onclick="redoAction()" title="Ctrl+Y">↪</button>
+    <button class="btn btn-gray btn-sm" onclick="redoAction()" title="Ctrl+Shift+Z">↪</button>
     <div class="sep"></div>
     <button class="btn btn-blue btn-sm" onclick="autoLayout()">⚡ Авторасстановка</button>
     <button class="btn btn-gray btn-sm" onclick="fitView()">⊡ По размеру</button>
-    <div class="sep"></div>
-    <button class="btn btn-green btn-sm" onclick="saveAll()" id="saveBtn">💾 Сохранить</button>
-    {% if scenario.status == 'draft' %}
-    <form method="post" action="{{ url_for('admin_scenario_publish', scenario_id=scenario.id) }}" style="display:inline;" id="publishForm">
+    <button class="btn btn-gray btn-sm" onclick="openHistory()">История</button>
+    {% if versions %}
+    <form method="post" action="{{ url_for('admin_scenario_reset_draft', scenario_id=scenario.id) }}" style="display:inline;" onsubmit="return confirm('Все несохранённые изменения будут удалены. Продолжить?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="button" class="btn btn-yellow btn-sm" onclick="tryPublish()">▶ Опубликовать</button>
+        <button type="submit" class="btn btn-outline btn-sm">Вернуться к опубликованной версии</button>
     </form>
     {% endif %}
+    <div class="sep"></div>
+    <button class="btn btn-green btn-sm" onclick="saveAll()" id="saveBtn">💾 Сохранить</button>
+    <form method="post" action="{{ url_for('admin_scenario_publish', scenario_id=scenario.id) }}" style="display:inline;" id="publishForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="publication_comment" id="publicationComment">
+        <button type="button" class="btn btn-yellow btn-sm" onclick="tryPublish()">▶ Опубликовать</button>
+    </form>
     {% if scenario.status == 'active' %}
     <form method="post" action="{{ url_for('admin_scenario_archive', scenario_id=scenario.id) }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -268,6 +289,11 @@
     <button class="add-node-btn add-info"     onclick="addNode('info')">🟡 Комментарий</button>
     <div class="nodebar-right">
         Блоков: <strong id="nodeCount">{{ nodes|length }}</strong> &nbsp; Связей: <strong id="edgeCount">{{ edges|length }}</strong>
+        {% if validation and validation.errors %}
+            &nbsp; <span style="color:var(--red);">Ошибок: {{ validation.errors|length }}</span>
+        {% elif validation and validation.warnings %}
+            &nbsp; <span style="color:var(--yellow);">Предупреждений: {{ validation.warnings|length }}</span>
+        {% endif %}
     </div>
 </div>
 
@@ -372,6 +398,75 @@
     </div>
 </div>
 
+<!-- Version history -->
+<div class="modal-overlay" id="historyModal">
+    <div class="modal modal-wide">
+        <h3>История версий</h3>
+        {% if validation and validation.errors %}
+            <ul class="validation-list">
+                {% for error in validation.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        {% if validation and validation.warnings %}
+            <ul class="validation-list warning">
+                {% for warning in validation.warnings %}
+                    <li>{{ warning }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        <table class="version-table">
+            <thead>
+                <tr>
+                    <th>Версия</th>
+                    <th>Дата</th>
+                    <th>Автор</th>
+                    <th>Комментарий</th>
+                    <th>Статус</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if versions %}
+                    {% for version in versions %}
+                    <tr>
+                        <td>v{{ version.version }}</td>
+                        <td>{{ version.created_at }}</td>
+                        <td>{{ version.created_by or '—' }}</td>
+                        <td>{{ version.comment or '—' }}</td>
+                        <td>{{ 'опубликована' if version.version == scenario.version else 'архивная' }}</td>
+                        <td>
+                            <div class="version-actions">
+                                <a class="btn btn-gray btn-sm" href="{{ url_for('admin_scenario_version_view', scenario_id=scenario.id, version_id=version.id) }}" target="_blank">Просмотреть</a>
+                                <a class="btn btn-gray btn-sm" href="{{ url_for('admin_scenario_version_compare', scenario_id=scenario.id, version_id=version.id) }}" target="_blank">Сравнить</a>
+                                <form method="post" action="{{ url_for('admin_scenario_version_restore', scenario_id=scenario.id, version_id=version.id) }}" onsubmit="return confirm('Создать черновик из версии v{{ version.version }}? Текущий черновик будет заменён.');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-blue btn-sm" type="submit">Восстановить</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="6">Опубликованных версий пока нет</td></tr>
+                {% endif %}
+                <tr>
+                    <td>Черновик</td>
+                    <td>{{ scenario.draft_updated_at or scenario.updated_at }}</td>
+                    <td>{{ scenario.draft_updated_by or scenario.updated_by or '—' }}</td>
+                    <td>Текущие изменения редактора</td>
+                    <td>черновик</td>
+                    <td>—</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="modal-actions" style="margin-top:16px;">
+            <button class="btn btn-gray" onclick="document.getElementById('historyModal').classList.remove('show')">Закрыть</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const SID = {{ scenario.id }};
 const CSRF = '{{ csrf_token() }}';
@@ -404,6 +499,7 @@ let isDrawEdge=false, drawFrom=null;
 let tempEdge=null;
 let selNode=null, selEdge=null;
 let dirty=false;
+let draftSaving=false;
 
 // История
 let hist=[], histIdx=-1;
@@ -428,6 +524,19 @@ function toast(msg,type='success'){
     clearTimeout(el._t);
     el._t=setTimeout(()=>el.classList.remove('show'),2600);
 }
+
+function setDraftStatus(text, mode='draft'){
+    const el=document.getElementById('draftStatus');
+    if(!el)return;
+    el.textContent=text;
+    el.classList.remove('status-active','status-unsaved','status-error','status-draft');
+    if(mode==='error')el.classList.add('status-error');
+    else if(mode==='saved')el.classList.add('status-active');
+    else if(mode==='dirty')el.classList.add('status-unsaved');
+    else el.classList.add('status-draft');
+}
+
+function openHistory(){document.getElementById('historyModal').classList.add('show');}
 
 // ── Confirm modal ────────────────────────────────────────────────
 function confirm2(title,text,cb){
@@ -663,7 +772,7 @@ document.addEventListener('mousemove',ev=>{
 document.addEventListener('mouseup',ev=>{
     if(isDragging){
         document.getElementById('nd-'+dragId)?.classList.remove('dragging');
-        if(dragMoved){markDirty();saveLayout();}
+        if(dragMoved){pushHist();markDirty();saveLayout();}
         isDragging=false;dragId=null;dragMoved=false;
     }
     if(isPanning)isPanning=false;
@@ -916,7 +1025,7 @@ async function addEdgePanel(fid){
 async function updEdge(eid,label){
     edges[eid].label=label;markDirty();
     const d=await api('PUT',`/api/admin/scenarios/${SID}/edges/${eid}`,{label,sort_order:0});
-    if(d.success)renderEdges(); else toast(d.error||'Ошибка','error');
+    if(d.success){pushHist();renderEdges();} else toast(d.error||'Ошибка','error');
 }
 
 async function deleteEdge(eid){
@@ -924,6 +1033,7 @@ async function deleteEdge(eid){
     if(d.success){
         delete edges[eid];renderEdges();
         if(selEdge===eid)closePanel();
+        pushHist();
         toast('Связь удалена');
     } else toast(d.error||'Ошибка','error');
 }
@@ -935,13 +1045,56 @@ async function saveLayout(){
 }
 
 // ── Сохранить всё ─────────────────────────────────────────────────
-function markDirty(){dirty=true;document.getElementById('saveBtn').textContent='💾 Сохранить *';}
-async function saveAll(){
-    await Promise.all([...Object.values(nodes).map(n=>saveNode(n.id)),saveLayout()]);
-    dirty=false;document.getElementById('saveBtn').textContent='💾 Сохранить';
-    toast('Сохранено');
+function collectDraftPayload(){
+    const title=document.getElementById('mTitle')?.value.trim()||document.getElementById('scenarioName').textContent.trim();
+    const catRaw=document.getElementById('mCat')?.value||'';
+    return {
+        scenario:{
+            title,
+            category_id:catRaw?parseInt(catRaw):null,
+            description:document.getElementById('mDesc')?.value.trim()||'',
+            tags:document.getElementById('mTags')?.value.trim()||''
+        },
+        nodes:Object.values(nodes).map((n,index)=>Object.assign({},n,{sort_order:index})),
+        edges:Object.values(edges).map((e,index)=>Object.assign({},e,{sort_order:index}))
+    };
 }
-setInterval(()=>{if(dirty)saveAll();},60000);
+
+async function saveDraftSnapshot(options={}){
+    if(draftSaving)return null;
+    draftSaving=true;
+    try{
+        const d=await api('PUT',`/api/admin/scenarios/${SID}/draft`,collectDraftPayload());
+        if(!d.success){
+            setDraftStatus('Ошибка валидации','error');
+            if(!options.quiet)toast(d.error||'Ошибка сохранения черновика','error');
+            return d;
+        }
+        dirty=false;
+        document.getElementById('saveBtn').textContent='💾 Сохранить';
+        const validation=d.validation||{};
+        if(validation.errors&&validation.errors.length)setDraftStatus('Ошибка валидации','error');
+        else setDraftStatus('Сохранено в черновик','dirty');
+        if(!options.quiet)toast('Черновик сохранён');
+        return d;
+    }catch(e){
+        setDraftStatus('Ошибка сохранения','error');
+        if(!options.quiet)toast('Ошибка сохранения черновика','error');
+        return null;
+    }finally{
+        draftSaving=false;
+    }
+}
+
+function markDirty(){
+    dirty=true;
+    document.getElementById('saveBtn').textContent='💾 Сохранить *';
+    setDraftStatus('Есть несохранённые изменения','dirty');
+}
+async function saveAll(){
+    await saveDraftSnapshot();
+}
+setInterval(()=>{if(dirty)saveDraftSnapshot({quiet:true});},10000);
 window.onbeforeunload=()=>{if(dirty)return 'Есть несохранённые изменения';};
 
 // ── Авторасстановка ──────────────────────────────────────────────
@@ -1005,7 +1158,7 @@ function autoLayout(){
         nodes[n.id].pos_x=Math.round(centerOffset+slot[n.id]*HGAP);
         nodes[n.id].pos_y=Math.round(110+(depth[n.id]||0)*VGAP);
     });
-    renderAll();saveLayout();fitView();toast('Авторасстановка применена');
+    pushHist();renderAll();saveLayout();fitView();toast('Авторасстановка применена');
 }
 
 // ── История ──────────────────────────────────────────────────────
@@ -1020,16 +1173,36 @@ function restoreSnap(s){
     edges={};Object.values(d.edges).forEach(e=>edges[e.id]=e);
     renderAll();
 }
-function undoAction(){if(histIdx<=0)return;histIdx--;restoreSnap(hist[histIdx]);toast('Отменено');}
-function redoAction(){if(histIdx>=hist.length-1)return;histIdx++;restoreSnap(hist[histIdx]);toast('Повторено');}
+function undoAction(){
+    if(histIdx<=0)return;
+    histIdx--;
+    restoreSnap(hist[histIdx]);
+    markDirty();
+    saveDraftSnapshot({quiet:true});
+    toast('Отменено');
+}
+function redoAction(){
+    if(histIdx>=hist.length-1)return;
+    histIdx++;
+    restoreSnap(hist[histIdx]);
+    markDirty();
+    saveDraftSnapshot({quiet:true});
+    toast('Повторено');
+}
 
 // ── Клавиатура ───────────────────────────────────────────────────
 document.addEventListener('keydown',ev=>{
     const inp=ev.target.tagName==='INPUT'||ev.target.tagName==='TEXTAREA'||ev.target.tagName==='SELECT';
     if((ev.ctrlKey||ev.metaKey)&&ev.key==='s'){ev.preventDefault();saveAll();}
+    if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'){
+        ev.preventDefault();
+        if(ev.shiftKey)redoAction();else undoAction();
+        return;
+    }
+    if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='y'){
+        ev.preventDefault();redoAction();return;
+    }
     if(!inp){
-        if((ev.ctrlKey||ev.metaKey)&&ev.key==='z'){ev.preventDefault();undoAction();}
-        if((ev.ctrlKey||ev.metaKey)&&(ev.key==='y'||(ev.shiftKey&&ev.key==='z'))){ev.preventDefault();redoAction();}
         if(ev.key==='Delete'||ev.key==='Backspace'){if(selNode)deleteNode(selNode);else if(selEdge)deleteEdge(selEdge);}
         if(ev.key==='Escape'){closePanel();closeCtx();cancelEdge();}
         if(ev.key==='f'||ev.key==='ф')fitView();
@@ -1048,15 +1221,19 @@ async function saveMeta(){
     if(d.success){
         document.getElementById('scenarioName').textContent=title;
         document.getElementById('metaModal').classList.remove('show');
+        setDraftStatus('Сохранено в черновик','dirty');
         toast('Настройки сохранены');
     } else toast(d.error||'Ошибка','error');
 }
 
 // ── Публикация ───────────────────────────────────────────────────
-function tryPublish(){
+async function tryPublish(){
+    await saveDraftSnapshot({quiet:true});
     const nl=Object.values(nodes);
     if(!nl.length){toast('Добавьте хотя бы один блок','error');return;}
     if(!nl.find(n=>n.is_root)){toast('Укажите стартовый блок (★)','error');return;}
+    const comment=prompt('Комментарий к публикации', '')||'';
+    document.getElementById('publicationComment').value=comment.trim();
     document.getElementById('publishForm').submit();
 }
 

@@ -67,6 +67,9 @@ class ScenarioManager:
                 ("myboard_updated_at", "TEXT"),
                 ("last_synced_at", "TEXT"),
                 ("has_local_changes", "INTEGER DEFAULT 0"),
+                ("has_draft_changes", "INTEGER DEFAULT 0"),
+                ("draft_updated_by", "TEXT DEFAULT ''"),
+                ("draft_updated_at", "TEXT"),
                 ("edit_mode", "TEXT DEFAULT 'synced'"),
                 ("is_imported_from_myboard", "INTEGER DEFAULT 0"),
                 ("copied_from_scenario_id", "INTEGER"),
@@ -132,6 +135,7 @@ class ScenarioManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            self._ensure_column(c, "cs_versions", "comment", "TEXT DEFAULT ''")
 
             # Логи просмотров (для рейтинга популярности)
             c.execute("""
@@ -280,9 +284,10 @@ class ScenarioManager:
         with self._connect() as conn:
             cur = conn.execute("""
                 INSERT INTO cs_scenarios (title, description, category_id, tags,
-                    status, version, created_by, updated_by)
-                VALUES (?, ?, ?, ?, 'draft', 1, ?, ?)
-            """, (title, description, category_id, tags, created_by, created_by))
+                    status, version, created_by, updated_by, has_draft_changes,
+                    draft_updated_by, draft_updated_at)
+                VALUES (?, ?, ?, ?, 'draft', 0, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+            """, (title, description, category_id, tags, created_by, created_by, created_by))
             conn.commit()
             return cur.lastrowid
 
@@ -298,19 +303,26 @@ class ScenarioManager:
             conn.commit()
 
     def mark_scenario_local_change(self, scenario_id: int, updated_by: str = ''):
+        self.mark_draft_change(scenario_id, updated_by)
+
+    def mark_draft_change(self, scenario_id: int, updated_by: str = ''):
         with self._connect() as conn:
             conn.execute("""
                 UPDATE cs_scenarios
-                SET has_local_changes = 1,
+                SET has_draft_changes = 1,
+                    draft_updated_by = CASE WHEN ? != '' THEN ? ELSE draft_updated_by END,
+                    draft_updated_at = CURRENT_TIMESTAMP,
+                    has_local_changes = CASE WHEN is_imported_from_myboard = 1 THEN 1 ELSE has_local_changes END,
                     edit_mode = CASE
+                        WHEN is_imported_from_myboard != 1 THEN edit_mode
                         WHEN edit_mode = 'conflict' THEN 'conflict'
                         WHEN edit_mode = 'detached' THEN 'detached'
                         ELSE 'local_modified'
                     END,
                     updated_by = CASE WHEN ? != '' THEN ? ELSE updated_by END,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND is_imported_from_myboard = 1
-            """, (updated_by, updated_by, scenario_id))
+                WHERE id = ?
+            """, (updated_by, updated_by, updated_by, updated_by, scenario_id))
             conn.commit()
 
     def set_myboard_state(self, scenario_id: int, edit_mode: str,
@@ -327,7 +339,7 @@ class ScenarioManager:
             """, (edit_mode, remote_version, remote_updated_at, scenario_id))
             conn.commit()
 
-    def publish_scenario(self, scenario_id: int, updated_by: str = ''):
+    def publish_scenario(self, scenario_id: int, updated_by: str = '', comment: str = ''):
         """Публикация черновика → активный + создание версии"""
         with self._connect() as conn:
             row = conn.execute(
@@ -335,15 +347,20 @@ class ScenarioManager:
             ).fetchone()
             if not row:
                 return False
-            new_version = (row['version'] or 1) + 1
+            latest = conn.execute(
+                "SELECT MAX(version) as version FROM cs_versions WHERE scenario_id=?",
+                (scenario_id,)
+            ).fetchone()
+            new_version = int((latest or {})['version'] or 0) + 1
             # Сохраняем снапшот
             snapshot = self._build_snapshot(scenario_id, conn)
             conn.execute("""
-                INSERT INTO cs_versions (scenario_id, version, snapshot_json, created_by)
-                VALUES (?, ?, ?, ?)
-            """, (scenario_id, new_version, json.dumps(snapshot, ensure_ascii=False), updated_by))
+                INSERT INTO cs_versions (scenario_id, version, snapshot_json, created_by, comment)
+                VALUES (?, ?, ?, ?, ?)
+            """, (scenario_id, new_version, json.dumps(snapshot, ensure_ascii=False), updated_by, comment))
             conn.execute("""
                 UPDATE cs_scenarios SET status='active', version=?,
+                    has_draft_changes=0, draft_updated_by='', draft_updated_at=NULL,
                     updated_by=?, updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
             """, (new_version, updated_by, scenario_id))
@@ -695,6 +712,37 @@ class ScenarioManager:
                     edge.get('source_edge_id') or '',
                 ))
 
+            if status == 'active':
+                latest = conn.execute(
+                    "SELECT MAX(version) as version FROM cs_versions WHERE scenario_id=?",
+                    (scenario_id,)
+                ).fetchone()
+                try:
+                    publish_version = int(myboard_version or 0)
+                except (TypeError, ValueError):
+                    publish_version = 0
+                if publish_version <= int((latest or {})['version'] or 0):
+                    publish_version = int((latest or {})['version'] or 0) + 1
+                if publish_version < 1:
+                    publish_version = 1
+                snapshot = self._build_snapshot(scenario_id, conn)
+                conn.execute("""
+                    INSERT INTO cs_versions (scenario_id, version, snapshot_json, created_by, comment)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    scenario_id,
+                    publish_version,
+                    json.dumps(snapshot, ensure_ascii=False),
+                    imported_by,
+                    'Imported from MyBoard',
+                ))
+                conn.execute("""
+                    UPDATE cs_scenarios
+                    SET version=?, has_draft_changes=0,
+                        draft_updated_by='', draft_updated_at=NULL
+                    WHERE id=?
+                """, (publish_version, scenario_id))
+
             conn.commit()
             return scenario_id
 
@@ -771,6 +819,356 @@ class ScenarioManager:
                 SELECT * FROM cs_versions WHERE scenario_id=? ORDER BY version DESC
             """, (scenario_id,)).fetchall()
             return [dict(r) for r in rows]
+
+    def get_version(self, scenario_id: int, version_id: int) -> Optional[Dict]:
+        with self._connect() as conn:
+            row = conn.execute("""
+                SELECT * FROM cs_versions WHERE scenario_id=? AND id=?
+            """, (scenario_id, version_id)).fetchone()
+            return dict(row) if row else None
+
+    def get_latest_published_snapshot(self, scenario_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("""
+                SELECT * FROM cs_versions
+                WHERE scenario_id=?
+                ORDER BY version DESC, id DESC
+                LIMIT 1
+            """, (scenario_id,)).fetchone()
+            if not row:
+                return None
+            try:
+                return json.loads(row['snapshot_json'])
+            except (TypeError, json.JSONDecodeError):
+                return None
+
+    def ensure_published_snapshot(self, scenario_id: int, created_by: str = '') -> bool:
+        with self._connect() as conn:
+            scenario = conn.execute(
+                "SELECT * FROM cs_scenarios WHERE id=?", (scenario_id,)
+            ).fetchone()
+            if not scenario or scenario['status'] != 'active':
+                return False
+            existing = conn.execute(
+                "SELECT id FROM cs_versions WHERE scenario_id=? LIMIT 1",
+                (scenario_id,)
+            ).fetchone()
+            if existing:
+                return True
+            version = int(scenario['version'] or 1)
+            if version < 1:
+                version = 1
+            snapshot = self._build_snapshot(scenario_id, conn)
+            conn.execute("""
+                INSERT INTO cs_versions (scenario_id, version, snapshot_json, created_by, comment)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                scenario_id,
+                version,
+                json.dumps(snapshot, ensure_ascii=False),
+                created_by or scenario['updated_by'] or scenario['created_by'] or '',
+                'Baseline before draft editing',
+            ))
+            conn.execute("""
+                UPDATE cs_scenarios
+                SET version=?, has_draft_changes=0,
+                    draft_updated_by='', draft_updated_at=NULL
+                WHERE id=?
+            """, (version, scenario_id))
+            conn.commit()
+            return True
+
+    def get_published_root_node(self, scenario_id: int) -> Optional[Dict]:
+        snapshot = self.get_latest_published_snapshot(scenario_id)
+        if not snapshot:
+            return self.get_root_node(scenario_id)
+        nodes = snapshot.get('nodes') or []
+        root = next((n for n in nodes if int(n.get('is_root') or 0) == 1), None)
+        if not root:
+            root = next(iter(nodes), None)
+        return dict(root) if root else None
+
+    def get_published_nodes_count(self, scenario_id: int) -> int:
+        snapshot = self.get_latest_published_snapshot(scenario_id)
+        if not snapshot:
+            return len(self.get_nodes(scenario_id))
+        return len(snapshot.get('nodes') or [])
+
+    def get_published_node_with_choices(self, scenario_id: int, node_id: int) -> Optional[dict]:
+        snapshot = self.get_latest_published_snapshot(scenario_id)
+        if not snapshot:
+            node = self.get_node(node_id)
+            if not node or node['scenario_id'] != scenario_id:
+                return None
+            return {'node': node, 'choices': self.get_node_choices(node_id)}
+
+        nodes = {int(n.get('id')): dict(n) for n in snapshot.get('nodes') or [] if n.get('id') is not None}
+        node = nodes.get(int(node_id))
+        if not node:
+            return None
+        choices = []
+        for edge in snapshot.get('edges') or []:
+            if int(edge.get('from_node_id') or 0) != int(node_id):
+                continue
+            next_node = nodes.get(int(edge.get('to_node_id') or 0))
+            if not next_node:
+                continue
+            choice = dict(edge)
+            choice['next_title'] = next_node.get('title') or ''
+            choice['next_type'] = next_node.get('node_type') or ''
+            choices.append(choice)
+        choices.sort(key=lambda item: (item.get('sort_order') or 0, item.get('id') or 0))
+        return {'node': node, 'choices': choices}
+
+    def validate_draft(self, scenario_id: int) -> dict:
+        with self._connect() as conn:
+            nodes = [dict(n) for n in conn.execute(
+                "SELECT * FROM cs_nodes WHERE scenario_id=? ORDER BY sort_order, id",
+                (scenario_id,)
+            ).fetchall()]
+            edges = [dict(e) for e in conn.execute(
+                "SELECT * FROM cs_edges WHERE scenario_id=?",
+                (scenario_id,)
+            ).fetchall()]
+
+        errors = []
+        warnings = []
+        if not nodes:
+            errors.append('Нет блоков')
+            return {'ok': False, 'errors': errors, 'warnings': warnings}
+
+        node_ids = {int(n['id']) for n in nodes}
+        roots = [n for n in nodes if int(n.get('is_root') or 0) == 1]
+        if not roots:
+            errors.append('Нет стартового блока')
+        if len(roots) > 1:
+            errors.append('Стартовый блок должен быть только один')
+
+        for edge in edges:
+            if not edge.get('from_node_id') or not edge.get('to_node_id'):
+                errors.append(f"У перехода #{edge.get('id')} не выбран узел назначения")
+                continue
+            if int(edge['from_node_id']) not in node_ids or int(edge['to_node_id']) not in node_ids:
+                errors.append(f"Переход #{edge.get('id')} указывает на несуществующий блок")
+
+        for node in nodes:
+            node_type = node.get('node_type') or 'question'
+            title = (node.get('title') or '').strip()
+            content = (node.get('content') or '').strip()
+            final_answer = (node.get('final_answer') or '').strip()
+            if node_type in ('question', 'message', 'condition', 'action') and not (title or content):
+                errors.append(f"Блок #{node['id']} пустой")
+            if node_type in ('final', 'end') and not (title or final_answer or content):
+                errors.append(f"Финальный блок #{node['id']} пустой")
+
+        if roots:
+            reachable = set()
+            graph = {}
+            for edge in edges:
+                if int(edge.get('from_node_id') or 0) in node_ids and int(edge.get('to_node_id') or 0) in node_ids:
+                    graph.setdefault(int(edge['from_node_id']), []).append(int(edge['to_node_id']))
+            stack = [int(roots[0]['id'])]
+            while stack:
+                current = stack.pop()
+                if current in reachable:
+                    continue
+                reachable.add(current)
+                stack.extend(graph.get(current, []))
+            unreachable = node_ids - reachable
+            if unreachable:
+                warnings.append(f"Недостижимых блоков: {len(unreachable)}")
+
+        return {'ok': not errors, 'errors': errors, 'warnings': warnings}
+
+    def replace_draft_from_snapshot(self, scenario_id: int, snapshot: dict, updated_by: str = ''):
+        scenario_data = snapshot.get('scenario') or {}
+        nodes = snapshot.get('nodes') or []
+        edges = snapshot.get('edges') or []
+        with self._connect() as conn:
+            conn.execute("DELETE FROM cs_edges WHERE scenario_id=?", (scenario_id,))
+            conn.execute("DELETE FROM cs_nodes WHERE scenario_id=?", (scenario_id,))
+            conn.execute("""
+                UPDATE cs_scenarios
+                SET title=COALESCE(NULLIF(?, ''), title),
+                    description=?,
+                    category_id=?,
+                    tags=?,
+                    has_draft_changes=1,
+                    draft_updated_by=?,
+                    draft_updated_at=CURRENT_TIMESTAMP,
+                    updated_by=?,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (
+                scenario_data.get('title') or '',
+                scenario_data.get('description') or '',
+                scenario_data.get('category_id'),
+                scenario_data.get('tags') or '',
+                updated_by,
+                updated_by,
+                scenario_id,
+            ))
+            node_map: dict[int, int] = {}
+            for node in nodes:
+                old_id = int(node.get('id') or 0)
+                cur = conn.execute("""
+                    INSERT INTO cs_nodes (
+                        scenario_id, node_type, title, content, is_root,
+                        sort_order, answer_text, final_answer, internal_note,
+                        documents, links, pos_x, pos_y, source_node_id,
+                        source_type, raw_data
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    scenario_id,
+                    node.get('node_type') or 'question',
+                    node.get('title') or '',
+                    node.get('content') or '',
+                    int(node.get('is_root') or 0),
+                    int(node.get('sort_order') or 0),
+                    node.get('answer_text') or '',
+                    node.get('final_answer') or '',
+                    node.get('internal_note') or '',
+                    node.get('documents') or '',
+                    node.get('links') or '',
+                    node.get('pos_x') or 0,
+                    node.get('pos_y') or 0,
+                    node.get('source_node_id') or '',
+                    node.get('source_type') or '',
+                    node.get('raw_data') or '',
+                ))
+                if old_id:
+                    node_map[old_id] = cur.lastrowid
+            for edge in edges:
+                from_id = node_map.get(int(edge.get('from_node_id') or 0))
+                to_id = node_map.get(int(edge.get('to_node_id') or 0))
+                if not from_id or not to_id:
+                    continue
+                conn.execute("""
+                    INSERT INTO cs_edges (
+                        scenario_id, from_node_id, to_node_id, label,
+                        sort_order, condition, source_edge_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    scenario_id,
+                    from_id,
+                    to_id,
+                    edge.get('label') or '',
+                    int(edge.get('sort_order') or 0),
+                    edge.get('condition') or '',
+                    edge.get('source_edge_id') or '',
+                ))
+            conn.commit()
+
+    def reset_draft_to_latest_published(self, scenario_id: int, updated_by: str = '') -> bool:
+        snapshot = self.get_latest_published_snapshot(scenario_id)
+        if not snapshot:
+            return False
+        self.replace_draft_from_snapshot(scenario_id, snapshot, updated_by)
+        with self._connect() as conn:
+            conn.execute("""
+                UPDATE cs_scenarios
+                SET has_draft_changes=0, draft_updated_by='', draft_updated_at=NULL,
+                    updated_by=?, updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (updated_by, scenario_id))
+            conn.commit()
+        return True
+
+    def replace_draft_graph(self, scenario_id: int, data: dict, updated_by: str = ''):
+        scenario_data = data.get('scenario') or {}
+        nodes = data.get('nodes') or []
+        edges = data.get('edges') or []
+        with self._connect() as conn:
+            conn.execute("DELETE FROM cs_edges WHERE scenario_id=?", (scenario_id,))
+            conn.execute("DELETE FROM cs_nodes WHERE scenario_id=?", (scenario_id,))
+            conn.execute("""
+                UPDATE cs_scenarios
+                SET title=COALESCE(NULLIF(?, ''), title),
+                    description=?,
+                    category_id=?,
+                    tags=?,
+                    has_draft_changes=1,
+                    draft_updated_by=?,
+                    draft_updated_at=CURRENT_TIMESTAMP,
+                    updated_by=?,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (
+                scenario_data.get('title') or '',
+                scenario_data.get('description') or '',
+                scenario_data.get('category_id'),
+                scenario_data.get('tags') or '',
+                updated_by,
+                updated_by,
+                scenario_id,
+            ))
+            node_map: dict[int, int] = {}
+            for idx, node in enumerate(nodes):
+                old_id = int(node.get('id') or 0)
+                insert_id = old_id if old_id > 0 else None
+                columns = [
+                    'scenario_id', 'node_type', 'title', 'content', 'is_root',
+                    'sort_order', 'answer_text', 'final_answer', 'internal_note',
+                    'documents', 'links', 'pos_x', 'pos_y', 'source_node_id',
+                    'source_type', 'raw_data'
+                ]
+                values = [
+                    scenario_id,
+                    node.get('node_type') or 'question',
+                    node.get('title') or '',
+                    node.get('content') or '',
+                    int(node.get('is_root') or 0),
+                    int(node.get('sort_order') if node.get('sort_order') is not None else idx),
+                    node.get('answer_text') or '',
+                    node.get('final_answer') or '',
+                    node.get('internal_note') or '',
+                    node.get('documents') or '',
+                    node.get('links') or '',
+                    node.get('pos_x') or 0,
+                    node.get('pos_y') or 0,
+                    node.get('source_node_id') or '',
+                    node.get('source_type') or '',
+                    node.get('raw_data') or '',
+                ]
+                if insert_id:
+                    columns.insert(0, 'id')
+                    values.insert(0, insert_id)
+                placeholders = ','.join('?' for _ in values)
+                cur = conn.execute(
+                    f"INSERT INTO cs_nodes ({','.join(columns)}) VALUES ({placeholders})",
+                    values
+                )
+                node_map[old_id] = insert_id or cur.lastrowid
+            for idx, edge in enumerate(edges):
+                old_id = int(edge.get('id') or 0)
+                from_id = node_map.get(int(edge.get('from_node_id') or 0))
+                to_id = node_map.get(int(edge.get('to_node_id') or 0))
+                if not from_id or not to_id:
+                    continue
+                columns = [
+                    'scenario_id', 'from_node_id', 'to_node_id', 'label',
+                    'sort_order', 'condition', 'source_edge_id'
+                ]
+                values = [
+                    scenario_id,
+                    from_id,
+                    to_id,
+                    edge.get('label') or '',
+                    int(edge.get('sort_order') if edge.get('sort_order') is not None else idx),
+                    edge.get('condition') or '',
+                    edge.get('source_edge_id') or '',
+                ]
+                if old_id > 0:
+                    columns.insert(0, 'id')
+                    values.insert(0, old_id)
+                placeholders = ','.join('?' for _ in values)
+                conn.execute(
+                    f"INSERT INTO cs_edges ({','.join(columns)}) VALUES ({placeholders})",
+                    values
+                )
+            conn.commit()
 
     # ─── Снапшот ───────────────────────────────────────────────────
 

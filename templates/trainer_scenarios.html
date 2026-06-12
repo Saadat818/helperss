@@ -277,7 +277,7 @@
                     <h1 class="page-title">{{ level.icon }} {{ level.name }}</h1>
                     <p class="page-subtitle">{{ level.description }}</p>
                 </div>
-                <a class="btn btn-secondary" href="{{ url_for('trainer_segment_menu', segment=segment) }}">
+                <a class="btn btn-secondary" href="{{ url_for('trainer_segment_menu', segment=segment, branch_area=branch_area) if branch_area else url_for('trainer_segment_menu', segment=segment) }}">
                     <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
                     К уровням
                 </a>
@@ -297,12 +297,12 @@
         <!-- Фильтр по категориям -->
         {% if categories %}
         <div class="categories-filter">
-            <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code) }}"
+            <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code, branch_area=branch_area) if branch_area else url_for('trainer_level', segment=segment, level_code=level.code) }}"
                class="category-btn {% if not current_category %}active{% endif %}">
                 Все
             </a>
             {% for category in categories %}
-            <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code, category=category.id) }}"
+            <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code, category=category.id, branch_area=branch_area) if branch_area else url_for('trainer_level', segment=segment, level_code=level.code, category=category.id) }}"
                class="category-btn {% if current_category == category.id %}active{% endif %}">
                 {{ category.icon }} {{ category.name }}
             </a>
@@ -322,7 +322,7 @@
         <div class="scenarios-list">
             {% for scenario in scenarios %}
                 {% set user_result = user_results.get(scenario.id) %}
-                <a href="{{ url_for('trainer_play', scenario_id=scenario.id, segment=segment) }}" class="scenario-card" data-status="{% if user_result %}passed{% else %}not-passed{% endif %}">
+                <a href="{{ url_for('trainer_play', scenario_id=scenario.id, segment=segment, branch_area=branch_area) if branch_area else url_for('trainer_play', scenario_id=scenario.id, segment=segment) }}" class="scenario-card" data-status="{% if user_result %}passed{% else %}not-passed{% endif %}">
                     <div class="scenario-number">{{ loop.index }}</div>
                     <div class="scenario-info">
                         <div class="scenario-title">{{ scenario.title }}</div>

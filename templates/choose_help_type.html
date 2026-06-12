@@ -208,16 +208,18 @@
                     <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                 </a>
 
-                <a href="{{ url_for('scenarios_list') }}" class="section-card">
-                    <div class="card-icon-wrap" style="background:var(--purple-light);color:var(--purple);">
-                        <span class="card-emoji" aria-hidden="true">🧭</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="card-title">Сценарии</div>
-                        <div class="card-desc">Дерево решений для оператора во время консультации клиента.</div>
-                    </div>
-                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                </a>
+                {% if can_access_scenarios %}
+                    <a href="{{ url_for('scenarios_list') }}" class="section-card">
+                        <div class="card-icon-wrap" style="background:var(--purple-light);color:var(--purple);">
+                            <span class="card-emoji" aria-hidden="true">🧭</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="card-title">Сценарии</div>
+                            <div class="card-desc">Дерево решений для оператора во время консультации клиента.</div>
+                        </div>
+                        <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    </a>
+                {% endif %}
 
                 {% if session.get('admin_logged_in') or employee_board_public_enabled %}
                     <a href="{{ url_for('employee_board') }}" class="section-card">

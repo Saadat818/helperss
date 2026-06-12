@@ -778,20 +778,20 @@
 
         <!-- Actions -->
         <div class="actions">
-            <a href="{{ url_for('trainer_play', scenario_id=result.scenario_id, segment=segment) }}" class="action-btn primary">
+            <a href="{{ url_for('trainer_play', scenario_id=result.scenario_id, segment=segment, branch_area=branch_area) if branch_area else url_for('trainer_play', scenario_id=result.scenario_id, segment=segment) }}" class="action-btn primary">
                 Пройти ещё раз
             </a>
             <div class="actions-row">
                 {% if next_scenario %}
-                <a href="{{ url_for('trainer_play', scenario_id=next_scenario.id, segment=segment) }}" class="action-btn secondary">
+                <a href="{{ url_for('trainer_play', scenario_id=next_scenario.id, segment=segment, branch_area=branch_area) if branch_area else url_for('trainer_play', scenario_id=next_scenario.id, segment=segment) }}" class="action-btn secondary">
                     Следующий сценарий
                 </a>
                 {% endif %}
-                <a href="{{ url_for('trainer_level', segment=segment, level_code=result.level_code) }}" class="action-btn secondary">
+                <a href="{{ url_for('trainer_level', segment=segment, level_code=result.level_code, branch_area=branch_area) if branch_area else url_for('trainer_level', segment=segment, level_code=result.level_code) }}" class="action-btn secondary">
                     К списку сценариев
                 </a>
             </div>
-            <a href="{{ url_for('trainer_segment_menu', segment=segment) }}" class="action-btn secondary">
+            <a href="{{ url_for('trainer_segment_menu', segment=segment, branch_area=branch_area) if branch_area else url_for('trainer_segment_menu', segment=segment) }}" class="action-btn secondary">
                 К уровням
             </a>
         </div>

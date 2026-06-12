@@ -787,6 +787,7 @@
                         <label for="segment">Сегмент *</label>
                         {% set form_segment = scenario.get('segment', 'kc') if scenario else selected_segment|default('kc') %}
                         {% set segment_options = allowed_trainer_segments|default(['kc', 'branch']) %}
+                        {% set form_branch_area = (scenario.get('branch_area') or 'oper') if scenario else (selected_branch_area or 'oper') %}
                         <select id="segment" name="segment" required>
                             {% if 'kc' in segment_options %}
                                 <option value="kc" {% if form_segment == 'kc' %}selected{% endif %}>🎧 Контакт Центр</option>
@@ -794,6 +795,15 @@
                             {% if branch_section_enabled and 'branch' in segment_options %}
                                 <option value="branch" {% if form_segment == 'branch' %}selected{% endif %}>🏦 Филиалы</option>
                             {% endif %}
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="branchAreaGroup" style="{% if form_segment != 'branch' %}display:none;{% endif %}">
+                        <label for="branch_area">Ветка филиала</label>
+                        <select id="branch_area" name="branch_area">
+                            {% for area_key, area_info in branch_manual_areas.items() %}
+                            <option value="{{ area_key }}" {% if form_branch_area == area_key %}selected{% endif %}>{{ area_info.name }}</option>
+                            {% endfor %}
                         </select>
                     </div>
 
@@ -1575,6 +1585,16 @@
             if (delInput) delInput.value = '1';
             if (fileInput) fileInput.value = '';
         }
+
+        function syncBranchAreaVisibility() {
+            const segmentSelect = document.getElementById('segment');
+            const branchAreaGroup = document.getElementById('branchAreaGroup');
+            if (!segmentSelect || !branchAreaGroup) return;
+            branchAreaGroup.style.display = segmentSelect.value === 'branch' ? '' : 'none';
+        }
+
+        document.getElementById('segment')?.addEventListener('change', syncBranchAreaVisibility);
+        syncBranchAreaVisibility();
 
         // ==================== Автосохранение ====================
         let _autoSaveTimer = null;

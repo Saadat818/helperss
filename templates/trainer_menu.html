@@ -398,7 +398,7 @@
                     <p class="page-subtitle">Отрабатывайте сценарии по уровням, отслеживайте прогресс и возвращайтесь к сложным кейсам.</p>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-                    <a class="btn btn-secondary" href="{{ url_for('trainer_menu') }}">
+                    <a class="btn btn-secondary" href="{{ url_for('branch_home') if segment == 'branch' else url_for('trainer_menu') }}">
                         <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
                         Направления
                     </a>
@@ -444,7 +444,7 @@
                         {% set is_unlocked = level_progress.get('is_unlocked', False) or not level.required_level %}
 
                         {% if is_unlocked %}
-                        <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code) }}" class="level-card" style="--level-color: {{ level.color }};">
+                        <a href="{{ url_for('trainer_level', segment=segment, level_code=level.code, branch_area=branch_area) if branch_area else url_for('trainer_level', segment=segment, level_code=level.code) }}" class="level-card" style="--level-color: {{ level.color }};">
                         {% else %}
                         <div class="level-card locked" style="--level-color: {{ level.color }};">
                         {% endif %}
@@ -537,7 +537,7 @@
             const result = await response.json();
 
             if (result.success) {
-                window.location.href = '{{ url_for("admin_trainer_segment", segment=segment) }}';
+                window.location.href = '{{ url_for("admin_trainer_segment", segment=segment, branch_area=branch_area) if branch_area else url_for("admin_trainer_segment", segment=segment) }}';
             } else {
                 document.getElementById('adminError').textContent = result.error || 'Неверный пароль';
                 document.getElementById('adminError').style.display = 'block';

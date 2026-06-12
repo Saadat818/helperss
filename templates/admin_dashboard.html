@@ -3,617 +3,275 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Админ-панель - Управление мануалами</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0c0c0c;
-            background-attachment: fixed;
-            min-height: 100vh;
-            padding: 20px;
-            color: #e8e8e8;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: linear-gradient(180deg, #1a1a1a, #202020);
-            border: 1px solid #151515;
-            padding: 35px;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #2a2a2a;
-        }
-
-        h1 {
-            color: #e8e8e8;
-            font-size: 28px;
-        }
-
-        .btn {
-            padding: 10px 18px;
-            border: none;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #00a651 0%, #009448 100%);
-            color: white;
-            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #e94b5a 0%, #c82333 100%);
-            color: white;
-            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
-        }
-
-        .btn-danger:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(233, 75, 90, 0.3);
-        }
-
-        .btn-logout {
-            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%);
-            color: white;
-            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
-        }
-
-        .btn-logout:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.3);
-        }
-
-        .manuals-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .manual-card {
-            background: #141414;
-            border: 1px solid #242424;
-            border-left: 4px solid #00a651;
-            border-radius: 14px;
-            padding: 20px;
-            transition: all 0.3s;
-        }
-
-        .manual-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
-        }
-
-        .manual-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #e8e8e8;
-            margin-bottom: 15px;
-        }
-
-        .manual-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .subproblems-count {
-            color: #b5b5b5;
-            font-size: 14px;
-            margin-bottom: 10px;
-        }
-
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .alert-success {
-            background-color: rgba(0, 166, 81, 0.12);
-            color: #bfe8d1;
-            border: 1px solid rgba(0, 166, 81, 0.25);
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #b5b5b5;
-        }
-
-        .empty-state-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-
-        .back-link {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
-            font-size: 14px;
-            text-decoration: none;
-            color: #e8e8e8;
-            font-weight: 600;
-            background: rgba(26, 26, 26, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 8px 16px;
-            border: 1px solid #2a2a2a;
-            border-radius: 25px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-            transition: all 0.3s ease;
-        }
-
-        .back-link:hover {
-            background: rgba(26, 26, 26, 1);
-            border-color: #00a651;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-            text-decoration: none;
-        }
-    
-        /* Admin Dark Theme */
-        :root {
-            --bg: #0c0c0c;
-            --panel: #1a1a1a;
-            --panel-2: #202020;
-            --panel-3: #141414;
-            --text: #e8e8e8;
-            --muted: #b5b5b5;
-            --border: #242424;
-            --accent: #00a651;
-            --accent-2: #009448;
-            --danger: #e94b5a;
-            --warning: #f2b705;
-        }
-
-        body {
-            background: var(--bg) !important;
-            color: var(--text);
-        }
-
-        .container {
-            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
-            border: 1px solid #151515;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        }
-
-        .header,
-        .form-actions {
-            border-bottom: 1px solid #2a2a2a !important;
-            border-top: 1px solid #2a2a2a !important;
-        }
-
-        h1, h2, h3, h4 {
-            color: var(--text) !important;
-        }
-
-        .subtitle,
-        .stat-label,
-        .subproblems-count,
-        .helper-text,
-        .help-text,
-        .info-text,
-        .warning-text,
-        .error-text,
-        .role-description,
-        label {
-            color: var(--muted) !important;
-        }
-
-        .stat-card,
-        .manual-card,
-        .form-section,
-        .info-box,
-        .warning-box,
-        .error-card,
-        .subproblem-card,
-        .problem-item,
-        .upload-form,
-        .modal-content,
-        .preview-container,
-        .photo-item,
-        .video-item,
-        .stats-summary,
-        .stat-item {
-            background: var(--panel-3) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 14px;
-            color: var(--text);
-        }
-
-        .warning-box {
-            border-color: rgba(242, 183, 5, 0.4) !important;
-            background: rgba(242, 183, 5, 0.08) !important;
-        }
-
-        .error-card {
-            border-color: rgba(233, 75, 90, 0.4) !important;
-            background: rgba(233, 75, 90, 0.08) !important;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="password"],
-        input[type="email"],
-        textarea,
-        select {
-            background: #111 !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-        }
-
-        input:focus,
-        textarea:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent) !important;
-            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
-        }
-
-        table {
-            color: var(--text);
-        }
-
-        th {
-            background: #1f1f1f !important;
-            color: var(--text) !important;
-            border-bottom: 1px solid #2a2a2a !important;
-        }
-
-        td {
-            background: #141414 !important;
-            border-bottom: 1px solid #242424 !important;
-        }
-
-        tr:nth-child(even) td {
-            background: #171717 !important;
-        }
-
-        .btn {
-            border-radius: 12px !important;
-        }
-
-        .btn-primary,
-        .btn-success {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
-        }
-
-        .btn-primary:hover,
-        .btn-success:hover {
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-        }
-
-        .btn-secondary,
-        .btn-logout {
-            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
-        }
-
-        .btn-danger,
-        .btn-delete {
-            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
-            color: #1b1b1b !important;
-            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
-        }
-
-        .alert-success {
-            background-color: rgba(0, 166, 81, 0.12) !important;
-            color: #bfe8d1 !important;
-            border: 1px solid rgba(0, 166, 81, 0.25) !important;
-        }
-
-        .alert-danger,
-        .danger {
-            background-color: rgba(233, 75, 90, 0.12) !important;
-            color: #f3c0c6 !important;
-            border: 1px solid rgba(233, 75, 90, 0.25) !important;
-        }
-
-        .back-link {
-            background: rgba(26, 26, 26, 0.95) !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        .back-link:hover {
-            border-color: var(--accent) !important;
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
-        }
-
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
-        }
-
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
-
-        /* Light theme overrides for hardcoded dark colors */
-        body.light .manual-card { background: #fff !important; border-color: #d0d7de !important; }
-        body.light .manual-title { color: #1a1a2e !important; }
-        body.light th { background: #f0f2f5 !important; color: #1a1a2e !important; border-bottom: 1px solid #d0d7de !important; }
-        body.light td { background: #fff !important; color: #1a1a2e !important; border-bottom: 1px solid #e8eaed !important; }
-        body.light tr:nth-child(even) td { background: #f8f9fa !important; }
-        body.light tr:hover td { background: #eef1f5 !important; }
-        body.light input[type="text"], body.light input[type="number"], body.light input[type="password"], body.light input[type="email"], body.light textarea, body.light select { background: #fff !important; border: 1px solid #d0d7de !important; color: #1a1a2e !important; }
-        body.light .period-btn { background: #f0f2f5 !important; color: #1a1a2e !important; border-color: #d0d7de !important; }
-        body.light .back-link { background: rgba(255,255,255,0.95) !important; border: 1px solid #d0d7de !important; color: #1a1a2e !important; box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important; }
-        body.light details { background: #fff !important; border-color: #d0d7de !important; }
-        body.light details summary { color: #606070 !important; }
-        body.light .alert-success { color: #155724 !important; }
-        body.light .alert-danger, body.light .danger { color: #721c24 !important; }
-    </style>
+    <title>Админка мануалов</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_manual_editor.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('choose_help_type') }}" class="back-link">
-        🏠 На Главную
-    </a>
-    <div class="container">
-        <div class="header">
-            {% set manual_segment = manual_segment|default('kc') %}
-            {% set segment_info = segment_info|default({'name': 'Контакт-центр'}) %}
-            {% set perms = session.get('admin_permissions', []) %}
-            {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
-            {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
-            {% set can_create_current = can_kc_manuals if manual_segment == 'kc' else can_branch_manuals %}
-            <h1>Панель администратора — {{ segment_info.name }}</h1>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <a href="{{ url_for('choose_help_type') }}" class="btn btn-primary">🏠 На Главную</a>
+    {% set manual_segment = manual_segment|default('kc') %}
+    {% set segment_info = segment_info|default({'name': 'Контакт-центр'}) %}
+    {% set selected_branch_area = selected_branch_area|default('') %}
+    {% set branch_manual_areas = branch_manual_areas|default({'cash': {'name': 'Касса'}, 'oper': {'name': 'Опер. блок'}}) %}
+    {% set perms = session.get('admin_permissions', []) %}
+    {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
+    {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
+    {% set can_create_current = can_kc_manuals if manual_segment == 'kc' else can_branch_manuals %}
+    {% set total = namespace(manuals=0, containers=0, simple=0, subproblems=0, steps=0, missing=0, videos=0) %}
+    {% for manual_id, manual in manuals.items() %}
+        {% set total.manuals = total.manuals + 1 %}
+        {% if 'subproblems' in manual %}
+            {% set total.containers = total.containers + 1 %}
+            {% set total.subproblems = total.subproblems + (manual.subproblems|length if manual.subproblems else 0) %}
+            {% for sid, subproblem in manual.subproblems|default({})|dictsort %}
+                {% set total.steps = total.steps + (subproblem.photos|length if subproblem.photos else 0) %}
+                {% if subproblem.video %}
+                    {% set total.videos = total.videos + 1 %}
+                {% endif %}
+                {% for photo in subproblem.photos|default([]) %}
+                    {% if not photo.id %}
+                        {% set total.missing = total.missing + 1 %}
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+        {% else %}
+            {% set total.simple = total.simple + 1 %}
+            {% set total.steps = total.steps + (manual.photos|length if manual.photos else 0) %}
+            {% if manual.video %}
+                {% set total.videos = total.videos + 1 %}
+            {% endif %}
+            {% for photo in manual.photos|default([]) %}
+                {% if not photo.id %}
+                    {% set total.missing = total.missing + 1 %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
+
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">☾</button>
+
+    <main class="manual-page">
+        <div class="manual-topbar">
+            <nav class="manual-breadcrumb">
+                <a href="{{ url_for('choose_help_type') }}">Главная</a>
+                <span>/</span>
+                <a href="{{ url_for('admin_dashboard') }}">Админка</a>
+                <span>/</span>
+                <span>Мануалы</span>
+            </nav>
+            <div class="manual-actions">
+                <a class="manual-btn manual-btn-secondary" href="{{ url_for('choose_help_type') }}">На главную</a>
                 {% if can_create_current %}
-                    <a href="{{ url_for('admin_create_manual', segment=manual_segment) }}" class="btn btn-primary">📚 Создать мануал</a>
+                    <a class="manual-btn manual-btn-primary"
+                       href="{{ url_for('admin_create_manual', segment=manual_segment, branch_area=selected_branch_area if manual_segment == 'branch' and selected_branch_area else None) }}">
+                        Создать мануал
+                    </a>
                 {% endif %}
-                {% if branch_section_enabled and can_branch_manuals %}
-                    <a href="{{ url_for('admin_branch') }}" class="btn btn-primary">🏦 Филиалы</a>
-                {% endif %}
-                {% if 'super_admin' in perms or 'admin_manuals' in perms %}
-                    <a href="{{ url_for('admin_contacts_kc') }}" class="btn btn-primary">☎️ Контакты КЦ</a>
-                {% endif %}
-                {% if 'super_admin' in perms or 'admin_scenarios' in perms %}
-                    <a href="{{ url_for('admin_scenarios') }}" class="btn btn-primary">🗂️ Сценарии</a>
-                {% endif %}
-                {% if 'super_admin' in perms or 'admin_topics' in perms %}
-                    <a href="{{ url_for('admin_topics') }}" class="btn btn-primary">🏷️ Тематики</a>
-                {% endif %}
-                {% if 'super_admin' in perms or 'admin_trainer' in perms %}
-                    <a href="{{ url_for('admin_trainer') }}" class="btn btn-primary">🎯 Тренажёр</a>
-                {% endif %}
-                {% if 'super_admin' in perms or 'trainer_viewer' in perms %}
-                    <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📈 Статистика тренажёра</a>
-                {% endif %}
-                {% if 'super_admin' in perms or 'admin_manuals' in perms %}
-                    <a href="{{ url_for('admin_stats_dashboard') }}" class="btn btn-primary">📊 Общая статистика</a>
-                {% endif %}
-                {% if 'super_admin' in perms %}
-                    <a href="{{ url_for('admin_users') }}" class="btn btn-primary">👥 Администраторы</a>
-                {% endif %}
-                <a href="{{ url_for('admin_logout') }}" class="btn btn-logout">Выход</a>
             </div>
         </div>
+
+        <section class="manual-hero">
+            <div>
+                <div class="manual-kicker">Админка мануалов</div>
+                <h1 class="manual-title">{{ segment_info.name }}</h1>
+                <p class="manual-subtitle">
+                    Управление инструкциями, подпроблемами, шагами, фото и видео. Выберите мануал из списка или создайте новый.
+                </p>
+            </div>
+            <div class="manual-actions">
+                {% if branch_section_enabled and can_branch_manuals %}
+                    <a class="manual-btn manual-btn-secondary" href="{{ url_for('admin_branch') }}">Филиалы</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'admin_manuals' in perms %}
+                    <a class="manual-btn manual-btn-secondary" href="{{ url_for('admin_contacts_kc') }}">Контакты КЦ</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'admin_scenarios' in perms %}
+                    <a class="manual-btn manual-btn-secondary" href="{{ url_for('admin_scenarios') }}">Сценарии</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'admin_trainer' in perms %}
+                    <a class="manual-btn manual-btn-secondary" href="{{ url_for('admin_trainer') }}">Тренажёр</a>
+                {% endif %}
+                {% if 'super_admin' in perms %}
+                    <a class="manual-btn manual-btn-secondary" href="{{ url_for('admin_users') }}">Администраторы</a>
+                {% endif %}
+                <a class="manual-btn manual-btn-danger" href="{{ url_for('admin_logout') }}">Выход</a>
+            </div>
+        </section>
 
         {% with messages = get_flashed_messages() %}
             {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-success">{{ message }}</div>
-                {% endfor %}
+                <div class="manual-alerts">
+                    {% for message in messages %}
+                        <div class="manual-alert">{{ message }}</div>
+                    {% endfor %}
+                </div>
             {% endif %}
         {% endwith %}
 
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
-            {% if can_kc_manuals %}
-                <a href="{{ url_for('admin_manuals', segment='kc') }}" class="btn {% if manual_segment == 'kc' %}btn-primary{% else %}btn-secondary{% endif %}">Контакт-центр</a>
-            {% endif %}
-            {% if branch_section_enabled and can_branch_manuals %}
-                <a href="{{ url_for('admin_manuals', segment='branch') }}" class="btn {% if manual_segment == 'branch' %}btn-primary{% else %}btn-secondary{% endif %}">Филиалы</a>
-            {% endif %}
-        </div>
-
-        <!-- Виджет онлайн-статистики (только для super_admin) -->
-        {% if 'super_admin' in session.get('admin_permissions', []) %}
-        <div id="onlineWidget" style="margin-bottom: 25px;">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 15px;">
-                <div class="stat-card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 28px; font-weight: 700; color: #00a651;" id="statOnline">—</div>
-                    <div style="font-size: 12px; color: var(--muted, #b5b5b5); margin-top: 4px;">🟢 Сейчас онлайн</div>
+        <section class="manual-panel" style="margin-bottom:20px;">
+            <div class="manual-subproblem-head">
+                <div>
+                    <h2 class="manual-panel-title" style="margin-bottom:6px;">Фильтры</h2>
+                    <div class="manual-muted">Переключите раздел и ветку филиалов.</div>
                 </div>
-                <div class="stat-card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 28px; font-weight: 700; color: #4fc3f7;" id="statTodayUsers">—</div>
-                    <div style="font-size: 12px; color: var(--muted, #b5b5b5); margin-top: 4px;">👤 Сегодня заходили</div>
-                </div>
-                <div class="stat-card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 28px; font-weight: 700; color: #ffa726;" id="statTodayRequests">—</div>
-                    <div style="font-size: 12px; color: var(--muted, #b5b5b5); margin-top: 4px;">📊 Запросов сегодня</div>
-                </div>
-                <div class="stat-card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 28px; font-weight: 700; color: #e94b5a;" id="statAdminsOnline">—</div>
-                    <div style="font-size: 12px; color: var(--muted, #b5b5b5); margin-top: 4px;">🛡️ Админов онлайн</div>
+                <div class="manual-actions">
+                    {% if can_kc_manuals %}
+                        <a class="manual-btn {% if manual_segment == 'kc' %}manual-btn-primary{% else %}manual-btn-secondary{% endif %}"
+                           href="{{ url_for('admin_manuals', segment='kc') }}">
+                            Контакт-центр
+                        </a>
+                    {% endif %}
+                    {% if branch_section_enabled and can_branch_manuals %}
+                        <a class="manual-btn {% if manual_segment == 'branch' %}manual-btn-primary{% else %}manual-btn-secondary{% endif %}"
+                           href="{{ url_for('admin_manuals', segment='branch') }}">
+                            Филиалы
+                        </a>
+                    {% endif %}
                 </div>
             </div>
 
-            <!-- Список онлайн-пользователей (сворачиваемый) -->
-            <details style="background: var(--panel-3, #141414); border: 1px solid var(--border, #242424); border-radius: 14px; padding: 0;">
-                <summary style="padding: 14px 18px; cursor: pointer; color: var(--muted, #b5b5b5); font-size: 13px; font-weight: 600; user-select: none;">
-                    👁️ Подробности — кто онлайн и кто заходил сегодня
-                </summary>
-                <div style="padding: 0 18px 14px;">
-                    <div style="margin-bottom: 12px;">
-                        <div style="font-size: 13px; font-weight: 600; color: #00a651; margin-bottom: 8px;">🟢 Онлайн сейчас:</div>
-                        <div id="onlineList" style="font-size: 12px; color: #b5b5b5;">Загрузка...</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 13px; font-weight: 600; color: #4fc3f7; margin-bottom: 8px;">📋 Заходили сегодня:</div>
-                        <div id="todayList" style="font-size: 12px; color: #b5b5b5;">Загрузка...</div>
+            {% if manual_segment == 'branch' %}
+                <div class="manual-actions" style="margin-top:16px;">
+                    <a class="manual-btn {% if not selected_branch_area %}manual-btn-primary{% else %}manual-btn-secondary{% endif %}"
+                       href="{{ url_for('admin_manuals', segment='branch') }}">
+                        Все ветки
+                    </a>
+                    {% for area_key, area in branch_manual_areas.items() %}
+                        <a class="manual-btn {% if selected_branch_area == area_key %}manual-btn-primary{% else %}manual-btn-secondary{% endif %}"
+                           href="{{ url_for('admin_manuals', segment='branch', branch_area=area_key) }}">
+                            {{ area.name }}
+                        </a>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </section>
+
+        <section class="manual-stats" style="margin-bottom:20px;">
+            <div class="manual-stat">
+                <span class="manual-stat-value">{{ total.manuals }}</span>
+                <span class="manual-stat-label">мануалов</span>
+            </div>
+            <div class="manual-stat">
+                <span class="manual-stat-value">{{ total.subproblems }}</span>
+                <span class="manual-stat-label">подпроблем</span>
+            </div>
+            <div class="manual-stat">
+                <span class="manual-stat-value">{{ total.steps }}</span>
+                <span class="manual-stat-label">шагов</span>
+            </div>
+        </section>
+
+        <section class="manual-panel">
+            <div class="manual-subproblem-head" style="margin-bottom:16px;">
+                <div>
+                    <h2 class="manual-panel-title" style="margin-bottom:6px;">Список мануалов</h2>
+                    <div class="manual-muted">
+                        Контейнеры открываются в список подпроблем, простые мануалы сразу открываются в редактор шагов.
                     </div>
                 </div>
-            </details>
-        </div>
-
-        <script>
-        function loadOnlineStats() {
-            fetch('/api/stats/online')
-                .then(r => r.json())
-                .then(data => {
-                    if (!data.success) return;
-
-                    document.getElementById('statOnline').textContent = data.online.total_online;
-                    document.getElementById('statTodayUsers').textContent = data.today.unique_users;
-                    document.getElementById('statTodayRequests').textContent = data.today.total_requests;
-                    document.getElementById('statAdminsOnline').textContent = data.online.admins_online;
-
-                    // Онлайн список
-                    const onlineEl = document.getElementById('onlineList');
-                    if (data.online.users.length === 0) {
-                        onlineEl.innerHTML = '<span style="color:#666;">Никого нет</span>';
-                    } else {
-                        onlineEl.innerHTML = data.online.users.map(u => {
-                            const name = escapeHtml(u.display_name || u.username);
-                            const badge = u.is_admin ? ' <span style="color:#ffa726;font-size:10px;">ADMIN</span>' : '';
-                            const ago = u.seconds_ago < 60 ? 'только что' : Math.floor(u.seconds_ago / 60) + ' мин назад';
-                            return `<div style="padding:3px 0;border-bottom:1px solid var(--border, #1e1e1e);">
-                                <strong style="color:var(--text, #e8e8e8);">${name}</strong>${badge}
-                                <span style="color:var(--muted, #666);margin-left:8px;">${escapeHtml(u.ip)}</span>
-                                <span style="color:var(--muted, #444);margin-left:8px;">${escapeHtml(u.path)}</span>
-                                <span style="float:right;color:var(--muted, #555);">${ago}</span>
-                            </div>`;
-                        }).join('');
-                    }
-
-                    // Сегодня список
-                    const todayEl = document.getElementById('todayList');
-                    if (data.today.users.length === 0) {
-                        todayEl.innerHTML = '<span style="color:#666;">Нет данных</span>';
-                    } else {
-                        todayEl.innerHTML = data.today.users.map(u => {
-                            const name = escapeHtml(u.actor_name || u.actor_username);
-                            const badge = u.actor_type === 'admin' ? ' <span style="color:#ffa726;font-size:10px;">ADMIN</span>' : '';
-                            return `<div style="padding:3px 0;border-bottom:1px solid var(--border, #1e1e1e);">
-                                <strong style="color:var(--text, #e8e8e8);">${name}</strong>${badge}
-                                <span style="color:var(--muted, #666);margin-left:8px;">${escapeHtml(u.ip_address)}</span>
-                                <span style="color:var(--muted, #555);margin-left:8px;">${u.requests} запр.</span>
-                                <span style="float:right;color:var(--muted, #555);font-size:11px;">${escapeHtml(u.first_seen || '').slice(11, 16)} — ${escapeHtml(u.last_seen || '').slice(11, 16)}</span>
-                            </div>`;
-                        }).join('');
-                    }
-                })
-                .catch(err => console.log('Online stats error:', err));
-        }
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = String(str);
-            return div.innerHTML;
-        }
-
-        // Загружаем сразу и обновляем каждые 30 сек
-        loadOnlineStats();
-        setInterval(loadOnlineStats, 30000);
-        </script>
-        {% endif %}
-
-        {% if manuals %}
-            <div class="manuals-grid">
-                {% for manual_id, manual in manuals.items() %}
-                    <div class="manual-card">
-                        <div class="manual-title">{{ manual.title | e }}</div>
-                        <div class="subproblems-count">Раздел: {{ 'Филиалы' if manual.segment|default('kc') == 'branch' else 'Контакт-центр' }}</div>
-                        <div class="subproblems-count">
-                            {% if manual.subproblems %}
-                                Подпроблем: {{ manual.subproblems | length }}
-                            {% else %}
-                                Подпроблем: 0
-                            {% endif %}
-                        </div>
-                        <div class="manual-actions">
-                            <a href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}" class="btn btn-primary">Редактировать</a>
-                            <form method="POST" action="{{ url_for('admin_delete_manual', manual_id=manual_id) }}" style="display: inline;" onsubmit="return confirm('⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить мануал:\n{{ manual.title | e }}{%- if manual.subproblems and manual.subproblems | length > 0 %}\n\nЭтот мануал содержит {{ manual.subproblems | length }} подпроблем(ы).{%- endif %}\n\nВсе данные будут удалены безвозвратно!\n\nПродолжить удаление?');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="return_segment" value="{{ manual_segment }}">
-                                <button type="submit" class="btn btn-danger">Удалить</button>
-                            </form>
-                        </div>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="empty-state">
-                <div class="empty-state-icon">📝</div>
-                <p>Мануалов пока нет</p>
                 {% if can_create_current %}
-                    <div style="margin-top:18px;">
-                        <a href="{{ url_for('admin_create_manual', segment=manual_segment) }}" class="btn btn-primary">📚 Создать первый мануал</a>
-                    </div>
+                    <a class="manual-btn manual-btn-primary"
+                       href="{{ url_for('admin_create_manual', segment=manual_segment, branch_area=selected_branch_area if manual_segment == 'branch' and selected_branch_area else None) }}">
+                        Создать
+                    </a>
                 {% endif %}
             </div>
-        {% endif %}
-    </div>
+
+            {% if manuals %}
+                <div class="manual-list">
+                    {% for manual_id, manual in manuals.items() %}
+                        {% set is_container = 'subproblems' in manual %}
+                        {% set item = namespace(subproblems=0, steps=0, missing=0, videos=0) %}
+                        {% if is_container %}
+                            {% set item.subproblems = manual.subproblems|length if manual.subproblems else 0 %}
+                            {% for sid, subproblem in manual.subproblems|default({})|dictsort %}
+                                {% set item.steps = item.steps + (subproblem.photos|length if subproblem.photos else 0) %}
+                                {% if subproblem.video %}
+                                    {% set item.videos = item.videos + 1 %}
+                                {% endif %}
+                                {% for photo in subproblem.photos|default([]) %}
+                                    {% if not photo.id %}
+                                        {% set item.missing = item.missing + 1 %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endfor %}
+                        {% else %}
+                            {% set item.steps = manual.photos|length if manual.photos else 0 %}
+                            {% set item.videos = 1 if manual.video else 0 %}
+                            {% for photo in manual.photos|default([]) %}
+                                {% if not photo.id %}
+                                    {% set item.missing = item.missing + 1 %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                        <article class="manual-subproblem-card" data-href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}">
+                            <div class="manual-subproblem-head">
+                                <div>
+                                    <div class="manual-meta" style="margin-bottom:10px;">
+                                        <span class="manual-id">{{ manual_id }}</span>
+                                        <span class="manual-pill">{{ 'с подпроблемами' if is_container else 'простой' }}</span>
+                                        <span class="manual-pill">{{ 'Филиалы' if manual.segment|default('kc') == 'branch' else 'КЦ' }}</span>
+                                        {% if manual.segment|default('kc') == 'branch' %}
+                                            {% set manual_area = manual.branch_area|default('oper') %}
+                                            <span class="manual-pill">{{ branch_manual_areas.get(manual_area, branch_manual_areas.get('oper')).name }}</span>
+                                        {% endif %}
+                                        {% if item.missing %}
+                                            <span class="manual-pill manual-pill-warning">без фото: {{ item.missing }}</span>
+                                        {% endif %}
+                                    </div>
+                                    <h3 class="manual-card-title">{{ manual.title | e }}</h3>
+                                    <div class="manual-meta" style="margin-top:12px;">
+                                        {% if is_container %}
+                                            <span class="manual-pill">{{ item.subproblems }} подпроблем</span>
+                                        {% endif %}
+                                        <span class="manual-pill">{{ item.steps }} шагов</span>
+                                        <span class="manual-pill">{{ item.videos }} видео</span>
+                                    </div>
+                                </div>
+                                <div class="manual-inline-actions">
+                                    <a class="manual-btn manual-btn-small manual-btn-primary"
+                                       href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}"
+                                       data-stop-card>
+                                        Открыть
+                                    </a>
+                                    <form method="POST"
+                                          action="{{ url_for('admin_delete_manual', manual_id=manual_id) }}"
+                                          data-stop-card
+                                          onsubmit="return confirm('Удалить мануал: {{ manual.title | e }}? Все вложенные данные будут удалены.');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="return_segment" value="{{ manual_segment }}">
+                                        <input type="hidden" name="return_branch_area" value="{{ selected_branch_area }}">
+                                        <button type="submit" class="manual-btn manual-btn-small manual-btn-danger">Удалить</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="manual-empty">
+                    <h3 class="manual-empty-title">Мануалов пока нет</h3>
+                    <p class="manual-empty-text">Создайте первый мануал в выбранном разделе.</p>
+                    {% if can_create_current %}
+                        <a class="manual-btn manual-btn-primary"
+                           href="{{ url_for('admin_create_manual', segment=manual_segment, branch_area=selected_branch_area if manual_segment == 'branch' and selected_branch_area else None) }}">
+                            Создать первый мануал
+                        </a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </section>
+    </main>
+
+    <script>
+        document.querySelectorAll('[data-href]').forEach((card) => {
+            card.addEventListener('click', () => {
+                window.location.href = card.dataset.href;
+            });
+        });
+        document.querySelectorAll('[data-stop-card]').forEach((node) => {
+            node.addEventListener('click', (event) => event.stopPropagation());
+        });
+    </script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

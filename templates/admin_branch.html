@@ -116,11 +116,24 @@
                     </div>
                 </div>
 
+                {% if feedback.by_area %}
+                <div class="stats-grid">
+                    {% for area in feedback.by_area %}
+                    <div class="stat-box">
+                        <div class="card-title">{{ area.name }}</div>
+                        <div class="card-desc">Всего: {{ area.total }}</div>
+                        <div class="card-desc">Понятно: {{ area.understood }} · Непонятно: {{ area.not_understood }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
                 {% if feedback.recent %}
                     <table class="feedback-table">
                         <thead>
                             <tr>
                                 <th>Дата</th>
+                                <th>Ветка</th>
                                 <th>Мануал</th>
                                 <th>Ответ</th>
                                 <th>Пользователь</th>
@@ -131,6 +144,7 @@
                             {% for row in feedback.recent %}
                             <tr>
                                 <td>{{ row.created_at }}</td>
+                                <td>{{ row.branch_area_name or 'Опер. блок' }}</td>
                                 <td>{{ row.problem }}</td>
                                 <td>{{ 'Понятно' if row.event_type == 'manual_helped' else 'Непонятно' }}</td>
                                 <td>{{ row.user_name or row.department or '—' }}</td>

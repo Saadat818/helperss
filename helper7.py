@@ -766,6 +766,9 @@ TELEGRAM_FILE_LOOKUP_ENABLED = os.getenv(
     'TELEGRAM_FILE_LOOKUP_ENABLED',
     'false' if APP_TEST_MODE else 'true'
 ).lower() not in ('0', 'false', 'no', 'off')
+LOCAL_MANUAL_MEDIA_PREFIX = 'uploads/manual_media'
+LOCAL_MANUAL_MEDIA_DIR = os.path.join(BASE_DIR, 'static', 'uploads', 'manual_media')
+LOCAL_MANUAL_MEDIA_FILE_ID_PREFIX = 'local:'
 TELEGRAM_PROXY_URL = (
     os.getenv('TELEGRAM_PROXY_URL')
     or os.getenv('HTTPS_PROXY')
@@ -2338,6 +2341,20 @@ MANUAL_SEGMENTS = {
 }
 
 
+BRANCH_MANUAL_AREAS = {
+    'cash': {
+        'name': 'Касса',
+        'kicker': 'Филиалы — касса',
+        'subtitle': 'Мануалы для сотрудников, которые работают на кассовых операциях.',
+    },
+    'oper': {
+        'name': 'Опер. блок',
+        'kicker': 'Филиалы — операционный блок',
+        'subtitle': 'Мануалы для сотрудников операционного блока филиалов.',
+    },
+}
+
+
 def _manual_segment(value: str | None = None) -> str:
     segment = str(value or 'kc').strip().lower()
     return segment if segment in MANUAL_SEGMENTS else 'kc'
@@ -2345,6 +2362,41 @@ def _manual_segment(value: str | None = None) -> str:
 
 def _manual_segment_info(segment: str | None = None) -> dict:
     return MANUAL_SEGMENTS[_manual_segment(segment)]
+
+
+def _branch_manual_area(value: str | None = None) -> str:
+    area = str(value or 'oper').strip().lower()
+    return area if area in BRANCH_MANUAL_AREAS else 'oper'
+
+
+def _branch_manual_area_info(area: str | None = None) -> dict:
+    return BRANCH_MANUAL_AREAS[_branch_manual_area(area)]
+
+
+def _trainer_branch_area_arg() -> str | None:
+    raw_area = request.args.get('branch_area') or request.form.get('branch_area')
+    return _branch_manual_area(raw_area) if raw_area else None
+
+
+def _trainer_segment_info(segment: str, branch_area: str | None = None) -> dict:
+    info = dict(TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc']))
+    if segment == 'branch' and branch_area:
+        area_info = _branch_manual_area_info(branch_area)
+        info['name'] = f"{info['name']} — {area_info['name']}"
+    return info
+
+
+def _manual_display_segment_info(segment: str | None = None, branch_area: str | None = None) -> dict:
+    segment = _manual_segment(segment)
+    info = dict(_manual_segment_info(segment))
+    if segment == 'branch' and branch_area:
+        area_info = _branch_manual_area_info(branch_area)
+        info.update({
+            'name': f"{info['name']} — {area_info['name']}",
+            'kicker': area_info['kicker'],
+            'subtitle': area_info['subtitle'],
+        })
+    return info
 
 
 def _is_branch_segment(segment: str | None = None) -> bool:
@@ -2368,6 +2420,21 @@ def _manual_item_segment(manual: dict | None) -> str:
     return _manual_segment((manual or {}).get('segment') or 'kc')
 
 
+def _manual_item_branch_area(manual: dict | None) -> str:
+    if _manual_item_segment(manual) != 'branch':
+        return ''
+    return _branch_manual_area((manual or {}).get('branch_area') or 'oper')
+
+
+def _manual_target_editor_url(manual: dict | None, manual_id: str, subproblem_id: str = '') -> str:
+    """Returns the editor URL for a simple manual or a concrete subproblem."""
+    if manual and 'subproblems' in manual:
+        if subproblem_id and subproblem_id in (manual.get('subproblems') or {}):
+            return url_for('admin_edit_manual', manual_id=manual_id, active=subproblem_id)
+        return url_for('admin_edit_manual', manual_id=manual_id)
+    return url_for('admin_edit_manual', manual_id=manual_id)
+
+
 def _filter_manuals_by_segment(manuals: dict, segment: str) -> dict:
     segment = _manual_segment(segment)
     return {
@@ -2377,18 +2444,43 @@ def _filter_manuals_by_segment(manuals: dict, segment: str) -> dict:
     }
 
 
-def _manual_belongs_to_segment(manual: dict | None, segment: str) -> bool:
-    return _manual_item_segment(manual) == _manual_segment(segment)
+def _filter_manuals_by_branch_area(manuals: dict, branch_area: str | None = None) -> dict:
+    if not branch_area:
+        return manuals
+    area = _branch_manual_area(branch_area)
+    return {
+        manual_id: manual
+        for manual_id, manual in (manuals or {}).items()
+        if _manual_item_branch_area(manual) == area
+    }
 
 
-def _manual_back_url(segment: str, problem_id: str | None = None) -> str:
+def _manual_belongs_to_segment(manual: dict | None, segment: str, branch_area: str | None = None) -> bool:
+    segment = _manual_segment(segment)
+    if _manual_item_segment(manual) != segment:
+        return False
+    if segment == 'branch' and branch_area:
+        return _manual_item_branch_area(manual) == _branch_manual_area(branch_area)
+    return True
+
+
+def _manual_back_url(segment: str, problem_id: str | None = None, branch_area: str | None = None) -> str:
     segment = _manual_segment(segment)
     if problem_id:
+        if segment == 'branch' and branch_area:
+            return url_for(
+                'select_problem_segment_area',
+                segment=segment,
+                branch_area=_branch_manual_area(branch_area),
+                problem_id=problem_id
+            )
         return (
             url_for('select_problem_segment', segment=segment, problem_id=problem_id)
             if segment != 'kc'
             else url_for('select_problem', problem_id=problem_id)
         )
+    if segment == 'branch' and branch_area:
+        return url_for('branch_manuals_area', branch_area=_branch_manual_area(branch_area))
     return url_for('show_problems_segment', segment=segment) if segment != 'kc' else url_for('show_problems')
 
 
@@ -2415,6 +2507,12 @@ def get_file_url(file_id):
         if not isinstance(file_id, str) or len(file_id) > 200:
             return None
 
+        if file_id.startswith(LOCAL_MANUAL_MEDIA_FILE_ID_PREFIX):
+            local_path = file_id[len(LOCAL_MANUAL_MEDIA_FILE_ID_PREFIX):].lstrip('/\\')
+            if local_path.startswith(f'{LOCAL_MANUAL_MEDIA_PREFIX}/'):
+                return url_for('static', filename=local_path)
+            return None
+
         # Check if it's a local video file (stored in static/videos/)
         if file_id.endswith('.MOV') or file_id.endswith('.mov') or file_id.endswith('.mp4'):
             # Return URL for static file
@@ -2433,6 +2531,45 @@ def get_file_url(file_id):
     except Exception as e:
         print(f"Error getting file URL")
         return None
+
+
+def _save_manual_media_locally(file, media_kind: str) -> str:
+    original_name = secure_filename(file.filename or media_kind)
+    ext = original_name.rsplit('.', 1)[-1].lower() if '.' in original_name else ''
+    if not ext:
+        content_type_ext = {
+            'image/jpeg': 'jpg',
+            'image/png': 'png',
+            'image/gif': 'gif',
+            'image/webp': 'webp',
+            'video/mp4': 'mp4',
+            'video/mpeg': 'mpeg',
+            'video/quicktime': 'mov',
+            'video/x-msvideo': 'avi',
+            'video/webm': 'webm',
+        }
+        ext = content_type_ext.get(file.content_type or '', 'bin')
+    filename = f"{media_kind}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.{ext}"
+    os.makedirs(LOCAL_MANUAL_MEDIA_DIR, exist_ok=True)
+    full_path = os.path.join(LOCAL_MANUAL_MEDIA_DIR, filename)
+    file.seek(0)
+    file.save(full_path)
+    file.seek(0)
+    return f"{LOCAL_MANUAL_MEDIA_FILE_ID_PREFIX}{LOCAL_MANUAL_MEDIA_PREFIX}/{filename}"
+
+
+def _store_manual_media(file, media_kind: str) -> str | None:
+    """Store manual media and return the id saved in manuals_data."""
+    if APP_TEST_MODE:
+        return _save_manual_media_locally(file, media_kind)
+
+    if media_kind == 'photo':
+        msg = bot.send_photo(TECH_SUPPORT_CHAT_ID, file)
+        return msg.photo[-1].file_id if msg.photo else None
+    if media_kind == 'video':
+        msg = bot.send_video(TECH_SUPPORT_CHAT_ID, file)
+        return msg.video.file_id if msg.video else None
+    raise ValueError(f'Unsupported manual media kind: {media_kind}')
 
 def escape_markdown(text):
     """Экранирует спецсимволы Telegram Markdown."""
@@ -3292,7 +3429,11 @@ def choose_help_type():
     """Страница выбора типа помощи после авторизации"""
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
-    return render_template('choose_help_type.html', user_info=session['user_info'])
+    return render_template(
+        'choose_help_type.html',
+        user_info=session['user_info'],
+        can_access_scenarios=_can_access_consultation_scenarios()
+    )
 
 
 @app.route('/branch')
@@ -3302,23 +3443,47 @@ def branch_home():
         return _branch_section_redirect()
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
-    return render_template('branch_home.html', user_info=session['user_info'])
+    return render_template(
+        'branch_home.html',
+        user_info=session['user_info'],
+        branch_manual_areas=BRANCH_MANUAL_AREAS
+    )
 
 
 @app.route('/branch/manuals')
 def branch_manuals():
-    """Мануалы филиалов."""
+    """Старый вход в мануалы филиалов: теперь сначала выбирается ветка."""
     if not BRANCH_SECTION_ENABLED:
         return _branch_section_redirect()
-    return _show_problems_for_segment('branch')
+    return redirect(url_for('branch_home'))
+
+
+@app.route('/branch/manuals/<string:branch_area>')
+def branch_manuals_area(branch_area):
+    """Мануалы филиалов по ветке: касса / операционный блок."""
+    if not BRANCH_SECTION_ENABLED:
+        return _branch_section_redirect()
+    if branch_area not in BRANCH_MANUAL_AREAS:
+        return redirect(url_for('branch_home'))
+    return _show_problems_for_segment('branch', branch_area=branch_area)
 
 
 @app.route('/branch/trainer')
 def branch_trainer():
-    """Тренажер филиалов."""
+    """Старый вход в тренажер филиалов: теперь сначала выбирается ветка."""
     if not BRANCH_SECTION_ENABLED:
         return _branch_section_redirect()
-    return redirect(url_for('trainer_segment_menu', segment='branch'))
+    return redirect(url_for('branch_home'))
+
+
+@app.route('/branch/trainer/<string:branch_area>')
+def branch_trainer_area(branch_area):
+    """Тренажер филиалов по ветке: касса / операционный блок."""
+    if not BRANCH_SECTION_ENABLED:
+        return _branch_section_redirect()
+    if branch_area not in BRANCH_MANUAL_AREAS:
+        return redirect(url_for('branch_home'))
+    return redirect(url_for('trainer_segment_menu', segment='branch', branch_area=branch_area))
 
 
 @app.route('/my_tickets')
@@ -4475,7 +4640,7 @@ def _manual_access_redirect(segment: str):
     return None
 
 
-def _show_problems_for_segment(segment: str):
+def _show_problems_for_segment(segment: str, branch_area: str | None = None):
     """Страница мануалов. Рабочее место требуется только для КЦ."""
     segment = _manual_segment(segment)
     if _branch_section_blocked(segment):
@@ -4484,12 +4649,22 @@ def _show_problems_for_segment(segment: str):
     if access_redirect:
         return access_redirect
 
+    selected_branch_area = ''
+    if segment == 'branch' and branch_area:
+        selected_branch_area = _branch_manual_area(branch_area)
+        session['branch_manual_area'] = selected_branch_area
+    elif segment == 'branch':
+        session.pop('branch_manual_area', None)
+
     manuals = _filter_manuals_by_segment(load_manuals(), segment)
+    manuals = _filter_manuals_by_branch_area(manuals, selected_branch_area)
     return render_template(
         'problems.html',
         manuals=manuals,
         manual_segment=segment,
-        segment_info=_manual_segment_info(segment),
+        segment_info=_manual_display_segment_info(segment, selected_branch_area),
+        branch_area=selected_branch_area,
+        branch_area_info=_branch_manual_area_info(selected_branch_area) if selected_branch_area else None,
     )
 
 @app.route('/select_problem/<string:problem_id>')
@@ -4504,13 +4679,26 @@ def select_problem_segment(segment, problem_id):
     return _select_problem_for_segment(segment, problem_id)
 
 
-def _select_problem_for_segment(segment: str, problem_id: str):
+@app.route('/select_problem/<string:segment>/<string:branch_area>/<string:problem_id>')
+def select_problem_segment_area(segment, branch_area, problem_id):
+    """Выбор проблемы в конкретной ветке филиальных мануалов."""
+    return _select_problem_for_segment(segment, problem_id, branch_area=branch_area)
+
+
+def _select_problem_for_segment(segment: str, problem_id: str, branch_area: str | None = None):
     segment = _manual_segment(segment)
     if _branch_section_blocked(segment):
         return _branch_section_redirect()
     access_redirect = _manual_access_redirect(segment)
     if access_redirect:
         return access_redirect
+
+    selected_branch_area = ''
+    if segment == 'branch' and branch_area:
+        selected_branch_area = _branch_manual_area(branch_area)
+        session['branch_manual_area'] = selected_branch_area
+    elif segment == 'branch':
+        session.pop('branch_manual_area', None)
 
     # --- Проверяем корректность problem_id ---
     if not re.match(r'^\d+$', problem_id):
@@ -4521,10 +4709,10 @@ def _select_problem_for_segment(segment: str, problem_id: str):
     manuals = load_manuals()
 
     # Проверяем что мануал существует
-    if problem_id not in manuals or not _manual_belongs_to_segment(manuals.get(problem_id), segment):
+    if problem_id not in manuals or not _manual_belongs_to_segment(manuals.get(problem_id), segment, selected_branch_area):
         print(f"[select_problem] problem_id not in segment manuals: {problem_id}, segment={segment}")
         flash('Выбрана несуществующая проблема.')
-        return redirect(_manual_back_url(segment))
+        return redirect(_manual_back_url(segment, branch_area=selected_branch_area))
 
     problem_data = manuals.get(problem_id, {})
     safe_problem_id = m_escape(problem_id)
@@ -4533,6 +4721,8 @@ def _select_problem_for_segment(segment: str, problem_id: str):
     if 'subproblems' in problem_data and isinstance(problem_data['subproblems'], dict):
         session['problem_id'] = problem_id
         session['manual_segment'] = segment
+        if selected_branch_area:
+            session['branch_manual_area'] = selected_branch_area
 
         sanitized_subproblems = {}
         for sid, sub in problem_data['subproblems'].items():
@@ -4572,14 +4762,18 @@ def _select_problem_for_segment(segment: str, problem_id: str):
             problem_id=safe_problem_id,
             version_hints=version_hints,
             manual_segment=segment,
-            segment_info=_manual_segment_info(segment),
-            back_url=_manual_back_url(segment),
+            segment_info=_manual_display_segment_info(segment, selected_branch_area),
+            back_url=_manual_back_url(segment, branch_area=selected_branch_area),
+            branch_area=selected_branch_area,
+            branch_area_info=_branch_manual_area_info(selected_branch_area) if selected_branch_area else None,
         )
 
     # --- Нет подпроблем — показываем мануал ---
     else:
         session['problem_id'] = problem_id
         session['manual_segment'] = segment
+        if selected_branch_area:
+            session['branch_manual_area'] = selected_branch_area
         session.pop('current_subproblem_id', None)  # Очищаем старый subproblem_id
 
         raw_manual_title = problem_data.get('title', 'Проблема')
@@ -4634,10 +4828,12 @@ def _select_problem_for_segment(segment: str, problem_id: str):
             photo_urls_with_captions=safe_photos,
             video_data=video_data,
             problem_id=safe_problem_id,
-            back_url=_manual_back_url(segment),
+            back_url=_manual_back_url(segment, branch_area=selected_branch_area),
             manual_segment=segment,
-            segment_info=_manual_segment_info(segment),
+            segment_info=_manual_display_segment_info(segment, selected_branch_area),
             feedback_mode=_manual_segment_info(segment)['feedback_mode'],
+            branch_area=selected_branch_area,
+            branch_area_info=_branch_manual_area_info(selected_branch_area) if selected_branch_area else None,
         )
 
 @app.route('/show_manual/<string:subproblem_id>')
@@ -4652,7 +4848,13 @@ def show_manual_segment(segment, subproblem_id):
     return _show_manual_for_segment(segment, subproblem_id)
 
 
-def _show_manual_for_segment(segment: str, subproblem_id: str):
+@app.route('/show_manual/<string:segment>/<string:branch_area>/<string:subproblem_id>')
+def show_manual_segment_area(segment, branch_area, subproblem_id):
+    """Показ подпроблемы в конкретной ветке филиальных мануалов."""
+    return _show_manual_for_segment(segment, subproblem_id, branch_area=branch_area)
+
+
+def _show_manual_for_segment(segment: str, subproblem_id: str, branch_area: str | None = None):
     segment = _manual_segment(segment)
     if _branch_section_blocked(segment):
         return _branch_section_redirect()
@@ -4661,25 +4863,31 @@ def _show_manual_for_segment(segment: str, subproblem_id: str):
 
     problem_id = session.get('problem_id')
     session['manual_segment'] = segment
+    selected_branch_area = ''
+    if segment == 'branch':
+        raw_branch_area = branch_area or session.get('branch_manual_area') or ''
+        if raw_branch_area:
+            selected_branch_area = _branch_manual_area(raw_branch_area)
+            session['branch_manual_area'] = selected_branch_area
 
     # --- Проверка формата subproblem_id (только цифра.цифра, например "1.2") ---
     if not re.match(r'^\d\.\d$', subproblem_id):
         flash('Неверный идентификатор подпроблемы.')
-        return redirect(_manual_back_url(segment))
+        return redirect(_manual_back_url(segment, branch_area=selected_branch_area))
 
     # Получаем данные основной проблемы - загружаем актуальные мануалы из JSON
     manuals = load_manuals()
     problem_data = manuals.get(problem_id, {})
 
-    if not _manual_belongs_to_segment(problem_data, segment):
+    if not _manual_belongs_to_segment(problem_data, segment, selected_branch_area):
         flash('Выбрана несуществующая подпроблема.')
-        return redirect(_manual_back_url(segment))
+        return redirect(_manual_back_url(segment, branch_area=selected_branch_area))
 
     # Проверяем, существует ли указанная подпроблема
     subproblems = problem_data.get('subproblems', {})
     if subproblem_id not in subproblems:
         flash('Выбрана несуществующая подпроблема.')
-        return redirect(_manual_back_url(segment))
+        return redirect(_manual_back_url(segment, branch_area=selected_branch_area))
 
     # Получаем данные подпроблемы
     subproblem_data = subproblems.get(subproblem_id, {})
@@ -4742,10 +4950,12 @@ def _show_manual_for_segment(segment: str, subproblem_id: str):
         photo_urls_with_captions=safe_photos,
         video_data=safe_video,
         problem_id=problem_id,
-        back_url=_manual_back_url(segment, problem_id=problem_id),
+        back_url=_manual_back_url(segment, problem_id=problem_id, branch_area=selected_branch_area),
         manual_segment=segment,
-        segment_info=_manual_segment_info(segment),
+        segment_info=_manual_display_segment_info(segment, selected_branch_area),
         feedback_mode=_manual_segment_info(segment)['feedback_mode'],
+        branch_area=selected_branch_area,
+        branch_area_info=_branch_manual_area_info(selected_branch_area) if selected_branch_area else None,
     )
 
 
@@ -4959,13 +5169,17 @@ def manual_feedback():
     result = str(request.form.get('result') or '').strip()
     comment = str(request.form.get('comment') or '').strip()[:1000]
     problem_description = str(session.get('problem_title') or 'Неизвестная инструкция')[:500]
+    branch_area = ''
 
     if segment != 'branch':
         return redirect(_manual_back_url('kc'))
 
+    branch_area = _branch_manual_area(request.form.get('branch_area') or session.get('branch_manual_area'))
+    session['branch_manual_area'] = branch_area
+
     if result not in {'understood', 'not_understood'}:
         flash('Не удалось сохранить ответ по мануалу.')
-        return redirect(url_for('branch_manuals'))
+        return redirect(url_for('branch_manuals_area', branch_area=branch_area))
 
     is_understood = result == 'understood'
     log_ticket_event(
@@ -4975,6 +5189,8 @@ def manual_feedback():
         details={
             'source': 'branch_manual_feedback',
             'segment': 'branch',
+            'branch_area': branch_area,
+            'branch_area_name': _branch_manual_area_info(branch_area)['name'],
             'feedback': 'understood' if is_understood else 'not_understood',
             'comment': comment,
             'next_step': 'analytics_only',
@@ -4982,7 +5198,7 @@ def manual_feedback():
         }
     )
     flash('Спасибо, ответ по мануалу сохранён.')
-    return redirect(url_for('branch_manuals'))
+    return redirect(url_for('branch_manuals_area', branch_area=branch_area))
 
 
 @app.route('/success')
@@ -5976,16 +6192,19 @@ def trainer_segment_menu(segment):
     if _trainer_branch_blocked(segment):
         flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('trainer_menu'))
+    branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
+    if segment == 'branch' and not branch_area:
+        return redirect(url_for('branch_home'))
 
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
-    progress = trainer_mgr.get_user_progress(user_id, segment=segment)
-    stats = trainer_mgr.get_statistics(segment=segment)
-    seg_info = TRAINER_SEGMENTS[segment]
+    progress = trainer_mgr.get_user_progress(user_id, segment=segment, branch_area=branch_area)
+    stats = trainer_mgr.get_statistics(segment=segment, branch_area=branch_area)
+    seg_info = _trainer_segment_info(segment, branch_area)
 
     return render_template('trainer_menu.html', levels=levels, progress=progress,
                          top_users=stats['top_users'], current_user_id=user_id,
-                         segment=segment, seg_info=seg_info)
+                         segment=segment, seg_info=seg_info, branch_area=branch_area)
 
 
 @app.route('/trainer/<segment>/level/<level_code>')
@@ -5999,23 +6218,26 @@ def trainer_level(segment, level_code):
     if _trainer_branch_blocked(segment):
         flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('trainer_menu'))
+    branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
+    if segment == 'branch' and not branch_area:
+        return redirect(url_for('branch_home'))
 
     user_id = session['user_info'].get('username', 'anonymous')
     level = trainer_mgr.get_level_by_code(level_code)
 
     if not level:
         flash('Уровень не найден')
-        return redirect(url_for('trainer_segment_menu', segment=segment))
+        return redirect(url_for('trainer_segment_menu', segment=segment, branch_area=branch_area) if branch_area else url_for('trainer_segment_menu', segment=segment))
 
     # Проверяем доступ к уровню
-    if not trainer_mgr.check_level_unlocked(user_id, level_code, segment=segment):
+    if not trainer_mgr.check_level_unlocked(user_id, level_code, segment=segment, branch_area=branch_area):
         flash('Этот уровень ещё заблокирован')
-        return redirect(url_for('trainer_segment_menu', segment=segment))
+        return redirect(url_for('trainer_segment_menu', segment=segment, branch_area=branch_area) if branch_area else url_for('trainer_segment_menu', segment=segment))
 
     # Получаем фильтр по категории
     category_id = request.args.get('category', type=int)
 
-    scenarios = trainer_mgr.get_scenarios_by_level(level_code, category_id, segment=segment)
+    scenarios = trainer_mgr.get_scenarios_by_level(level_code, category_id, segment=segment, branch_area=branch_area)
     categories = trainer_mgr.get_all_categories()
 
     # Получаем результаты пользователя для каждого сценария
@@ -6032,7 +6254,7 @@ def trainer_level(segment, level_code):
     if user_results:
         avg_percent = round(sum(r['percent'] for r in user_results.values()) / len(user_results), 1)
 
-    seg_info = TRAINER_SEGMENTS[segment]
+    seg_info = _trainer_segment_info(segment, branch_area)
     return render_template('trainer_scenarios.html',
                          level=level,
                          scenarios=scenarios,
@@ -6043,7 +6265,8 @@ def trainer_level(segment, level_code):
                          total_count=total_count,
                          avg_percent=avg_percent,
                          segment=segment,
-                         seg_info=seg_info)
+                         seg_info=seg_info,
+                         branch_area=branch_area)
 
 
 @app.route('/trainer/play/<int:scenario_id>')
@@ -6055,6 +6278,7 @@ def trainer_play(scenario_id):
     back_editor = request.args.get('back', 'edit')
     # Сегмент (kc / branch) — для правильного редиректа после прохождения
     play_segment = request.args.get('segment', 'kc')
+    play_branch_area = _branch_manual_area(request.args.get('branch_area')) if request.args.get('branch_area') else None
 
     # In preview mode, admin must be logged in
     if preview_mode:
@@ -6080,6 +6304,9 @@ def trainer_play(scenario_id):
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
 
     scenario_segment = scenario.get('segment') or play_segment
+    play_segment = scenario_segment
+    if scenario_segment == 'branch':
+        play_branch_area = _branch_manual_area(scenario.get('branch_area') or play_branch_area or 'oper')
     if _trainer_branch_blocked(scenario_segment):
         flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
@@ -6088,21 +6315,27 @@ def trainer_play(scenario_id):
     if not preview_mode:
         if scenario.get('is_draft'):
             flash('Сценарий недоступен')
-            return redirect(url_for('trainer_segment_menu', segment=play_segment))
+            return redirect(url_for('trainer_segment_menu', segment=play_segment, branch_area=play_branch_area) if play_branch_area else url_for('trainer_segment_menu', segment=play_segment))
         if not scenario.get('is_active'):
             flash('Сценарий недоступен')
-            return redirect(url_for('trainer_segment_menu', segment=play_segment))
+            return redirect(url_for('trainer_segment_menu', segment=play_segment, branch_area=play_branch_area) if play_branch_area else url_for('trainer_segment_menu', segment=play_segment))
 
     # Check level access (skip in preview mode)
-    if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code'], segment=play_segment):
+    if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code'], segment=play_segment, branch_area=play_branch_area):
         flash('Этот уровень ещё заблокирован')
-        return redirect(url_for('trainer_segment_menu', segment=play_segment))
+        return redirect(url_for('trainer_segment_menu', segment=play_segment, branch_area=play_branch_area) if play_branch_area else url_for('trainer_segment_menu', segment=play_segment))
 
     total_steps = trainer_mgr.get_steps_count(scenario_id)
 
     if total_steps == 0:
         flash('В этом сценарии пока нет шагов')
-        return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id) if preview_mode else url_for('trainer_level', segment=play_segment, level_code=scenario['level_code']))
+        if preview_mode:
+            return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id))
+        return redirect(
+            url_for('trainer_level', segment=play_segment, level_code=scenario['level_code'], branch_area=play_branch_area)
+            if play_branch_area
+            else url_for('trainer_level', segment=play_segment, level_code=scenario['level_code'])
+        )
 
     # Парсим эталонные тематики для пост-обработки
     correct_topics = []
@@ -6147,7 +6380,8 @@ def trainer_play(scenario_id):
                          correct_topics=correct_topics,
                          avatar_images=avatar_images,
                          client_name=client_name,
-                         segment=play_segment)
+                         segment=play_segment,
+                         branch_area=play_branch_area)
 
 
 @app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
@@ -6440,9 +6674,18 @@ def trainer_results(result_id):
 
     # Сегмент берём из данных сценария
     result_segment = scenario_data.get('segment', 'kc') if scenario_data else 'kc'
+    result_branch_area = (
+        _branch_manual_area(scenario_data.get('branch_area') or 'oper')
+        if result_segment == 'branch' and scenario_data
+        else None
+    )
 
     # Находим следующий сценарий (в том же сегменте)
-    scenarios = trainer_mgr.get_scenarios_by_level(result['level_code'], segment=result_segment)
+    scenarios = trainer_mgr.get_scenarios_by_level(
+        result['level_code'],
+        segment=result_segment,
+        branch_area=result_branch_area
+    )
     next_scenario = None
     found_current = False
     for s in scenarios:
@@ -6482,21 +6725,26 @@ def trainer_results(result_id):
                          result_version=result_version,
                          current_version=current_version,
                          user_badges=user_badges,
-                         segment=result_segment)
+                         segment=result_segment,
+                         branch_area=result_branch_area)
 
 
 # ============================================
 # АДМИН-ПАНЕЛЬ ТРЕНАЖЕРА
 # ============================================
 
-def _admin_trainer_redirect(scenario_id=None, segment=None):
+def _admin_trainer_redirect(scenario_id=None, segment=None, branch_area=None):
     """Редирект в нужный сегмент админки после операции над сценарием"""
     if not segment and scenario_id:
         sc = trainer_mgr.get_scenario(scenario_id)
         segment = sc.get('segment', 'kc') if sc else 'kc'
+        if segment == 'branch':
+            branch_area = sc.get('branch_area') if sc else branch_area
     if _trainer_branch_blocked(segment):
         segment = 'kc'
     if segment in TRAINER_SEGMENTS:
+        if segment == 'branch' and branch_area:
+            return redirect(url_for('admin_trainer_segment', segment=segment, branch_area=_branch_manual_area(branch_area)))
         return redirect(url_for('admin_trainer_segment', segment=segment))
     return redirect(url_for('admin_trainer'))
 
@@ -6583,8 +6831,9 @@ def admin_trainer_segment(segment):
         flash('У вас нет доступа ни к одному сегменту тренажёра')
         return redirect(url_for('admin_dashboard'))
 
-    seg_info = TRAINER_SEGMENTS[segment]
-    stats = trainer_mgr.get_statistics(segment=segment)
+    selected_branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
+    seg_info = _trainer_segment_info(segment, selected_branch_area)
+    stats = trainer_mgr.get_statistics(segment=segment, branch_area=selected_branch_area)
     levels = trainer_mgr.get_all_levels()
     categories = trainer_mgr.get_all_categories()
     tags = trainer_mgr.get_all_tags()
@@ -6594,7 +6843,11 @@ def admin_trainer_segment(segment):
     category_id = request.args.get('category', type=int)
     tag_id = request.args.get('tag', type=int)
 
-    scenarios = trainer_mgr.get_all_scenarios(include_inactive=True, segment=segment)
+    scenarios = trainer_mgr.get_all_scenarios(
+        include_inactive=True,
+        segment=segment,
+        branch_area=selected_branch_area
+    )
 
     # Применяем фильтры
     if level_code:
@@ -6612,14 +6865,14 @@ def admin_trainer_segment(segment):
         scenarios = [s for s in scenarios if any(t['id'] == tag_id for t in s['tags'])]
 
     # Архивные в конец
-    archived_scenarios = trainer_mgr.get_archived_scenarios(segment=segment)
+    archived_scenarios = trainer_mgr.get_archived_scenarios(segment=segment, branch_area=selected_branch_area)
     for s in archived_scenarios:
         s['steps_count'] = trainer_mgr.get_steps_count(s['id'])
         s['tags'] = trainer_mgr.get_scenario_tags(s['id'])
     scenarios = scenarios + archived_scenarios
 
     unread_feedback = trainer_mgr.get_unread_feedback_count(segment=segment)
-    draft_count = trainer_mgr.get_draft_count(segment=segment)
+    draft_count = trainer_mgr.get_draft_count(segment=segment, branch_area=selected_branch_area)
 
     return render_template('admin_trainer.html',
                          stats=stats,
@@ -6632,6 +6885,8 @@ def admin_trainer_segment(segment):
                          current_tag=tag_id,
                          segment=segment,
                          seg_info=seg_info,
+                         branch_manual_areas=BRANCH_MANUAL_AREAS,
+                         selected_branch_area=selected_branch_area,
                          unread_feedback=unread_feedback,
                          draft_count=draft_count)
 
@@ -6647,6 +6902,11 @@ def admin_trainer_create():
         selected_segment = _default_admin_trainer_segment()
     if _trainer_branch_blocked(selected_segment):
         selected_segment = 'kc'
+    selected_branch_area = (
+        _branch_manual_area(request.values.get('branch_area'))
+        if selected_segment == 'branch' and request.values.get('branch_area')
+        else None
+    )
     if not _can_manage_trainer_segment(selected_segment):
         return _trainer_segment_access_denied_response(selected_segment)
 
@@ -6668,6 +6928,11 @@ def admin_trainer_create():
             data['segment'] = selected_segment
         if _trainer_branch_blocked(data['segment']):
             data['segment'] = 'kc'
+        data['branch_area'] = (
+            _branch_manual_area(request.form.get('branch_area') or selected_branch_area)
+            if data['segment'] == 'branch'
+            else ''
+        )
         if not _can_manage_trainer_segment(data['segment']):
             return _trainer_segment_access_denied_response(data['segment'])
 
@@ -6683,7 +6948,9 @@ def admin_trainer_create():
                 tags=tags,
                 scenario_tag_ids=[],
                 selected_segment=data['segment'],
-                allowed_trainer_segments=_allowed_admin_trainer_segments()
+                allowed_trainer_segments=_allowed_admin_trainer_segments(),
+                branch_manual_areas=BRANCH_MANUAL_AREAS,
+                selected_branch_area=data.get('branch_area')
             )
 
         result = trainer_mgr.create_scenario(data)
@@ -6718,7 +6985,9 @@ def admin_trainer_create():
         tags=tags,
         scenario_tag_ids=[],
         selected_segment=selected_segment,
-        allowed_trainer_segments=_allowed_admin_trainer_segments()
+        allowed_trainer_segments=_allowed_admin_trainer_segments(),
+        branch_manual_areas=BRANCH_MANUAL_AREAS,
+        selected_branch_area=selected_branch_area
     )
 
 
@@ -6786,8 +7055,15 @@ def admin_trainer_edit(scenario_id):
             'emotion_passive_rate': request.form.get('emotion_passive_rate', 0, type=int),
             'segment': request.form.get('segment', 'kc'),
         }
+        if data['segment'] not in TRAINER_SEGMENTS:
+            data['segment'] = sc_segment
         if _trainer_branch_blocked(data['segment']):
             data['segment'] = 'kc'
+        data['branch_area'] = (
+            _branch_manual_area(request.form.get('branch_area') or scenario.get('branch_area') or 'oper')
+            if data['segment'] == 'branch'
+            else ''
+        )
         # Сохраняем снимок текущей версии перед обновлением
         user_info = session.get('user_info', {})
         editor = user_info.get('username') or user_info.get('name', 'admin')
@@ -6937,7 +7213,9 @@ def admin_trainer_edit(scenario_id):
                          version_history=version_history,
                          avatar_images=avatar_images,
                          selected_segment=scenario.get('segment', 'kc'),
-                         allowed_trainer_segments=_allowed_admin_trainer_segments())
+                         allowed_trainer_segments=_allowed_admin_trainer_segments(),
+                         branch_manual_areas=BRANCH_MANUAL_AREAS,
+                         selected_branch_area=scenario.get('branch_area') or 'oper')
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/versions')
@@ -6978,6 +7256,7 @@ def admin_trainer_delete(scenario_id):
     scenario = trainer_mgr.get_scenario(scenario_id)
     scenario_title = scenario['title'] if scenario else f"ID {scenario_id}"
     sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
+    sc_branch_area = scenario.get('branch_area') if scenario else None
 
     result = trainer_mgr.delete_scenario(scenario_id)
 
@@ -6995,7 +7274,7 @@ def admin_trainer_delete(scenario_id):
     else:
         flash(f'Ошибка: {result.get("error")}')
 
-    return _admin_trainer_redirect(segment=sc_segment)
+    return _admin_trainer_redirect(segment=sc_segment, branch_area=sc_branch_area)
 
 
 @app.route('/admin/trainer/drafts')
@@ -7005,8 +7284,9 @@ def admin_trainer_drafts():
     segment = request.args.get('segment', 'kc')
     if not _can_manage_trainer_segment(segment):
         return _trainer_segment_access_denied_response(segment)
-    seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
-    drafts = trainer_mgr.get_draft_scenarios(segment=segment)
+    selected_branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
+    seg_info = _trainer_segment_info(segment, selected_branch_area)
+    drafts = trainer_mgr.get_draft_scenarios(segment=segment, branch_area=selected_branch_area)
     for d in drafts:
         d['steps_count'] = trainer_mgr.get_steps_count(d['id'])
         d['tags'] = trainer_mgr.get_scenario_tags(d['id'])
@@ -7017,7 +7297,9 @@ def admin_trainer_drafts():
                            levels=levels,
                            categories=categories,
                            segment=segment,
-                           seg_info=seg_info)
+                           seg_info=seg_info,
+                           branch_manual_areas=BRANCH_MANUAL_AREAS,
+                           selected_branch_area=selected_branch_area)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/publish', methods=['POST'])
@@ -7029,6 +7311,7 @@ def admin_trainer_publish(scenario_id):
         return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
+    sc_branch_area = scenario.get('branch_area') if scenario else None
     result = trainer_mgr.publish_draft(scenario_id)
     if result['success']:
         user_info = session.get('user_info', {})
@@ -7043,6 +7326,8 @@ def admin_trainer_publish(scenario_id):
         flash('Сценарий опубликован!')
     else:
         flash(f'Ошибка: {result.get("error")}')
+    if sc_segment == 'branch' and sc_branch_area:
+        return redirect(url_for('admin_trainer_drafts', segment=sc_segment, branch_area=_branch_manual_area(sc_branch_area)))
     return redirect(url_for('admin_trainer_drafts', segment=sc_segment))
 
 
@@ -7055,6 +7340,7 @@ def admin_trainer_archive(scenario_id):
         return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
+    sc_branch_area = scenario.get('branch_area') if scenario else None
     result = trainer_mgr.archive_scenario(scenario_id)
     if result['success']:
         user_info = session.get('user_info', {})
@@ -7069,7 +7355,7 @@ def admin_trainer_archive(scenario_id):
         flash('Сценарий перемещён в архив.')
     else:
         flash(f'Ошибка: {result.get("error")}')
-    return _admin_trainer_redirect(segment=sc_segment)
+    return _admin_trainer_redirect(segment=sc_segment, branch_area=sc_branch_area)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/restore', methods=['POST'])
@@ -7081,6 +7367,7 @@ def admin_trainer_restore(scenario_id):
         return denied
     scenario = trainer_mgr.get_scenario(scenario_id)
     sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
+    sc_branch_area = scenario.get('branch_area') if scenario else None
     result = trainer_mgr.restore_from_archive(scenario_id)
     if result['success']:
         user_info = session.get('user_info', {})
@@ -7095,7 +7382,7 @@ def admin_trainer_restore(scenario_id):
         flash('Сценарий восстановлен из архива и снова активен.')
     else:
         flash(f'Ошибка: {result.get("error")}')
-    return _admin_trainer_redirect(segment=sc_segment)
+    return _admin_trainer_redirect(segment=sc_segment, branch_area=sc_branch_area)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/duplicate', methods=['POST'])
@@ -7121,8 +7408,9 @@ def admin_trainer_duplicate(scenario_id):
         return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
     else:
         sc_segment = scenario.get('segment', 'kc') if scenario else 'kc'
+        sc_branch_area = scenario.get('branch_area') if scenario else None
         flash(f'Ошибка дублирования: {result.get("error")}')
-        return _admin_trainer_redirect(segment=sc_segment)
+        return _admin_trainer_redirect(segment=sc_segment, branch_area=sc_branch_area)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])
@@ -7518,14 +7806,17 @@ def admin_trainer_stats():
         segment = 'kc'
     if not _can_view_trainer_stats_segment(segment):
         return _trainer_segment_access_denied_response(segment)
-    seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
-    stats = trainer_mgr.get_statistics(segment=segment)
-    heatmap = trainer_mgr.get_step_error_heatmap(limit=20, segment=segment)
+    selected_branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
+    seg_info = _trainer_segment_info(segment, selected_branch_area)
+    stats = trainer_mgr.get_statistics(segment=segment, branch_area=selected_branch_area)
+    heatmap = trainer_mgr.get_step_error_heatmap(limit=20, segment=segment, branch_area=selected_branch_area)
     return render_template('admin_trainer_stats.html',
                            stats=stats,
                            heatmap=heatmap,
                            segment=segment,
-                           seg_info=seg_info)
+                           seg_info=seg_info,
+                           branch_manual_areas=BRANCH_MANUAL_AREAS,
+                           selected_branch_area=selected_branch_area)
 
 
 @app.route('/api/admin/trainer/user/<user_id>/results')
@@ -8910,24 +9201,40 @@ def admin_dashboard_new():
 def admin_manuals():
     """Старая страница управления мануалами."""
     segment = _manual_segment(request.args.get('segment') or 'kc')
+    selected_branch_area = ''
     if _branch_section_blocked(segment):
         flash('Раздел «Филиалы» временно отключен.')
         return redirect(url_for('admin_manuals', segment='kc'))
     if not _can_manage_manual_segment(segment):
         return _manual_segment_access_denied_response(segment)
+    if segment == 'branch' and request.args.get('branch_area'):
+        selected_branch_area = _branch_manual_area(request.args.get('branch_area'))
     manuals = _filter_manuals_by_segment(admin_manager.load_manuals(), segment)
+    manuals = _filter_manuals_by_branch_area(manuals, selected_branch_area)
     return render_template(
         'admin_dashboard.html',
         manuals=manuals,
         manual_segment=segment,
         segment_info=_manual_segment_info(segment),
         manual_segments=MANUAL_SEGMENTS,
+        branch_manual_areas=BRANCH_MANUAL_AREAS,
+        selected_branch_area=selected_branch_area,
     )
 
 
 def _branch_manual_feedback_stats(limit: int = 50) -> dict:
     events = ('manual_helped', 'manual_not_helped')
     summary = {'understood': 0, 'not_understood': 0, 'total': 0}
+    by_area = {
+        area_key: {
+            'key': area_key,
+            'name': area_info['name'],
+            'understood': 0,
+            'not_understood': 0,
+            'total': 0,
+        }
+        for area_key, area_info in BRANCH_MANUAL_AREAS.items()
+    }
     recent = []
     try:
         if ANALYTICS_USE_POSTGRES:
@@ -8941,6 +9248,13 @@ def _branch_manual_feedback_stats(limit: int = 50) -> dict:
                         GROUP BY event_type
                     """, (list(events),))
                     rows = cur.fetchall()
+                    cur.execute("""
+                        SELECT event_type, details_json
+                        FROM ticket_events
+                        WHERE event_type = ANY(%s)
+                          AND details_json->>'segment' = 'branch'
+                    """, (list(events),))
+                    area_rows = cur.fetchall()
                     cur.execute("""
                         SELECT created_at::text AS created_at, event_type, problem,
                                problem_id, subproblem_id, department, user_name, workplace,
@@ -8964,6 +9278,12 @@ def _branch_manual_feedback_stats(limit: int = 50) -> dict:
                       AND {details_filter}
                     GROUP BY event_type
                 """, events).fetchall()
+                area_rows = [dict(row) for row in conn.execute(f"""
+                    SELECT event_type, details_json
+                    FROM ticket_events
+                    WHERE event_type IN ({placeholders})
+                      AND {details_filter}
+                """, events).fetchall()]
                 recent = [dict(row) for row in conn.execute(f"""
                     SELECT created_at, event_type, problem,
                            problem_id, subproblem_id, department, user_name, workplace,
@@ -8983,6 +9303,22 @@ def _branch_manual_feedback_stats(limit: int = 50) -> dict:
             elif row_data.get('event_type') == 'manual_not_helped':
                 summary['not_understood'] += count
         summary['total'] = summary['understood'] + summary['not_understood']
+
+        for row in area_rows:
+            row_data = dict(row)
+            details = row_data.get('details_json') or {}
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except Exception:
+                    details = {}
+            area_key = _branch_manual_area(details.get('branch_area') or 'oper')
+            if row_data.get('event_type') == 'manual_helped':
+                by_area[area_key]['understood'] += 1
+            elif row_data.get('event_type') == 'manual_not_helped':
+                by_area[area_key]['not_understood'] += 1
+            by_area[area_key]['total'] = by_area[area_key]['understood'] + by_area[area_key]['not_understood']
+
         for row in recent:
             details = row.get('details_json') or {}
             if isinstance(details, str):
@@ -8992,10 +9328,12 @@ def _branch_manual_feedback_stats(limit: int = 50) -> dict:
                     details = {}
             row['feedback'] = details.get('feedback') or ''
             row['comment'] = details.get('comment') or ''
-        return {'summary': summary, 'recent': recent}
+            row['branch_area'] = _branch_manual_area(details.get('branch_area') or 'oper')
+            row['branch_area_name'] = _branch_manual_area_info(row['branch_area'])['name']
+        return {'summary': summary, 'by_area': list(by_area.values()), 'recent': recent}
     except Exception as e:
         print(f"[branch_manual_feedback] Ошибка загрузки аналитики: {e}")
-        return {'summary': summary, 'recent': []}
+        return {'summary': summary, 'by_area': list(by_area.values()), 'recent': []}
 
 
 @app.route('/admin/branch')
@@ -9022,11 +9360,230 @@ def admin_branch():
     )
 
 
+def _manual_target_for_edit(manual: dict, manual_id: str, subproblem_id: str = '') -> tuple[dict | None, str]:
+    """Returns target object and normalized target id for simple manual or subproblem."""
+    if 'subproblems' in manual:
+        subproblems = manual.get('subproblems') or {}
+        if subproblem_id and subproblem_id in subproblems:
+            return subproblems[subproblem_id], subproblem_id
+        first_id = next(iter(subproblems.keys()), '')
+        if first_id:
+            return subproblems[first_id], first_id
+        return None, ''
+    return manual, manual_id
+
+
+def _manual_editor_targets(manual: dict, manual_id: str, active_target: str = '') -> tuple[list[dict], str]:
+    targets = []
+    if 'subproblems' in manual:
+        for subproblem_id, subproblem in (manual.get('subproblems') or {}).items():
+            photos = subproblem.get('photos') if isinstance(subproblem.get('photos'), list) else []
+            photo_urls = [get_file_url(photo.get('id')) if photo.get('id') else None for photo in photos]
+            video = subproblem.get('video') if isinstance(subproblem.get('video'), dict) else None
+            video_url = get_file_url(video.get('id')) if video and video.get('id') else None
+            targets.append({
+                'id': subproblem_id,
+                'title': subproblem.get('title', ''),
+                'photos': photos,
+                'photo_urls': photo_urls,
+                'video': video,
+                'video_url': video_url,
+            })
+        active_id = active_target if any(t['id'] == active_target for t in targets) else (targets[0]['id'] if targets else '')
+        return targets, active_id
+
+    photos = manual.get('photos') if isinstance(manual.get('photos'), list) else []
+    photo_urls = [get_file_url(photo.get('id')) if photo.get('id') else None for photo in photos]
+    video = manual.get('video') if isinstance(manual.get('video'), dict) else None
+    video_url = get_file_url(video.get('id')) if video and video.get('id') else None
+    return ([{
+        'id': manual_id,
+        'title': manual.get('title', ''),
+        'photos': photos,
+        'photo_urls': photo_urls,
+        'video': video,
+        'video_url': video_url,
+    }], manual_id)
+
+
+def _manual_editor_list(segment: str, branch_area: str = '') -> dict:
+    manuals = _filter_manuals_by_segment(admin_manager.load_manuals(), segment)
+    return _filter_manuals_by_branch_area(manuals, branch_area)
+
+
+def _manual_next_subproblem_id(manual_id: str, manual: dict) -> str:
+    existing_nums = []
+    for subproblem_id in (manual.get('subproblems') or {}).keys():
+        if '.' in str(subproblem_id):
+            try:
+                existing_nums.append(int(str(subproblem_id).split('.', 1)[1]))
+            except ValueError:
+                pass
+    return f"{manual_id}.{(max(existing_nums) + 1) if existing_nums else 1}"
+
+
+def _manual_editor_context(manual_id: str, active_target: str = '') -> dict | None:
+    manual = admin_manager.get_manual(manual_id)
+    if not manual:
+        return None
+    segment = _manual_item_segment(manual)
+    branch_area = _manual_item_branch_area(manual) or 'oper'
+    targets, active_id = _manual_editor_targets(manual, manual_id, active_target)
+    editor_manuals = _manual_editor_list(segment, branch_area if segment == 'branch' else '')
+    return {
+        'manual_id': manual_id,
+        'manual': manual,
+        'manual_type': 'with_subproblems' if 'subproblems' in manual else 'simple',
+        'manual_segment': segment,
+        'selected_branch_area': branch_area,
+        'branch_manual_areas': BRANCH_MANUAL_AREAS,
+        'manual_segments': MANUAL_SEGMENTS,
+        'targets': targets,
+        'active_target': active_id,
+        'editor_manuals': editor_manuals,
+        'segment_info': _manual_segment_info(segment),
+    }
+
+
+def _manual_api_target(manual: dict, subproblem_id: str = '') -> tuple[dict | None, str | None]:
+    if 'subproblems' in manual:
+        if not admin_manager.validate_subproblem_id(subproblem_id):
+            return None, 'Некорректный ID подпроблемы'
+        target = (manual.get('subproblems') or {}).get(subproblem_id)
+        if target is None:
+            return None, 'Подпроблема не найдена'
+        return target, None
+    return manual, None
+
+
+def _manual_api_response(success: bool, message: str = '', **extra):
+    payload = {'success': success}
+    if message:
+        payload['message'] = message
+    payload.update(extra)
+    return jsonify(payload), (200 if success else 400)
+
+
+def _manual_apply_steps_payload(target: dict, target_payload: dict) -> None:
+    photos = target.get('photos') if isinstance(target.get('photos'), list) else []
+    steps = target_payload.get('steps') if isinstance(target_payload.get('steps'), list) else []
+    if steps and len(steps) == len(photos):
+        reordered = []
+        used = set()
+        valid_order = True
+        for step in steps:
+            try:
+                original_index = int(step.get('original_index'))
+            except (TypeError, ValueError, AttributeError):
+                valid_order = False
+                break
+            if original_index < 0 or original_index >= len(photos) or original_index in used:
+                valid_order = False
+                break
+            used.add(original_index)
+            current = dict(photos[original_index])
+            current['caption'] = admin_manager.sanitize_text(step.get('caption', ''), 300)
+            reordered.append(current)
+        if valid_order and len(reordered) == len(photos):
+            target['photos'] = reordered
+            return
+
+    for index, step in enumerate(steps):
+        if index >= len(photos) or not isinstance(step, dict):
+            continue
+        photos[index]['caption'] = admin_manager.sanitize_text(step.get('caption', ''), 300)
+    target['photos'] = photos
+
+
+def _manual_apply_video_caption(target: dict, target_payload: dict) -> None:
+    if target.get('video') and isinstance(target.get('video'), dict) and 'video_caption' in target_payload:
+        target['video']['caption'] = admin_manager.sanitize_text(target_payload.get('video_caption', ''), 300)
+
+
+def _manual_save_from_editor(manual_id: str, payload: dict) -> tuple[bool, str, dict | None]:
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+    if not manual:
+        return False, 'Мануал не найден', None
+    if _manual_item_access_denied(manual):
+        return False, 'Нет доступа', None
+
+    title = admin_manager.sanitize_text(payload.get('title', ''), max_length=200)
+    if not title:
+        return False, 'Название мануала не может быть пустым', None
+
+    selected_segment = _manual_segment(payload.get('segment') or manual.get('segment') or 'kc')
+    if _branch_section_blocked(selected_segment):
+        selected_segment = 'kc'
+    if not _can_manage_manual_segment(selected_segment):
+        return False, 'Нет доступа к выбранному разделу', None
+
+    requested_type = str(payload.get('manual_type') or ('with_subproblems' if 'subproblems' in manual else 'simple')).strip()
+    if requested_type not in {'simple', 'with_subproblems'}:
+        requested_type = 'with_subproblems' if 'subproblems' in manual else 'simple'
+
+    if requested_type == 'with_subproblems' and 'subproblems' not in manual:
+        manual['subproblems'] = {
+            f"{manual_id}.1": {
+                'title': admin_manager.sanitize_text(manual.get('title') or 'Основная инструкция', 200),
+                'photos': manual.get('photos') if isinstance(manual.get('photos'), list) else [],
+                'video': manual.get('video') if isinstance(manual.get('video'), dict) else None,
+            }
+        }
+        manual.pop('photos', None)
+        manual.pop('video', None)
+    elif requested_type == 'simple' and 'subproblems' in manual:
+        subproblems = manual.get('subproblems') or {}
+        if len(subproblems) > 1:
+            return False, 'Нельзя преобразовать в простой мануал: есть несколько подпроблем', None
+        if len(subproblems) == 1:
+            only_sub = next(iter(subproblems.values()))
+            manual['photos'] = only_sub.get('photos') if isinstance(only_sub.get('photos'), list) else []
+            if isinstance(only_sub.get('video'), dict):
+                manual['video'] = only_sub.get('video')
+            else:
+                manual.pop('video', None)
+        else:
+            manual['photos'] = []
+            manual.pop('video', None)
+        manual.pop('subproblems', None)
+
+    manual['title'] = title
+    manual['segment'] = selected_segment
+    if selected_segment == 'branch':
+        manual['branch_area'] = _branch_manual_area(payload.get('branch_area') or manual.get('branch_area') or 'oper')
+    else:
+        manual.pop('branch_area', None)
+
+    targets_payload = payload.get('targets') if isinstance(payload.get('targets'), dict) else {}
+    if 'subproblems' in manual:
+        for subproblem_id, target_payload in targets_payload.items():
+            if subproblem_id not in manual['subproblems'] or not isinstance(target_payload, dict):
+                continue
+            target = manual['subproblems'][subproblem_id]
+            new_title = admin_manager.sanitize_text(target_payload.get('title') or target.get('title') or '', 200)
+            if new_title:
+                target['title'] = new_title
+            _manual_apply_steps_payload(target, target_payload)
+            _manual_apply_video_caption(target, target_payload)
+    else:
+        target_payload = targets_payload.get(manual_id)
+        if isinstance(target_payload, dict):
+            _manual_apply_steps_payload(manual, target_payload)
+            _manual_apply_video_caption(manual, target_payload)
+
+    manuals[manual_id] = manual
+    if admin_manager.save_manuals(manuals):
+        return True, 'Сохранено', manual
+    return False, 'Ошибка при сохранении', None
+
+
 @app.route('/admin/manual/create', methods=['GET', 'POST'])
 @AdminAuth.manuals_required
 def admin_create_manual():
     """Создание нового мануала"""
     selected_segment = _manual_segment(request.values.get('segment') or 'kc')
+    selected_branch_area = _branch_manual_area(request.values.get('branch_area') or 'oper')
     if _branch_section_blocked(selected_segment):
         selected_segment = 'kc'
     if not _can_manage_manual_segment(selected_segment):
@@ -9035,6 +9592,7 @@ def admin_create_manual():
         title = request.form.get('title', '').strip()
         manual_type = request.form.get('manual_type', 'with_subproblems').strip()
         selected_segment = _manual_segment(request.form.get('segment') or selected_segment)
+        selected_branch_area = _branch_manual_area(request.form.get('branch_area') or selected_branch_area)
         if _branch_section_blocked(selected_segment):
             selected_segment = 'kc'
         if not _can_manage_manual_segment(selected_segment):
@@ -9047,6 +9605,9 @@ def admin_create_manual():
                 'admin_create_manual.html',
                 manual_segments=MANUAL_SEGMENTS,
                 selected_segment=selected_segment,
+                branch_manual_areas=BRANCH_MANUAL_AREAS,
+                selected_branch_area=selected_branch_area,
+                editor_manuals=_manual_editor_list(selected_segment, selected_branch_area if selected_segment == 'branch' else ''),
             )
 
         # Загружаем существующие мануалы
@@ -9085,6 +9646,8 @@ def admin_create_manual():
                 "segment": selected_segment,
                 "subproblems": {}
             }
+        if selected_segment == 'branch':
+            manuals[manual_id]["branch_area"] = selected_branch_area
 
         # Сохраняем
         if admin_manager.save_manuals(manuals):
@@ -9096,6 +9659,9 @@ def admin_create_manual():
                 'admin_create_manual.html',
                 manual_segments=MANUAL_SEGMENTS,
                 selected_segment=selected_segment,
+                branch_manual_areas=BRANCH_MANUAL_AREAS,
+                selected_branch_area=selected_branch_area,
+                editor_manuals=_manual_editor_list(selected_segment, selected_branch_area if selected_segment == 'branch' else ''),
             )
 
     # GET request - показываем форму
@@ -9103,13 +9669,16 @@ def admin_create_manual():
         'admin_create_manual.html',
         manual_segments=MANUAL_SEGMENTS,
         selected_segment=selected_segment,
+        branch_manual_areas=BRANCH_MANUAL_AREAS,
+        selected_branch_area=selected_branch_area,
+        editor_manuals=_manual_editor_list(selected_segment, selected_branch_area if selected_segment == 'branch' else ''),
     )
 
 
 @app.route('/admin/manual/<string:manual_id>/edit')
 @AdminAuth.manuals_required
 def admin_edit_manual(manual_id):
-    """Страница редактирования мануала - теперь показывает список подпроблем"""
+    """Единый редактор мануала."""
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
@@ -9123,24 +9692,17 @@ def admin_edit_manual(manual_id):
     if denied:
         return denied
 
-    # Если есть поле subproblems - показываем список подпроблем (даже если пустой)
-    if 'subproblems' in manual:
-        return render_template(
-            'admin_manual_subproblems.html',
-            manual_id=manual_id,
-            manual=manual,
-            manual_segment=_manual_item_segment(manual),
-            segment_info=_manual_segment_info(manual.get('segment')),
-        )
-
-    # Если нет поля subproblems - это простой мануал
-    return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
+    context = _manual_editor_context(manual_id, request.args.get('active') or '')
+    if not context:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_manuals'))
+    return render_template('admin_manual_editor.html', **context)
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/create', methods=['GET', 'POST'])
 @AdminAuth.manuals_required
 def admin_create_subproblem(manual_id):
-    """Создание новой подпроблемы"""
+    """Совместимый route: создание подпроблемы теперь выполняется в едином редакторе."""
     # Валидация
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
@@ -9156,13 +9718,16 @@ def admin_create_subproblem(manual_id):
     if denied:
         return denied
 
+    if request.method == 'GET':
+        return redirect(url_for('admin_edit_manual', manual_id=manual_id, create_subproblem='1'))
+
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
 
         # Валидация
         if not title:
             flash('Название обязательно для заполнения')
-            return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id, create_subproblem='1'))
 
         # Проверка на существование
         if 'subproblems' not in manual:
@@ -9194,13 +9759,12 @@ def admin_create_subproblem(manual_id):
         # Сохраняем
         if admin_manager.save_manuals(manuals):
             flash(f'Подпроблема "{title}" успешно создана!')
-            return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id, active=subproblem_id))
         else:
             flash('Ошибка при сохранении подпроблемы')
-            return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id, create_subproblem='1'))
 
-    # GET request - показываем форму
-    return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
 
 
 @app.route('/admin/manual/<string:manual_id>/delete', methods=['POST'])
@@ -9208,15 +9772,16 @@ def admin_create_subproblem(manual_id):
 def admin_delete_manual(manual_id):
     """Удаление мануала"""
     return_segment = _manual_segment(request.form.get('return_segment') or 'kc')
+    return_branch_area = _branch_manual_area(request.form.get('return_branch_area') or 'oper') if return_segment == 'branch' and request.form.get('return_branch_area') else ''
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
-        return redirect(url_for('admin_manuals', segment=return_segment))
+        return redirect(url_for('admin_manuals', segment=return_segment, branch_area=return_branch_area or None))
 
     manuals = admin_manager.load_manuals()
 
     if manual_id not in manuals:
         flash('Мануал не найден')
-        return redirect(url_for('admin_manuals', segment=return_segment))
+        return redirect(url_for('admin_manuals', segment=return_segment, branch_area=return_branch_area or None))
     denied = _manual_item_access_denied(manuals.get(manual_id))
     if denied:
         return denied
@@ -9231,7 +9796,7 @@ def admin_delete_manual(manual_id):
     else:
         flash('Ошибка при удалении мануала')
 
-    return redirect(url_for('admin_manuals', segment=return_segment))
+    return redirect(url_for('admin_manuals', segment=return_segment, branch_area=return_branch_area or None))
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/delete', methods=['POST'])
@@ -9276,7 +9841,7 @@ def admin_delete_subproblem(manual_id, subproblem_id):
 @app.route('/admin/manual/<string:manual_id>/edit-simple')
 @AdminAuth.manuals_required
 def admin_edit_simple_manual(manual_id):
-    """Страница редактирования простого мануала (без подпроблем)"""
+    """Совместимый route простого мануала: открывает единый редактор."""
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
@@ -9289,40 +9854,13 @@ def admin_edit_simple_manual(manual_id):
     if denied:
         return denied
 
-    # Проверяем что это простой мануал
-    if 'subproblems' in manual:
-        flash('Этот мануал содержит подпроблемы')
-        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
-
-    # Получаем URLs для фотографий
-    photo_urls = []
-    if 'photos' in manual:
-        for photo in manual['photos']:
-            url = get_file_url(photo.get('id'))
-            photo_urls.append(url)
-
-    # Получаем URL для видео если есть
-    video_url = None
-    if 'video' in manual and manual['video'] is not None:
-        video_id = manual['video'].get('id')
-        if video_id:
-            video_url = get_file_url(video_id)
-
-    # Используем тот же template что и для подпроблем, но передаём manual вместо subproblem
-    return render_template('admin_edit_subproblem.html',
-                         manual_id=manual_id,
-                         manual_title=manual.get('title', ''),
-                         subproblem_id=manual_id,  # Для простых мануалов subproblem_id = manual_id
-                         subproblem=manual,  # Передаём сам мануал как "подпроблему"
-                         photo_urls=photo_urls,
-                         video_url=video_url,
-                         is_simple_manual=True)  # Флаг что это простой мануал
+    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/edit')
 @AdminAuth.manuals_required
 def admin_edit_subproblem(manual_id, subproblem_id):
-    """Страница редактирования отдельной подпроблемы"""
+    """Совместимый route подпроблемы: открывает единый редактор с активной вкладкой."""
     # Валидация ID
     if not admin_manager.validate_manual_id(manual_id):
         flash('Некорректный ID мануала')
@@ -9345,29 +9883,272 @@ def admin_edit_subproblem(manual_id, subproblem_id):
         flash('Подпроблема не найдена')
         return redirect(url_for('admin_edit_manual', manual_id=manual_id))
 
-    subproblem = manual['subproblems'][subproblem_id]
+    return redirect(url_for('admin_edit_manual', manual_id=manual_id, active=subproblem_id))
 
-    # Получаем URLs для фотографий чтобы показать preview
-    photo_urls = []
-    if 'photos' in subproblem:
-        for photo in subproblem['photos']:
-            url = get_file_url(photo.get('id'))
-            photo_urls.append(url)
 
-    # Получаем URL для видео если есть
-    video_url = None
-    if 'video' in subproblem and subproblem['video'] is not None:
-        video_id = subproblem['video'].get('id')
-        if video_id:
-            video_url = get_file_url(video_id)
+@app.route('/admin/manual/<string:manual_id>/api/save', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_save(manual_id):
+    if not admin_manager.validate_manual_id(manual_id):
+        return _manual_api_response(False, 'Некорректный ID мануала')
+    payload = request.get_json(silent=True) or {}
+    success, message, manual = _manual_save_from_editor(manual_id, payload)
+    if not success:
+        return _manual_api_response(False, message)
+    context = _manual_editor_context(manual_id, payload.get('active_target') or '')
+    return _manual_api_response(
+        True,
+        message,
+        manual_type='with_subproblems' if manual and 'subproblems' in manual else 'simple',
+        active_target=(context or {}).get('active_target', ''),
+    )
 
-    return render_template('admin_edit_subproblem.html',
-                         manual_id=manual_id,
-                         manual_title=manual.get('title', ''),
-                         subproblem_id=subproblem_id,
-                         subproblem=subproblem,
-                         photo_urls=photo_urls,
-                         video_url=video_url)
+
+@app.route('/admin/manual/<string:manual_id>/api/subproblem/create', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_create_subproblem(manual_id):
+    if not admin_manager.validate_manual_id(manual_id):
+        return _manual_api_response(False, 'Некорректный ID мануала')
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+    if not manual:
+        return _manual_api_response(False, 'Мануал не найден')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    if 'subproblems' not in manual:
+        return _manual_api_response(False, 'Сначала переключите тип на “С подпроблемами” и сохраните')
+
+    payload = request.get_json(silent=True) or {}
+    title = admin_manager.sanitize_text(payload.get('title') or '', 200)
+    if not title:
+        title = 'Новая подпроблема'
+    subproblem_id = _manual_next_subproblem_id(manual_id, manual)
+    manual['subproblems'][subproblem_id] = {'title': title, 'photos': [], 'video': None}
+    if admin_manager.save_manuals(manuals):
+        return _manual_api_response(True, 'Подпроблема создана', subproblem_id=subproblem_id)
+    return _manual_api_response(False, 'Ошибка при сохранении')
+
+
+@app.route('/admin/manual/<string:manual_id>/api/subproblem/<string:subproblem_id>/delete', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_delete_subproblem(manual_id, subproblem_id):
+    if not admin_manager.validate_manual_id(manual_id):
+        return _manual_api_response(False, 'Некорректный ID мануала')
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+    if not manual or 'subproblems' not in manual:
+        return _manual_api_response(False, 'Подпроблема не найдена')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    if subproblem_id not in manual['subproblems']:
+        return _manual_api_response(False, 'Подпроблема не найдена')
+    del manual['subproblems'][subproblem_id]
+    if admin_manager.save_manuals(manuals):
+        next_id = next(iter((manual.get('subproblems') or {}).keys()), '')
+        return _manual_api_response(True, 'Подпроблема удалена', active_target=next_id)
+    return _manual_api_response(False, 'Ошибка при удалении')
+
+
+@app.route('/admin/manual/<string:manual_id>/api/step/add', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_add_step(manual_id):
+    if not admin_manager.validate_manual_id(manual_id):
+        return _manual_api_response(False, 'Некорректный ID мануала')
+    payload = request.get_json(silent=True) or {}
+    subproblem_id = str(payload.get('subproblem_id') or '')
+    try:
+        after_index = int(payload.get('after_index', -1))
+    except (TypeError, ValueError):
+        after_index = -1
+    caption = admin_manager.sanitize_text(payload.get('caption') or '', 300)
+
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+    if not manual:
+        return _manual_api_response(False, 'Мануал не найден')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    target, error = _manual_api_target(manual, subproblem_id)
+    if error:
+        return _manual_api_response(False, error)
+    if 'photos' not in target or not isinstance(target.get('photos'), list):
+        target['photos'] = []
+
+    new_step = {'id': None, 'caption': caption}
+    if after_index == -2:
+        target['photos'].insert(0, new_step)
+        new_index = 0
+    elif after_index == -1 or after_index >= len(target['photos']) - 1:
+        target['photos'].append(new_step)
+        new_index = len(target['photos']) - 1
+    else:
+        target['photos'].insert(after_index + 1, new_step)
+        new_index = after_index + 1
+
+    if admin_manager.save_manuals(manuals):
+        return _manual_api_response(True, 'Шаг добавлен', step_index=new_index)
+    return _manual_api_response(False, 'Ошибка при добавлении шага')
+
+
+@app.route('/admin/manual/<string:manual_id>/api/step/delete', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_delete_step(manual_id):
+    if not admin_manager.validate_manual_id(manual_id):
+        return _manual_api_response(False, 'Некорректный ID мануала')
+    payload = request.get_json(silent=True) or {}
+    subproblem_id = str(payload.get('subproblem_id') or '')
+    try:
+        step_index = int(payload.get('step_index'))
+    except (TypeError, ValueError):
+        return _manual_api_response(False, 'Некорректный индекс шага')
+
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+    if not manual:
+        return _manual_api_response(False, 'Мануал не найден')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    target, error = _manual_api_target(manual, subproblem_id)
+    if error:
+        return _manual_api_response(False, error)
+    photos = target.get('photos') if isinstance(target.get('photos'), list) else []
+    if step_index < 0 or step_index >= len(photos):
+        return _manual_api_response(False, 'Шаг не найден')
+    del photos[step_index]
+    target['photos'] = photos
+    if admin_manager.save_manuals(manuals):
+        return _manual_api_response(True, 'Шаг удалён')
+    return _manual_api_response(False, 'Ошибка при удалении шага')
+
+
+@app.route('/admin/manual/<string:manual_id>/api/photo/delete', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_delete_photo(manual_id):
+    payload = request.get_json(silent=True) or {}
+    subproblem_id = str(payload.get('subproblem_id') or '')
+    try:
+        photo_index = int(payload.get('photo_index'))
+    except (TypeError, ValueError):
+        return _manual_api_response(False, 'Некорректный индекс фото')
+    manual = admin_manager.get_manual(manual_id)
+    if not manual:
+        return _manual_api_response(False, 'Мануал не найден')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    if admin_manager.delete_photo(manual_id, subproblem_id, photo_index):
+        return _manual_api_response(True, 'Фото удалено')
+    return _manual_api_response(False, 'Ошибка при удалении фото')
+
+
+@app.route('/admin/manual/<string:manual_id>/api/video/delete', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_delete_video(manual_id):
+    payload = request.get_json(silent=True) or {}
+    subproblem_id = str(payload.get('subproblem_id') or '')
+    manual = admin_manager.get_manual(manual_id)
+    if not manual:
+        return _manual_api_response(False, 'Мануал не найден')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    if admin_manager.delete_video(manual_id, subproblem_id):
+        return _manual_api_response(True, 'Видео удалено')
+    return _manual_api_response(False, 'Ошибка при удалении видео')
+
+
+@app.route('/admin/manual/<string:manual_id>/api/photo/upload', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_upload_photo(manual_id):
+    if not admin_manager.validate_manual_id(manual_id):
+        return _manual_api_response(False, 'Некорректный ID мануала')
+    subproblem_id = request.form.get('subproblem_id', '')
+    photo_index_str = request.form.get('photo_index', '0')
+    try:
+        photo_index = int(photo_index_str)
+    except (TypeError, ValueError):
+        return _manual_api_response(False, 'Некорректный индекс фото')
+    manual = admin_manager.get_manual(manual_id)
+    if not manual:
+        return _manual_api_response(False, 'Мануал не найден')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    target, error = _manual_api_target(manual, subproblem_id)
+    if error:
+        return _manual_api_response(False, error)
+    photos = target.get('photos') if isinstance(target.get('photos'), list) else []
+    if photo_index < 0 or photo_index >= len(photos):
+        return _manual_api_response(False, 'Шаг не найден')
+    file = request.files.get('photo')
+    if not file or file.filename == '':
+        return _manual_api_response(False, 'Файл не выбран')
+    allowed_image_types = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+    max_file_size = 10 * 1024 * 1024
+    if not file.content_type or file.content_type not in allowed_image_types:
+        return _manual_api_response(False, 'Можно загружать только изображения JPEG, PNG, GIF, WebP')
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > max_file_size:
+        return _manual_api_response(False, 'Файл слишком большой, максимум 10 МБ')
+    try:
+        new_photo_id = _store_manual_media(file, 'photo')
+        if not new_photo_id:
+            return _manual_api_response(False, 'Не удалось получить file_id от Telegram')
+        current_caption = photos[photo_index].get('caption', '')
+        if admin_manager.update_photo(manual_id, subproblem_id, photo_index, new_photo_id, current_caption):
+            return _manual_api_response(True, 'Фото загружено', photo_url=get_file_url(new_photo_id))
+        return _manual_api_response(False, 'Ошибка при сохранении фото')
+    except Exception as e:
+        print(f"Ошибка при загрузке фото: {e}")
+        traceback.print_exc()
+        return _manual_api_response(False, 'Ошибка при загрузке фото')
+
+
+@app.route('/admin/manual/<string:manual_id>/api/video/upload', methods=['POST'])
+@AdminAuth.manuals_required
+def admin_manual_api_upload_video(manual_id):
+    if not admin_manager.validate_manual_id(manual_id):
+        return _manual_api_response(False, 'Некорректный ID мануала')
+    subproblem_id = request.form.get('subproblem_id', '')
+    caption = admin_manager.sanitize_text(request.form.get('caption') or 'Видео-инструкция', 300) or 'Видео-инструкция'
+    manual = admin_manager.get_manual(manual_id)
+    if not manual:
+        return _manual_api_response(False, 'Мануал не найден')
+    denied = _manual_item_access_denied(manual)
+    if denied:
+        return _manual_api_response(False, 'Нет доступа')
+    target, error = _manual_api_target(manual, subproblem_id)
+    if error:
+        return _manual_api_response(False, error)
+    file = request.files.get('video')
+    if not file or file.filename == '':
+        return _manual_api_response(False, 'Файл не выбран')
+    allowed_video_types = {'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
+    max_file_size = 50 * 1024 * 1024
+    if not file.content_type or file.content_type not in allowed_video_types:
+        return _manual_api_response(False, 'Можно загружать только видео MP4, MPEG, MOV, AVI, WebM')
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > max_file_size:
+        return _manual_api_response(False, 'Файл слишком большой, максимум 50 МБ')
+    try:
+        video_file_id = _store_manual_media(file, 'video')
+        if not video_file_id:
+            return _manual_api_response(False, 'Не удалось получить file_id от Telegram')
+        if admin_manager.add_video_to_subproblem(manual_id, subproblem_id, video_file_id, caption):
+            return _manual_api_response(True, 'Видео загружено', video_url=get_file_url(video_file_id))
+        return _manual_api_response(False, 'Ошибка при сохранении видео')
+    except Exception as e:
+        print(f"Ошибка при загрузке видео: {e}")
+        traceback.print_exc()
+        return _manual_api_response(False, 'Ошибка при загрузке видео')
 
 
 @app.route('/admin/manual/<string:manual_id>/update', methods=['POST'])
@@ -9399,6 +10180,10 @@ def admin_update_manual(manual_id):
     manual['title'] = title
     selected_segment = _manual_segment(request.form.get('segment') or manual.get('segment') or 'kc')
     manual['segment'] = 'kc' if _branch_section_blocked(selected_segment) else selected_segment
+    if manual['segment'] == 'branch':
+        manual['branch_area'] = _branch_manual_area(request.form.get('branch_area') or manual.get('branch_area') or 'oper')
+    else:
+        manual.pop('branch_area', None)
     if not _can_manage_manual_segment(manual['segment']):
         return _manual_segment_access_denied_response(manual['segment'])
 
@@ -9443,6 +10228,17 @@ def admin_update_subproblem(manual_id, subproblem_id):
         redirect_url = url_for('admin_edit_simple_manual', manual_id=manual_id)
         success_message = 'Мануал успешно обновлён'
 
+    # Обновляем название подпроблемы или простого мануала
+    if 'title' in request.form:
+        new_title = request.form.get('title', '').strip()
+        new_title = admin_manager.sanitize_text(new_title, max_length=200)
+        if not new_title:
+            flash('Название не может быть пустым')
+            if redirect_url.startswith('/'):
+                return redirect(redirect_url)
+            abort(400, "Invalid redirect URL")
+        target_obj['title'] = new_title
+
     # Обновляем подписи к фото
     if 'photos' in target_obj:
         for photo_index, photo in enumerate(target_obj['photos']):
@@ -9453,7 +10249,7 @@ def admin_update_subproblem(manual_id, subproblem_id):
                 photo['caption'] = new_caption
 
     # Обновляем подпись к видео если есть
-    if 'video' in target_obj:
+    if target_obj.get('video'):
         video_caption_field = 'video_caption'
         if video_caption_field in request.form:
             new_video_caption = request.form.get(video_caption_field, '').strip()
@@ -9509,7 +10305,7 @@ def admin_delete_photo():
     else:
         flash('Ошибка при удалении фото')
 
-    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    return redirect(_manual_target_editor_url(manual_check, manual_id, subproblem_id))
 
 
 @app.route('/admin/delete-step', methods=['POST'])
@@ -9620,7 +10416,7 @@ def admin_delete_video():
     else:
         flash('Ошибка при удалении видео')
 
-    _rurl = url_for('admin_edit_manual', manual_id=manual_id)
+    _rurl = _manual_target_editor_url(manual_check, manual_id, subproblem_id)
     if _rurl.startswith('/'):
         return redirect(_rurl)
     else:
@@ -9659,10 +10455,7 @@ def admin_upload_photo():
             flash('Некорректный индекс фото')
             return redirect(url_for('admin_manuals'))
 
-        return render_template('admin_upload_photo.html',
-                             manual_id=manual_id,
-                             subproblem_id=subproblem_id,
-                             photo_index=photo_index)
+        return redirect(_manual_target_editor_url(manual, manual_id, subproblem_id))
 
     # POST - обработка загрузки
     manual_id = request.form.get('manual_id', '')
@@ -9728,13 +10521,8 @@ def admin_upload_photo():
         return redirect(_safe_redirect)
 
     try:
-        # Отправляем фото в Telegram чтобы получить file_id
-        msg = bot.send_photo(TECH_SUPPORT_CHAT_ID, file)
-
-        # Получаем file_id самой большой версии фото
-        if msg.photo:
-            new_photo_id = msg.photo[-1].file_id
-
+        new_photo_id = _store_manual_media(file, 'photo')
+        if new_photo_id:
             # Получаем текущую подпись
             manual = admin_manager.get_manual(manual_id)
             if not manual:
@@ -9765,7 +10553,8 @@ def admin_upload_photo():
         traceback.print_exc()
         flash('Ошибка при загрузке файла')
 
-    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    manual_after_upload = admin_manager.get_manual(manual_id) or manual_for_check
+    return redirect(_manual_target_editor_url(manual_after_upload, manual_id, subproblem_id))
 
 
 @app.route('/admin/add-new-step', methods=['POST'])
@@ -9853,9 +10642,7 @@ def admin_upload_video():
         if denied:
             return denied
 
-        return render_template('admin_upload_video.html',
-                             manual_id=manual_id,
-                             subproblem_id=subproblem_id)
+        return redirect(_manual_target_editor_url(manual, manual_id, subproblem_id))
 
     # POST - обработка загрузки
     manual_id = request.form.get('manual_id', '')
@@ -9912,13 +10699,8 @@ def admin_upload_video():
         return redirect(_safe_redirect)
 
     try:
-        # Отправляем видео в Telegram чтобы получить file_id
-        msg = bot.send_video(TECH_SUPPORT_CHAT_ID, file)
-
-        # Получаем file_id видео
-        if msg.video:
-            video_file_id = msg.video.file_id
-
+        video_file_id = _store_manual_media(file, 'video')
+        if video_file_id:
             # Sanitize caption
             caption = admin_manager.sanitize_text(caption, max_length=300) if caption else 'Видео-инструкция'
 
@@ -12870,13 +13652,22 @@ def _scenarios_coming_soon_response():
     return render_template('scenarios_coming_soon.html')
 
 
+def _scenarios_access_denied_response():
+    return render_template(
+        'admin_access_denied.html',
+        message='Сценарии доступны только администраторам сценариев.',
+        back_url=url_for('choose_help_type'),
+        login_url=url_for('admin_login') if not session.get('admin_logged_in') else None,
+    ), 403
+
+
 def _require_scenarios_admin_access(api: bool = False):
     if session.get('admin_logged_in'):
         if _can_access_consultation_scenarios():
             return None
         if api:
             return jsonify({'success': False, 'error': 'Недостаточно прав для сценариев'}), 403
-        return _scenarios_coming_soon_response()
+        return _scenarios_access_denied_response()
 
     if not session.get('authenticated'):
         if api:
@@ -12885,7 +13676,7 @@ def _require_scenarios_admin_access(api: bool = False):
 
     if api:
         return jsonify({'success': False, 'error': 'Сценарии доступны только администраторам сценариев'}), 403
-    return _scenarios_coming_soon_response()
+    return _scenarios_access_denied_response()
 
 
 @app.route('/scenarios')
@@ -12926,8 +13717,11 @@ def scenario_play(scenario_id):
         flash('Сценарий не найден или недоступен', 'error')
         return redirect(url_for('scenarios_list'))
 
-    root_node = scenario_mgr.get_root_node(scenario_id)
-    total_nodes = len(scenario_mgr.get_nodes(scenario_id))
+    root_node = scenario_mgr.get_published_root_node(scenario_id)
+    total_nodes = scenario_mgr.get_published_nodes_count(scenario_id)
+    if not root_node:
+        flash('У сценария нет опубликованной версии', 'error')
+        return redirect(url_for('scenarios_list'))
 
     # Логируем просмотр
     scenario_mgr.log_view(scenario_id, user.get('username', ''))
@@ -12951,16 +13745,14 @@ def scenario_get_node(scenario_id, node_id):
     if not scenario or scenario.get('status') != 'active':
         return jsonify({'success': False, 'error': 'Сценарий недоступен'}), 404
 
-    node = scenario_mgr.get_node(node_id)
-    if not node or node['scenario_id'] != scenario_id:
+    published = scenario_mgr.get_published_node_with_choices(scenario_id, node_id)
+    if not published:
         return jsonify({'success': False, 'error': 'Узел не найден'}), 404
-
-    choices = scenario_mgr.get_node_choices(node_id)
 
     return jsonify({
         'success': True,
-        'node': dict(node),
-        'choices': [dict(c) for c in choices]
+        'node': dict(published['node']),
+        'choices': [dict(c) for c in published['choices']]
     })
 
 
@@ -13188,21 +13980,43 @@ def admin_scenario_create():
         username = session.get('admin_username', '')
 
         if not title:
-            flash('Название обязательно', 'error')
-            return render_template('admin_scenario_edit.html',
-                                   scenario=None, nodes=[], edges=[],
-                                   categories=categories, is_new=True)
+            title = 'Новый сценарий'
 
         scenario_id = scenario_mgr.create_scenario(
             title=title, description=description,
             category_id=category_id, tags=tags, created_by=username
         )
+        scenario_mgr.create_node(
+            scenario_id=scenario_id,
+            node_type='start',
+            title='Старт',
+            content='',
+            is_root=True,
+            pos_x=900,
+            pos_y=120
+        )
         flash('Сценарий создан', 'success')
         return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
 
-    return render_template('admin_scenario_edit.html',
-                           scenario=None, nodes=[], edges=[],
-                           categories=categories, is_new=True)
+    username = session.get('admin_username', '')
+    scenario_id = scenario_mgr.create_scenario(
+        title='Новый сценарий',
+        description='',
+        category_id=None,
+        tags='',
+        created_by=username
+    )
+    scenario_mgr.create_node(
+        scenario_id=scenario_id,
+        node_type='start',
+        title='Старт',
+        content='',
+        is_root=True,
+        pos_x=900,
+        pos_y=120
+    )
+    flash('Черновик сценария создан. Стартовый блок добавлен автоматически.', 'success')
+    return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
 
 
 @app.route('/admin/scenarios/<int:scenario_id>/edit', methods=['GET', 'POST'])
@@ -13216,6 +14030,9 @@ def admin_scenario_edit(scenario_id):
     if not scenario:
         flash('Сценарий не найден', 'error')
         return redirect(url_for('admin_scenarios'))
+    if scenario.get('status') == 'active':
+        scenario_mgr.ensure_published_snapshot(scenario_id, session.get('admin_username', ''))
+        scenario = scenario_mgr.get_scenario(scenario_id)
 
     categories = scenario_mgr.get_categories()
     nodes = scenario_mgr.get_nodes(scenario_id)
@@ -13237,9 +14054,12 @@ def admin_scenario_edit(scenario_id):
         flash('Сохранено', 'success')
         return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
 
+    versions = scenario_mgr.get_versions(scenario_id)
+    validation = scenario_mgr.validate_draft(scenario_id)
     return render_template('admin_scenario_edit.html',
                            scenario=scenario, nodes=nodes,
-                           edges=edges_raw, categories=categories, is_new=False)
+                           edges=edges_raw, categories=categories, is_new=False,
+                           versions=versions, validation=validation)
 
 
 @app.route('/admin/scenarios/<int:scenario_id>/publish', methods=['POST'])
@@ -13248,10 +14068,98 @@ def admin_scenario_publish(scenario_id):
     if err:
         return err
     username = session.get('admin_username', '')
-    scenario_mgr.publish_scenario(scenario_id, username)
-    scenario_mgr.mark_scenario_local_change(scenario_id, username)
-    flash('Сценарий опубликован', 'success')
-    return redirect(url_for('admin_scenarios'))
+    validation = scenario_mgr.validate_draft(scenario_id)
+    if not validation.get('ok'):
+        flash('Публикация запрещена: ' + '; '.join(validation.get('errors') or []), 'error')
+        return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+    comment = (request.form.get('publication_comment') or '').strip()
+    scenario_mgr.publish_scenario(scenario_id, username, comment)
+    warnings = validation.get('warnings') or []
+    if warnings:
+        flash('Сценарий опубликован с предупреждениями: ' + '; '.join(warnings), 'success')
+    else:
+        flash('Сценарий опубликован', 'success')
+    return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/draft/reset', methods=['POST'])
+def admin_scenario_reset_draft(scenario_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    username = session.get('admin_username', '')
+    if scenario_mgr.reset_draft_to_latest_published(scenario_id, username):
+        flash('Черновик восстановлен из последней опубликованной версии', 'success')
+    else:
+        flash('У сценария ещё нет опубликованной версии', 'error')
+    return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/versions/<int:version_id>')
+def admin_scenario_version_view(scenario_id, version_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    version = scenario_mgr.get_version(scenario_id, version_id)
+    if not version:
+        return jsonify({'success': False, 'error': 'Версия не найдена'}), 404
+    try:
+        snapshot = json.loads(version.get('snapshot_json') or '{}')
+    except (TypeError, json.JSONDecodeError):
+        snapshot = {}
+    return jsonify({
+        'success': True,
+        'version': {
+            'id': version.get('id'),
+            'version': version.get('version'),
+            'created_by': version.get('created_by'),
+            'created_at': version.get('created_at'),
+            'comment': version.get('comment') or '',
+        },
+        'snapshot': snapshot,
+    })
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/versions/<int:version_id>/restore', methods=['POST'])
+def admin_scenario_version_restore(scenario_id, version_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    version = scenario_mgr.get_version(scenario_id, version_id)
+    if not version:
+        flash('Версия не найдена', 'error')
+        return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+    try:
+        snapshot = json.loads(version.get('snapshot_json') or '{}')
+    except (TypeError, json.JSONDecodeError):
+        flash('Снапшот версии повреждён', 'error')
+        return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+    scenario_mgr.replace_draft_from_snapshot(scenario_id, snapshot, session.get('admin_username', ''))
+    flash(f'Версия v{version.get("version")} восстановлена как черновик. Проверьте и нажмите «Опубликовать».', 'success')
+    return redirect(url_for('admin_scenario_edit', scenario_id=scenario_id))
+
+
+@app.route('/admin/scenarios/<int:scenario_id>/versions/<int:version_id>/compare')
+def admin_scenario_version_compare(scenario_id, version_id):
+    err = _require_scenario_admin()
+    if err:
+        return err
+    version = scenario_mgr.get_version(scenario_id, version_id)
+    current = scenario_mgr.get_full_scenario(scenario_id) or {'nodes': [], 'edges': []}
+    if not version:
+        return jsonify({'success': False, 'error': 'Версия не найдена'}), 404
+    try:
+        snapshot = json.loads(version.get('snapshot_json') or '{}')
+    except (TypeError, json.JSONDecodeError):
+        snapshot = {'nodes': [], 'edges': []}
+    return jsonify({
+        'success': True,
+        'version': version.get('version'),
+        'current_nodes': len(current.get('nodes') or []),
+        'version_nodes': len(snapshot.get('nodes') or []),
+        'current_edges': len(current.get('edges') or []),
+        'version_edges': len(snapshot.get('edges') or []),
+    })
 
 
 @app.route('/admin/scenarios/<int:scenario_id>/archive', methods=['POST'])
@@ -13261,7 +14169,6 @@ def admin_scenario_archive(scenario_id):
         return err
     username = session.get('admin_username', '')
     scenario_mgr.archive_scenario(scenario_id, username)
-    scenario_mgr.mark_scenario_local_change(scenario_id, username)
     flash('Сценарий архивирован', 'success')
     return redirect(url_for('admin_scenarios'))
 
@@ -13273,7 +14180,6 @@ def admin_scenario_unarchive(scenario_id):
         return err
     username = session.get('admin_username', '')
     scenario_mgr.unarchive_scenario(scenario_id, username)
-    scenario_mgr.mark_scenario_local_change(scenario_id, username)
     flash('Сценарий восстановлен', 'success')
     return redirect(url_for('admin_scenarios'))
 
@@ -13465,6 +14371,25 @@ def api_scenario_layout(scenario_id):
     scenario_mgr.update_layout(positions)
     scenario_mgr.mark_scenario_local_change(scenario_id, session.get('admin_username', ''))
     return jsonify({'success': True})
+
+
+@app.route('/api/admin/scenarios/<int:scenario_id>/draft', methods=['PUT'])
+def api_scenario_draft_replace(scenario_id):
+    """Replace editable draft graph with the canvas state from the editor."""
+    err = _require_scenario_admin()
+    if err:
+        return jsonify({'success': False, 'error': 'Нет прав'}), 403
+    scenario = scenario_mgr.get_scenario(scenario_id)
+    if not scenario:
+        return jsonify({'success': False, 'error': 'Сценарий не найден'}), 404
+    data = request.get_json() or {}
+    scenario_mgr.replace_draft_graph(
+        scenario_id,
+        data,
+        updated_by=session.get('admin_username', '')
+    )
+    validation = scenario_mgr.validate_draft(scenario_id)
+    return jsonify({'success': True, 'validation': validation})
 
 
 # ─── Категории ─────────────────────────────────────────────────

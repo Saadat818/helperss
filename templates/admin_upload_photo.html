@@ -3,425 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Загрузка скриншота</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0c0c0c;
-            background-attachment: fixed;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .container {
-            background-color: #ffffff;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-            max-width: 600px;
-            width: 100%;
-        }
-
-        h1 {
-            color: #007b7e;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        .form-group {
-            margin-bottom: 25px;
-        }
-
-        label {
-            display: block;
-            color: #555;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .file-upload {
-            position: relative;
-            display: inline-block;
-            width: 100%;
-        }
-
-        .file-upload input[type="file"] {
-            position: absolute;
-            left: -9999px;
-        }
-
-        .file-upload-label {
-            display: block;
-            padding: 15px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            text-align: center;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .file-upload-label:hover {
-            background: linear-gradient(135deg, #0056b3 0%, #003d82 100%);
-            transform: translateY(-2px);
-        }
-
-        .file-name {
-            margin-top: 10px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 5px;
-            color: #666;
-            font-size: 14px;
-        }
-
-        .btn {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-            color: white;
-            margin-top: 15px;
-        }
-
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .alert-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .info-box {
-            background: #e7f3ff;
-            border-left: 4px solid #007bff;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-
-        .loader {
-            display: none;
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .loader.active {
-            display: block;
-        }
-    
-        /* Admin Dark Theme */
-        :root {
-            --bg: #0c0c0c;
-            --panel: #1a1a1a;
-            --panel-2: #202020;
-            --panel-3: #141414;
-            --text: #e8e8e8;
-            --muted: #b5b5b5;
-            --border: #242424;
-            --accent: #00a651;
-            --accent-2: #009448;
-            --danger: #e94b5a;
-            --warning: #f2b705;
-        }
-
-        body {
-            background: var(--bg) !important;
-            color: var(--text);
-        }
-
-        .container {
-            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
-            border: 1px solid #151515;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        }
-
-        .header,
-        .form-actions {
-            border-bottom: 1px solid #2a2a2a !important;
-            border-top: 1px solid #2a2a2a !important;
-        }
-
-        h1, h2, h3, h4 {
-            color: var(--text) !important;
-        }
-
-        .subtitle,
-        .stat-label,
-        .subproblems-count,
-        .helper-text,
-        .help-text,
-        .info-text,
-        .warning-text,
-        .error-text,
-        .role-description,
-        label {
-            color: var(--muted) !important;
-        }
-
-        .stat-card,
-        .manual-card,
-        .form-section,
-        .info-box,
-        .warning-box,
-        .error-card,
-        .subproblem-card,
-        .problem-item,
-        .upload-form,
-        .modal-content,
-        .preview-container,
-        .photo-item,
-        .video-item,
-        .stats-summary,
-        .stat-item {
-            background: var(--panel-3) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 14px;
-            color: var(--text);
-        }
-
-        .warning-box {
-            border-color: rgba(242, 183, 5, 0.4) !important;
-            background: rgba(242, 183, 5, 0.08) !important;
-        }
-
-        .error-card {
-            border-color: rgba(233, 75, 90, 0.4) !important;
-            background: rgba(233, 75, 90, 0.08) !important;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="password"],
-        input[type="email"],
-        textarea,
-        select {
-            background: #111 !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-        }
-
-        input:focus,
-        textarea:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent) !important;
-            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
-        }
-
-        table {
-            color: var(--text);
-        }
-
-        th {
-            background: #1f1f1f !important;
-            color: var(--text) !important;
-            border-bottom: 1px solid #2a2a2a !important;
-        }
-
-        td {
-            background: #141414 !important;
-            border-bottom: 1px solid #242424 !important;
-        }
-
-        tr:nth-child(even) td {
-            background: #171717 !important;
-        }
-
-        .btn {
-            border-radius: 12px !important;
-        }
-
-        .btn-primary,
-        .btn-success {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
-        }
-
-        .btn-primary:hover,
-        .btn-success:hover {
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-        }
-
-        .btn-secondary,
-        .btn-logout {
-            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
-        }
-
-        .btn-danger,
-        .btn-delete {
-            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
-            color: #1b1b1b !important;
-            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
-        }
-
-        .alert-success {
-            background-color: rgba(0, 166, 81, 0.12) !important;
-            color: #bfe8d1 !important;
-            border: 1px solid rgba(0, 166, 81, 0.25) !important;
-        }
-
-        .alert-danger,
-        .danger {
-            background-color: rgba(233, 75, 90, 0.12) !important;
-            color: #f3c0c6 !important;
-            border: 1px solid rgba(233, 75, 90, 0.25) !important;
-        }
-
-        .back-link {
-            background: rgba(26, 26, 26, 0.95) !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        .back-link:hover {
-            border-color: var(--accent) !important;
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
-        }
-
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
-        }
-
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
-    </style>
+    <title>Загрузить фото</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_manual_editor.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <div class="container">
-        <h1>📷 Загрузка скриншота</h1>
+    {% set return_url = return_url|default(url_for('admin_edit_manual', manual_id=manual_id)) %}
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">☾</button>
 
-        <div class="info-box">
-            📌 Загрузите новый скриншот. Файл будет отправлен в Telegram и вы получите file_id для использования в мануале.
+    <main class="manual-page">
+        <div class="manual-topbar">
+            <nav class="manual-breadcrumb">
+                <a href="{{ url_for('admin_dashboard') }}">Админка</a>
+                <span>/</span>
+                <a href="{{ return_url }}">Редактор</a>
+                <span>/</span>
+                <span>Загрузка фото</span>
+            </nav>
+            <a class="manual-btn manual-btn-secondary" href="{{ return_url }}">Назад в редактор</a>
         </div>
+
+        <section class="manual-hero">
+            <div>
+                <div class="manual-kicker">Шаг {{ photo_index + 1 }}</div>
+                <h1 class="manual-title">Загрузить фото</h1>
+                <p class="manual-subtitle">
+                    Фото будет прикреплено к выбранному шагу. Текст шага сохранится без изменений.
+                    {% if target_title %}Инструкция: {{ target_title | e }}.{% endif %}
+                </p>
+            </div>
+        </section>
 
         {% with messages = get_flashed_messages() %}
             {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-success">{{ message }}</div>
-                {% endfor %}
+                <div class="manual-alerts">
+                    {% for message in messages %}
+                        <div class="manual-alert">{{ message }}</div>
+                    {% endfor %}
+                </div>
             {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('admin_upload_photo') }}" enctype="multipart/form-data" id="uploadForm">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="manual_id" value="{{ manual_id }}">
-            <input type="hidden" name="subproblem_id" value="{{ subproblem_id }}">
-            <input type="hidden" name="photo_index" value="{{ photo_index }}">
+        <section class="manual-panel manual-upload-card">
+            <form class="manual-form" method="POST" action="{{ url_for('admin_upload_photo') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="manual_id" value="{{ manual_id }}">
+                <input type="hidden" name="subproblem_id" value="{{ subproblem_id }}">
+                <input type="hidden" name="photo_index" value="{{ photo_index }}">
 
-            <div class="form-group">
-                <label>Выберите изображение:</label>
-                <div class="file-upload">
-                    <input type="file" name="photo" id="photoFile" accept="image/*" required onchange="displayFileName()">
-                    <label for="photoFile" class="file-upload-label">
-                        Выбрать файл
-                    </label>
+                <label class="manual-dropzone" for="photo">
+                    <div>
+                        <div class="manual-panel-title" style="margin-bottom:8px;">Выберите изображение</div>
+                        <div class="manual-muted">JPEG, PNG, GIF или WebP. Максимальный размер — 10 МБ.</div>
+                        <div id="fileName" class="manual-help" style="margin-top:12px;">Файл пока не выбран</div>
+                    </div>
+                </label>
+                <input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required style="display:none;">
+
+                <div class="manual-media-box" id="previewBox" style="display:none;">
+                    <img id="previewImage" src="" alt="Предпросмотр">
                 </div>
-                <div class="file-name" id="fileName">Файл не выбран</div>
+
+                <div class="manual-actions">
+                    <button type="submit" class="manual-btn manual-btn-primary">Загрузить фото</button>
+                    <a class="manual-btn manual-btn-secondary" href="{{ return_url }}">Отмена</a>
+                </div>
+            </form>
+
+            <div class="manual-note">
+                Фото отправляется в Telegram, Helper сохраняет только file_id. Если удалить фото позже, текст шага останется.
             </div>
-
-            <button type="submit" class="btn btn-primary">Загрузить</button>
-            <a href="{{ url_for('admin_edit_manual', manual_id=manual_id) }}" class="btn btn-secondary">Отмена</a>
-        </form>
-
-        <div class="loader" id="loader">
-            <p>Загрузка... Пожалуйста, подождите.</p>
-        </div>
-    </div>
+        </section>
+    </main>
 
     <script>
-        function displayFileName() {
-            const input = document.getElementById('photoFile');
-            const fileNameDiv = document.getElementById('fileName');
-            if (input.files.length > 0) {
-                fileNameDiv.textContent = input.files[0].name;
-            } else {
-                fileNameDiv.textContent = 'Файл не выбран';
-            }
-        }
+        const input = document.getElementById('photo');
+        const fileName = document.getElementById('fileName');
+        const previewBox = document.getElementById('previewBox');
+        const previewImage = document.getElementById('previewImage');
 
-        document.getElementById('uploadForm').addEventListener('submit', function() {
-            document.getElementById('loader').classList.add('active');
+        input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            fileName.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                previewImage.src = event.target.result;
+                previewBox.style.display = 'flex';
+            };
+            reader.readAsDataURL(file);
         });
     </script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>

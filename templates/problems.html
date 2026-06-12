@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% set manual_segment = manual_segment|default('kc') %}
     {% set segment_info = segment_info|default({'name': 'Контакт-центр', 'kicker': 'База инструкций', 'subtitle': 'Выберите проблему. Helper покажет инструкцию или поможет отправить заявку в техподдержку.'}) %}
+    {% set branch_area = branch_area|default('') %}
     <title>Мануалы — {{ segment_info.name }} — Helper</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
     <script src="{{ url_for('static', filename='js/design-system.js') }}" defer></script>
@@ -109,7 +110,7 @@
                 {% if manuals %}
                 <div class="manual-grid">
                     {% for problem_id, problem in manuals.items() %}
-                    <a class="section-card" href="{{ url_for('select_problem_segment', segment=manual_segment, problem_id=problem_id) if manual_segment != 'kc' else url_for('select_problem', problem_id=problem_id) }}">
+                    <a class="section-card" href="{% if manual_segment == 'branch' and branch_area %}{{ url_for('select_problem_segment_area', segment=manual_segment, branch_area=branch_area, problem_id=problem_id) }}{% elif manual_segment != 'kc' %}{{ url_for('select_problem_segment', segment=manual_segment, problem_id=problem_id) }}{% else %}{{ url_for('select_problem', problem_id=problem_id) }}{% endif %}">
                         <div class="manual-index">{{ loop.index }}</div>
                         <div class="card-body">
                             <div class="card-title">{{ problem.title }}</div>

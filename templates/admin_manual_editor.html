@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактор мануала - {{ manual.title | e }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_manual_editor.css') }}">
+</head>
+<body>
+    {% set perms = session.get('admin_permissions', []) %}
+    {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
+    {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
+    {% set can_create_current = can_kc_manuals if manual_segment == 'kc' else can_branch_manuals %}
+    {% if manual_segment == 'branch' %}
+        {% set manuals_back_url = url_for('admin_manuals', segment='branch', branch_area=selected_branch_area) %}
+    {% else %}
+        {% set manuals_back_url = url_for('admin_manuals', segment='kc') %}
+    {% endif %}
+    {% set preview_url = url_for('select_problem_segment_area', segment='branch', branch_area=selected_branch_area, problem_id=manual_id) if manual_segment == 'branch' else url_for('select_problem', problem_id=manual_id) %}
+
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">☾</button>
+
+    <main class="v2-editor" data-manual-id="{{ manual_id }}" data-initial-type="{{ manual_type }}">
+        <aside class="v2-left">
+            <div class="v2-brand">
+                <div class="manual-kicker">Helper v2</div>
+                <h1>Мануалы</h1>
+            </div>
+
+            <nav class="v2-nav">
+                {% if can_kc_manuals %}
+                    <a class="{% if manual_segment == 'kc' %}is-active{% endif %}" href="{{ url_for('admin_manuals', segment='kc') }}">Мануалы КЦ</a>
+                {% endif %}
+                {% if branch_section_enabled and can_branch_manuals %}
+                    <a class="{% if manual_segment == 'branch' %}is-active{% endif %}" href="{{ url_for('admin_manuals', segment='branch') }}">Мануалы Филиалов</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'admin_trainer' in perms %}
+                    <a href="{{ url_for('admin_trainer') }}">Тренажёр</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'trainer_viewer' in perms %}
+                    <a href="{{ url_for('admin_trainer_stats') }}">Аналитика</a>
+                {% endif %}
+            </nav>
+
+            <div class="v2-filter">
+                <div class="manual-label">Сегмент</div>
+                <div class="v2-segment-switch">
+                    {% if can_kc_manuals %}
+                        <a class="{% if manual_segment == 'kc' %}is-active{% endif %}" href="{{ url_for('admin_manuals', segment='kc') }}">КЦ</a>
+                    {% endif %}
+                    {% if branch_section_enabled and can_branch_manuals %}
+                        <a class="{% if manual_segment == 'branch' %}is-active{% endif %}" href="{{ url_for('admin_manuals', segment='branch') }}">Филиалы</a>
+                    {% endif %}
+                </div>
+                {% if manual_segment == 'branch' %}
+                    <div class="manual-label" style="margin-top:14px;">Ветка</div>
+                    <div class="v2-segment-switch">
+                        {% for area_key, area in branch_manual_areas.items() %}
+                            <a class="{% if selected_branch_area == area_key %}is-active{% endif %}" href="{{ url_for('admin_manuals', segment='branch', branch_area=area_key) }}">{{ area.name }}</a>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            {% if can_create_current %}
+                <a class="manual-btn manual-btn-primary v2-create" href="{{ url_for('admin_create_manual', segment=manual_segment, branch_area=selected_branch_area if manual_segment == 'branch' else None) }}">Создать мануал</a>
+            {% endif %}
+
+            <div class="manual-field v2-search">
+                <label for="manualSearch">Поиск</label>
+                <input id="manualSearch" type="text" placeholder="Название мануала">
+            </div>
+
+            <div class="v2-manual-list" id="manualList">
+                {% for item_id, item in editor_manuals.items() %}
+                    {% set is_container = 'subproblems' in item %}
+                    {% set item_stats = namespace(subproblems=0, steps=0, videos=0) %}
+                    {% if is_container %}
+                        {% set item_stats.subproblems = item.subproblems|length if item.subproblems else 0 %}
+                        {% for sid, sub in item.subproblems|default({})|dictsort %}
+                            {% set item_stats.steps = item_stats.steps + (sub.photos|length if sub.photos else 0) %}
+                            {% if sub.video %}{% set item_stats.videos = item_stats.videos + 1 %}{% endif %}
+                        {% endfor %}
+                    {% else %}
+                        {% set item_stats.steps = item.photos|length if item.photos else 0 %}
+                        {% if item.video %}{% set item_stats.videos = 1 %}{% endif %}
+                    {% endif %}
+                    <a class="v2-manual-item {% if item_id == manual_id %}is-active{% endif %}" href="{{ url_for('admin_edit_manual', manual_id=item_id) }}" data-manual-name="{{ item.title | e }}">
+                        <strong>{{ item.title | e }}</strong>
+                        <span>
+                            {% if is_container %}{{ item_stats.subproblems }} подпроблем{% else %}простой{% endif %}
+                            · {{ item_stats.steps }} шагов
+                            · {{ 'видео есть' if item_stats.videos else 'без видео' }}
+                        </span>
+                    </a>
+                {% endfor %}
+            </div>
+        </aside>
+
+        <section class="v2-main">
+            <div class="v2-toolbar">
+                <nav class="manual-breadcrumb">
+                    <a href="{{ url_for('admin_dashboard') }}">Админка</a>
+                    <span>/</span>
+                    <a href="{{ manuals_back_url }}">Мануалы</a>
+                    <span>/</span>
+                    <span>{{ manual.title | e }}</span>
+                </nav>
+                <div class="manual-actions">
+                    <button class="manual-icon-btn" id="undoButton" type="button" onclick="undoManualChange()" title="Отменить" aria-label="Отменить">↶</button>
+                    <button class="manual-icon-btn" id="redoButton" type="button" onclick="redoManualChange()" title="Повторить" aria-label="Повторить">↷</button>
+                    <a class="manual-btn manual-btn-secondary" href="{{ manuals_back_url }}">К списку</a>
+                    <button class="manual-btn manual-btn-primary" type="button" onclick="saveManual({force:true})">Сохранить</button>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div class="manual-alerts">
+                        {% for message in messages %}
+                            <div class="manual-alert">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <section class="v2-section">
+                <div class="v2-section-head">
+                    <div>
+                        <div class="manual-kicker">Основная информация</div>
+                        <h2>{{ manual.title | e }}</h2>
+                    </div>
+                </div>
+
+                <div class="v2-meta-grid">
+                    <div class="manual-field">
+                        <label for="manualTitle">Название мануала</label>
+                        <input id="manualTitle" type="text" maxlength="200" value="{{ manual.title | e }}" data-dirty>
+                    </div>
+
+                    <div class="manual-field">
+                        <label>Тип</label>
+                        <div class="v2-radio-row">
+                            <label><input type="radio" name="manualType" value="simple" {% if manual_type == 'simple' %}checked{% endif %} data-dirty> Простой</label>
+                            <label><input type="radio" name="manualType" value="with_subproblems" {% if manual_type == 'with_subproblems' %}checked{% endif %} data-dirty> С подпроблемами</label>
+                        </div>
+                    </div>
+
+                    <div class="manual-field">
+                        <label for="manualSegment">Сегмент</label>
+                        <select id="manualSegment" data-dirty>
+                            {% if can_kc_manuals or manual_segment == 'kc' %}
+                                <option value="kc" {% if manual_segment == 'kc' %}selected{% endif %}>КЦ</option>
+                            {% endif %}
+                            {% if branch_section_enabled and (can_branch_manuals or manual_segment == 'branch') %}
+                                <option value="branch" {% if manual_segment == 'branch' %}selected{% endif %}>Филиалы</option>
+                            {% endif %}
+                        </select>
+                    </div>
+
+                    <div class="manual-field" id="branchAreaField" {% if manual_segment != 'branch' %}style="display:none;"{% endif %}>
+                        <label for="manualBranchArea">Ветка филиалов</label>
+                        <select id="manualBranchArea" data-dirty>
+                            {% for area_key, area in branch_manual_areas.items() %}
+                                <option value="{{ area_key }}" {% if selected_branch_area == area_key %}selected{% endif %}>{{ area.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section class="v2-section" id="subproblemTabsSection" {% if manual_type != 'with_subproblems' %}style="display:none;"{% endif %}>
+                <div class="v2-section-head">
+                    <div>
+                        <div class="manual-kicker">Подпроблемы</div>
+                        <h2>Структура мануала</h2>
+                    </div>
+                    <div class="v2-add-subproblem">
+                        <input id="newSubproblemTitle" type="text" maxlength="200" placeholder="Название подпроблемы">
+                        <button class="manual-btn manual-btn-primary" type="button" onclick="createSubproblem()">Добавить</button>
+                    </div>
+                </div>
+
+                <div class="v2-tabs" id="targetTabs">
+                    {% for target in targets %}
+                        <button type="button" class="{% if target.id == active_target %}is-active{% endif %}" data-target-tab="{{ target.id }}" onclick="activateTarget('{{ target.id }}')">
+                            {{ target.id }} {{ target.title | e }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </section>
+
+            {% if not targets %}
+                <section class="v2-section">
+                    <div class="manual-empty">
+                        <h3 class="manual-empty-title">Подпроблем пока нет</h3>
+                        <p class="manual-empty-text">Создайте первую подпроблему в поле выше.</p>
+                    </div>
+                </section>
+            {% endif %}
+
+            {% for target in targets %}
+                <section class="v2-section manual-target-panel {% if target.id != active_target %}is-hidden{% endif %}" data-target-panel="{{ target.id }}">
+                    <div class="v2-section-head">
+                        <div class="manual-field v2-target-title">
+                            <label for="targetTitle-{{ target.id }}">Название {{ 'подпроблемы' if manual_type == 'with_subproblems' else 'инструкции' }}</label>
+                            <input id="targetTitle-{{ target.id }}" type="text" maxlength="200" value="{{ target.title | e }}" data-target-title data-dirty>
+                        </div>
+                        {% if manual_type == 'with_subproblems' %}
+                            <button class="manual-btn manual-btn-danger" type="button" onclick="deleteSubproblem('{{ target.id }}')">Удалить подпроблему</button>
+                        {% endif %}
+                    </div>
+
+                    <div class="v2-video-card">
+                        <div class="v2-video-preview">
+                            {% if target.video and target.video_url %}
+                                <video controls src="{{ target.video_url }}"></video>
+                            {% elif target.video %}
+                                <div class="manual-media-placeholder">Видео привязано, предпросмотр недоступен</div>
+                            {% else %}
+                                <div class="manual-media-placeholder">Видео не загружено</div>
+                            {% endif %}
+                        </div>
+                        <div class="manual-field">
+                            <label for="videoCaption-{{ target.id }}">Подпись к видео</label>
+                            <textarea id="videoCaption-{{ target.id }}" maxlength="300" data-video-caption data-dirty>{{ target.video.caption | e if target.video else '' }}</textarea>
+                            <div class="manual-inline-actions">
+                                <button class="manual-btn manual-btn-primary" type="button" onclick="chooseVideo('{{ target.id }}')">{{ 'Заменить' if target.video else 'Загрузить' }}</button>
+                                {% if target.video %}
+                                    <button class="manual-btn manual-btn-danger" type="button" onclick="deleteVideo('{{ target.id }}')">Удалить</button>
+                                {% endif %}
+                            </div>
+                            <input class="v2-hidden-file" type="file" accept="video/mp4,video/mpeg,video/quicktime,video/x-msvideo,video/webm" data-video-input="{{ target.id }}" onchange="uploadVideo('{{ target.id }}', this)">
+                        </div>
+                    </div>
+
+                    <div class="v2-section-head" style="margin-top:18px;">
+                        <div>
+                            <div class="manual-kicker">Шаги</div>
+                            <h2>Пошаговая инструкция</h2>
+                        </div>
+                        <button class="manual-btn manual-btn-primary" type="button" onclick="addStep('{{ target.id }}', -1)">Добавить шаг</button>
+                    </div>
+
+                    <div class="v2-step-list" data-step-list="{{ target.id }}">
+                        {% for photo in target.photos %}
+                            {% set photo_url = target.photo_urls[loop.index0] if target.photo_urls and loop.index0 < target.photo_urls|length else None %}
+                            <article class="v2-step-card" draggable="true" data-step-card data-original-index="{{ loop.index0 }}">
+                                <div class="v2-step-handle" title="Перетащить">::</div>
+                                <div class="v2-step-content">
+                                    <div class="v2-step-head">
+                                        <span class="manual-id">Шаг {{ loop.index }}</span>
+                                        {% if photo.id %}
+                                            <span class="manual-pill">Фото загружено</span>
+                                        {% else %}
+                                            <span class="manual-pill manual-pill-warning">Фото отсутствует</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="manual-field">
+                                        <label>Текст шага</label>
+                                        <textarea maxlength="300" data-step-caption data-dirty>{{ photo.caption | e }}</textarea>
+                                    </div>
+                                    <div class="manual-inline-actions">
+                                        <button class="manual-btn manual-btn-small manual-btn-primary" type="button" onclick="choosePhoto('{{ target.id }}', this)">Загрузить фото</button>
+                                        {% if photo.id %}
+                                            <button class="manual-btn manual-btn-small manual-btn-warning" type="button" onclick="deletePhoto('{{ target.id }}', this)">Удалить фото</button>
+                                        {% endif %}
+                                        <button class="manual-btn manual-btn-small manual-btn-secondary" type="button" onclick="addStepBelow('{{ target.id }}', this)">Добавить ниже</button>
+                                        <button class="manual-btn manual-btn-small manual-btn-danger" type="button" onclick="deleteStep('{{ target.id }}', this)">Удалить шаг</button>
+                                    </div>
+                                    <input class="v2-hidden-file" type="file" accept="image/jpeg,image/png,image/gif,image/webp" data-photo-input onchange="uploadPhoto('{{ target.id }}', this)">
+                                </div>
+                                <div class="v2-step-media">
+                                    {% if photo.id and photo_url %}
+                                        <img src="{{ photo_url }}" alt="Шаг {{ loop.index }}">
+                                    {% elif photo.id %}
+                                        <div class="manual-media-placeholder">Фото привязано, предпросмотр недоступен</div>
+                                    {% else %}
+                                        <div class="manual-media-placeholder">Фото отсутствует</div>
+                                    {% endif %}
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+
+                    {% if not target.photos %}
+                        <div class="manual-empty">
+                            <h3 class="manual-empty-title">Шагов пока нет</h3>
+                            <p class="manual-empty-text">Добавьте первый шаг. Фото можно загрузить позже.</p>
+                            <button class="manual-btn manual-btn-primary" type="button" onclick="addStep('{{ target.id }}', -1)">Добавить шаг</button>
+                        </div>
+                    {% endif %}
+                </section>
+            {% endfor %}
+        </section>
+
+        <aside class="v2-right">
+            <div class="v2-status-card">
+                <div class="manual-kicker">Статус</div>
+                <h2 id="saveStatus">Сохранено</h2>
+                <p id="saveStatusText">Автосохранение активно</p>
+            </div>
+
+            <div class="v2-status-card">
+                <div class="manual-kicker">Заполненность</div>
+                <div class="v2-progress">
+                    <div id="completionBar"></div>
+                </div>
+                <h2 id="completionText">0%</h2>
+                <div id="completionList" class="v2-checklist"></div>
+            </div>
+
+            <div class="v2-status-card">
+                <div class="manual-kicker">Быстрые действия</div>
+                <div class="manual-actions" style="display:grid;">
+                    <div class="manual-icon-row">
+                        <button class="manual-icon-btn" type="button" onclick="undoManualChange()" title="Отменить" aria-label="Отменить">↶</button>
+                        <button class="manual-icon-btn" type="button" onclick="redoManualChange()" title="Повторить" aria-label="Повторить">↷</button>
+                    </div>
+                    <a class="manual-btn manual-btn-secondary" href="{{ preview_url }}" target="_blank" rel="noopener">Предпросмотр</a>
+                    <button class="manual-btn manual-btn-primary" type="button" onclick="saveManual({force:true})">Сохранить</button>
+                    <form method="POST" action="{{ url_for('admin_delete_manual', manual_id=manual_id) }}" onsubmit="return confirm('Удалить мануал: {{ manual.title | e }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="return_segment" value="{{ manual_segment }}">
+                        <input type="hidden" name="return_branch_area" value="{{ selected_branch_area }}">
+                        <button class="manual-btn manual-btn-danger" type="submit" style="width:100%;">Удалить мануал</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="v2-status-card">
+                <div class="manual-kicker">Предупреждения</div>
+                <div id="warningList" class="v2-checklist"></div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        const manualId = '{{ manual_id }}';
+        const csrfToken = '{{ csrf_token() }}';
+        const initialType = '{{ manual_type }}';
+        let dirty = false;
+        let saving = false;
+        let activeTarget = '{{ active_target }}';
+        const undoStack = [];
+        const redoStack = [];
+        const maxHistoryItems = 80;
+        let lastHistorySnapshot = '';
+        let historyTimer = null;
+        let historyApplying = false;
+
+        function apiJson(url, payload) {
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify(payload || {})
+            }).then(async (response) => {
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) throw new Error(data.message || 'Ошибка запроса');
+                return data;
+            });
+        }
+
+        function setDirty(options) {
+            const skipHistory = options && options.skipHistory === true;
+            dirty = true;
+            setSaveStatus('Есть несохранённые изменения', 'Изменения будут сохранены автоматически');
+            updateCompletion();
+            if (!skipHistory && !historyApplying) scheduleHistoryCapture();
+        }
+
+        function setSaveStatus(title, text) {
+            document.getElementById('saveStatus').textContent = title;
+            document.getElementById('saveStatusText').textContent = text || '';
+        }
+
+        function currentManualType() {
+            const checked = document.querySelector('input[name="manualType"]:checked');
+            return checked ? checked.value : initialType;
+        }
+
+        function collectPayload() {
+            const targets = {};
+            document.querySelectorAll('[data-target-panel]').forEach((panel) => {
+                const targetId = panel.dataset.targetPanel;
+                const titleInput = panel.querySelector('[data-target-title]');
+                const videoCaption = panel.querySelector('[data-video-caption]');
+                const steps = [];
+                panel.querySelectorAll('[data-step-card]').forEach((card) => {
+                    const caption = card.querySelector('[data-step-caption]');
+                    steps.push({
+                        original_index: Number(card.dataset.originalIndex),
+                        caption: caption ? caption.value : ''
+                    });
+                });
+                targets[targetId] = {
+                    title: titleInput ? titleInput.value : '',
+                    video_caption: videoCaption ? videoCaption.value : '',
+                    steps: steps
+                };
+            });
+            return {
+                title: document.getElementById('manualTitle').value,
+                manual_type: currentManualType(),
+                segment: document.getElementById('manualSegment').value,
+                branch_area: document.getElementById('manualBranchArea') ? document.getElementById('manualBranchArea').value : '',
+                active_target: activeTarget,
+                targets: targets
+            };
+        }
+
+        function createHistorySnapshot() {
+            const targets = {};
+            document.querySelectorAll('[data-target-panel]').forEach((panel) => {
+                const targetId = panel.dataset.targetPanel;
+                const targetTitle = panel.querySelector('[data-target-title]');
+                const videoCaption = panel.querySelector('[data-video-caption]');
+                const order = [];
+                const captions = {};
+                panel.querySelectorAll('[data-step-card]').forEach((card) => {
+                    const originalIndex = String(card.dataset.originalIndex);
+                    const caption = card.querySelector('[data-step-caption]');
+                    order.push(originalIndex);
+                    captions[originalIndex] = caption ? caption.value : '';
+                });
+                targets[targetId] = {
+                    title: targetTitle ? targetTitle.value : '',
+                    video_caption: videoCaption ? videoCaption.value : '',
+                    order,
+                    captions
+                };
+            });
+            return {
+                title: document.getElementById('manualTitle').value,
+                manual_type: currentManualType(),
+                segment: document.getElementById('manualSegment').value,
+                branch_area: document.getElementById('manualBranchArea') ? document.getElementById('manualBranchArea').value : '',
+                active_target: activeTarget,
+                targets
+            };
+        }
+
+        function snapshotString(snapshot) {
+            return JSON.stringify(snapshot);
+        }
+
+        function trimHistory() {
+            while (undoStack.length > maxHistoryItems) undoStack.shift();
+        }
+
+        function updateHistoryButtons() {
+            const undoDisabled = undoStack.length <= 1;
+            const redoDisabled = redoStack.length === 0;
+            document.querySelectorAll('#undoButton, .manual-icon-row .manual-icon-btn:first-child').forEach((button) => {
+                button.disabled = undoDisabled;
+            });
+            document.querySelectorAll('#redoButton, .manual-icon-row .manual-icon-btn:last-child').forEach((button) => {
+                button.disabled = redoDisabled;
+            });
+        }
+
+        function captureHistorySnapshot(options) {
+            if (historyApplying) return;
+            const keepRedo = options && options.keepRedo === true;
+            clearTimeout(historyTimer);
+            const snapshot = createHistorySnapshot();
+            const serialized = snapshotString(snapshot);
+            if (serialized === lastHistorySnapshot) {
+                updateHistoryButtons();
+                return;
+            }
+            undoStack.push(snapshot);
+            trimHistory();
+            lastHistorySnapshot = serialized;
+            if (!keepRedo) redoStack.length = 0;
+            updateHistoryButtons();
+        }
+
+        function scheduleHistoryCapture() {
+            clearTimeout(historyTimer);
+            historyTimer = setTimeout(() => captureHistorySnapshot(), 450);
+        }
+
+        function applyHistorySnapshot(snapshot) {
+            historyApplying = true;
+
+            document.getElementById('manualTitle').value = snapshot.title || '';
+
+            const typeInput = document.querySelector(`input[name="manualType"][value="${CSS.escape(snapshot.manual_type || initialType)}"]`);
+            if (typeInput) typeInput.checked = true;
+
+            const segmentInput = document.getElementById('manualSegment');
+            if (segmentInput) segmentInput.value = snapshot.segment || 'kc';
+
+            const branchAreaInput = document.getElementById('manualBranchArea');
+            if (branchAreaInput) branchAreaInput.value = snapshot.branch_area || branchAreaInput.value;
+
+            const branchAreaField = document.getElementById('branchAreaField');
+            if (branchAreaField && segmentInput) {
+                branchAreaField.style.display = segmentInput.value === 'branch' ? '' : 'none';
+            }
+
+            const tabsSection = document.getElementById('subproblemTabsSection');
+            if (tabsSection) {
+                tabsSection.style.display = currentManualType() === 'with_subproblems' ? '' : 'none';
+            }
+
+            Object.entries(snapshot.targets || {}).forEach(([targetId, targetState]) => {
+                const panel = document.querySelector(`[data-target-panel="${CSS.escape(targetId)}"]`);
+                if (!panel) return;
+
+                const targetTitle = panel.querySelector('[data-target-title]');
+                if (targetTitle) targetTitle.value = targetState.title || '';
+
+                const videoCaption = panel.querySelector('[data-video-caption]');
+                if (videoCaption) videoCaption.value = targetState.video_caption || '';
+
+                const list = panel.querySelector('[data-step-list]');
+                if (list) {
+                    const cardsByIndex = {};
+                    const restoredIndexes = new Set();
+                    list.querySelectorAll('[data-step-card]').forEach((card) => {
+                        cardsByIndex[String(card.dataset.originalIndex)] = card;
+                    });
+                    (targetState.order || []).forEach((originalIndex) => {
+                        if (cardsByIndex[originalIndex]) {
+                            restoredIndexes.add(String(originalIndex));
+                            list.appendChild(cardsByIndex[originalIndex]);
+                        }
+                    });
+                    Object.entries(cardsByIndex).forEach(([originalIndex, card]) => {
+                        if (!restoredIndexes.has(originalIndex)) list.appendChild(card);
+                    });
+                    list.querySelectorAll('[data-step-card]').forEach((card) => {
+                        const originalIndex = String(card.dataset.originalIndex);
+                        const caption = card.querySelector('[data-step-caption]');
+                        if (caption && Object.prototype.hasOwnProperty.call(targetState.captions || {}, originalIndex)) {
+                            caption.value = targetState.captions[originalIndex] || '';
+                        }
+                    });
+                }
+            });
+
+            activateTarget(snapshot.active_target || activeTarget);
+            renumberSteps();
+            updateCompletion();
+            dirty = true;
+            setSaveStatus('Есть несохранённые изменения', 'История применена, изменения будут сохранены автоматически');
+            historyApplying = false;
+            updateHistoryButtons();
+        }
+
+        function undoManualChange() {
+            captureHistorySnapshot({keepRedo: true});
+            if (undoStack.length <= 1) {
+                updateHistoryButtons();
+                return;
+            }
+            const current = undoStack.pop();
+            redoStack.push(current);
+            const previous = undoStack[undoStack.length - 1];
+            lastHistorySnapshot = snapshotString(previous);
+            applyHistorySnapshot(previous);
+        }
+
+        function redoManualChange() {
+            clearTimeout(historyTimer);
+            if (!redoStack.length) {
+                updateHistoryButtons();
+                return;
+            }
+            const next = redoStack.pop();
+            undoStack.push(next);
+            trimHistory();
+            lastHistorySnapshot = snapshotString(next);
+            applyHistorySnapshot(next);
+        }
+
+        async function saveManual(options) {
+            const force = options && options.force;
+            if (saving || (!dirty && !force)) return null;
+            saving = true;
+            setSaveStatus('Сохранение...', 'Идёт запись изменений');
+            try {
+                const data = await apiJson(`/admin/manual/${manualId}/api/save`, collectPayload());
+                dirty = false;
+                setSaveStatus('Сохранено', new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}));
+                document.querySelectorAll('[data-step-card]').forEach((card, index) => {
+                    card.dataset.originalIndex = String(index);
+                });
+                if (data.manual_type && data.manual_type !== initialType) {
+                    window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(data.active_target || '')}`;
+                    return data;
+                }
+                updateCompletion();
+                return data;
+            } catch (error) {
+                setSaveStatus('Ошибка сохранения', error.message);
+                return null;
+            } finally {
+                saving = false;
+            }
+        }
+
+        function activateTarget(targetId) {
+            activeTarget = targetId;
+            document.querySelectorAll('[data-target-tab]').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.targetTab === targetId));
+            document.querySelectorAll('[data-target-panel]').forEach((panel) => panel.classList.toggle('is-hidden', panel.dataset.targetPanel !== targetId));
+            updateCompletion();
+        }
+
+        async function createSubproblem() {
+            await saveManual({force: true});
+            const input = document.getElementById('newSubproblemTitle');
+            try {
+                const data = await apiJson(`/admin/manual/${manualId}/api/subproblem/create`, {title: input.value});
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(data.subproblem_id)}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function deleteSubproblem(targetId) {
+            if (!confirm('Удалить подпроблему? Все шаги, фото и видео будут удалены.')) return;
+            await saveManual({force: true});
+            try {
+                const data = await apiJson(`/admin/manual/${manualId}/api/subproblem/${encodeURIComponent(targetId)}/delete`, {});
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(data.active_target || '')}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function addStep(targetId, afterIndex) {
+            await saveManual({force: true});
+            try {
+                await apiJson(`/admin/manual/${manualId}/api/step/add`, {subproblem_id: targetId, after_index: afterIndex, caption: ''});
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(targetId)}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function addStepBelow(targetId, button) {
+            const card = button.closest('[data-step-card]');
+            const list = card.closest('[data-step-list]');
+            const index = Array.from(list.querySelectorAll('[data-step-card]')).indexOf(card);
+            addStep(targetId, index);
+        }
+
+        async function deleteStep(targetId, button) {
+            if (!confirm('Удалить шаг? Будет удалён текст и фото.')) return;
+            await saveManual({force: true});
+            const card = button.closest('[data-step-card]');
+            const list = card.closest('[data-step-list]');
+            const index = Array.from(list.querySelectorAll('[data-step-card]')).indexOf(card);
+            try {
+                await apiJson(`/admin/manual/${manualId}/api/step/delete`, {subproblem_id: targetId, step_index: index});
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(targetId)}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function choosePhoto(targetId, button) {
+            const input = button.closest('[data-step-card]').querySelector('[data-photo-input]');
+            input.value = '';
+            input.click();
+        }
+
+        async function uploadPhoto(targetId, input) {
+            if (!input.files || !input.files[0]) return;
+            await saveManual({force: true});
+            const card = input.closest('[data-step-card]');
+            const list = card.closest('[data-step-list]');
+            const index = Array.from(list.querySelectorAll('[data-step-card]')).indexOf(card);
+            const formData = new FormData();
+            formData.append('subproblem_id', targetId);
+            formData.append('photo_index', String(index));
+            formData.append('photo', input.files[0]);
+            try {
+                const response = await fetch(`/admin/manual/${manualId}/api/photo/upload`, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': csrfToken},
+                    body: formData
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || 'Ошибка загрузки фото');
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(targetId)}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function deletePhoto(targetId, button) {
+            if (!confirm('Удалить фото? Текст шага останется.')) return;
+            await saveManual({force: true});
+            const card = button.closest('[data-step-card]');
+            const list = card.closest('[data-step-list]');
+            const index = Array.from(list.querySelectorAll('[data-step-card]')).indexOf(card);
+            try {
+                await apiJson(`/admin/manual/${manualId}/api/photo/delete`, {subproblem_id: targetId, photo_index: index});
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(targetId)}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function chooseVideo(targetId) {
+            const input = document.querySelector(`[data-video-input="${CSS.escape(targetId)}"]`);
+            input.value = '';
+            input.click();
+        }
+
+        async function uploadVideo(targetId, input) {
+            if (!input.files || !input.files[0]) return;
+            await saveManual({force: true});
+            const panel = document.querySelector(`[data-target-panel="${CSS.escape(targetId)}"]`);
+            const caption = panel.querySelector('[data-video-caption]');
+            const formData = new FormData();
+            formData.append('subproblem_id', targetId);
+            formData.append('caption', caption ? caption.value : 'Видео-инструкция');
+            formData.append('video', input.files[0]);
+            try {
+                const response = await fetch(`/admin/manual/${manualId}/api/video/upload`, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': csrfToken},
+                    body: formData
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || 'Ошибка загрузки видео');
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(targetId)}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function deleteVideo(targetId) {
+            if (!confirm('Удалить видео?')) return;
+            await saveManual({force: true});
+            try {
+                await apiJson(`/admin/manual/${manualId}/api/video/delete`, {subproblem_id: targetId});
+                window.location.href = `/admin/manual/${manualId}/edit?active=${encodeURIComponent(targetId)}`;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function setupDragAndDrop() {
+            let dragged = null;
+            document.querySelectorAll('[data-step-card]').forEach((card) => {
+                card.addEventListener('dragstart', () => {
+                    dragged = card;
+                    card.classList.add('is-dragging');
+                });
+                card.addEventListener('dragend', () => {
+                    card.classList.remove('is-dragging');
+                    dragged = null;
+                    renumberSteps();
+                    setDirty({skipHistory: true});
+                    captureHistorySnapshot();
+                    saveManual({force: true});
+                });
+                card.addEventListener('dragover', (event) => {
+                    event.preventDefault();
+                    if (!dragged || dragged === card) return;
+                    const rect = card.getBoundingClientRect();
+                    const after = event.clientY > rect.top + rect.height / 2;
+                    card.parentNode.insertBefore(dragged, after ? card.nextSibling : card);
+                });
+            });
+        }
+
+        function renumberSteps() {
+            document.querySelectorAll('[data-step-list]').forEach((list) => {
+                list.querySelectorAll('[data-step-card]').forEach((card, index) => {
+                    const badge = card.querySelector('.manual-id');
+                    if (badge) badge.textContent = `Шаг ${index + 1}`;
+                });
+            });
+        }
+
+        function updateCompletion() {
+            const warnings = [];
+            let points = 0;
+            const title = document.getElementById('manualTitle').value.trim();
+            const panels = Array.from(document.querySelectorAll('[data-target-panel]'));
+            const activePanels = currentManualType() === 'with_subproblems' ? panels : panels.slice(0, 1);
+            const steps = activePanels.flatMap((panel) => Array.from(panel.querySelectorAll('[data-step-card]')));
+            const emptyText = steps.filter((card) => !card.querySelector('[data-step-caption]').value.trim()).length;
+            const missingPhoto = steps.filter((card) => card.querySelector('.manual-pill-warning')).length;
+            const videos = activePanels.filter((panel) => panel.querySelector('video')).length;
+            const videoCaptionsMissing = activePanels.filter((panel) => panel.querySelector('video') && !panel.querySelector('[data-video-caption]').value.trim()).length;
+
+            if (title) points += 25; else warnings.push('Нет названия мануала');
+            if (currentManualType() === 'simple' || panels.length > 0) points += 20; else warnings.push('Нет подпроблем');
+            if (steps.length > 0) points += 20; else warnings.push('Нет шагов');
+            if (steps.length > 0 && emptyText === 0) points += 15; else if (emptyText) warnings.push(`Шагов без текста: ${emptyText}`);
+            if (missingPhoto === 0) points += 10; else warnings.push(`Шагов без фото: ${missingPhoto}`);
+            if (videos > 0 && videoCaptionsMissing === 0) points += 10; else if (videos === 0) warnings.push('Нет видео');
+            if (videoCaptionsMissing) warnings.push('Нет описания видео');
+
+            document.getElementById('completionBar').style.width = `${points}%`;
+            document.getElementById('completionText').textContent = `${points}%`;
+            const completionItems = [
+                `${title ? '✓' : '!' } Название`,
+                `${steps.length > 0 ? '✓' : '!' } Шаги`,
+                `${missingPhoto === 0 ? '✓' : '!' } Фото`,
+                `${videos > 0 ? '✓' : '!' } Видео`
+            ];
+            document.getElementById('completionList').innerHTML = completionItems.map((item) => `<div>${item}</div>`).join('');
+            document.getElementById('warningList').innerHTML = warnings.length ? warnings.map((item) => `<div>${item}</div>`).join('') : '<div>Критичных предупреждений нет</div>';
+        }
+
+        document.querySelectorAll('[data-dirty]').forEach((node) => {
+            node.addEventListener('input', setDirty);
+            node.addEventListener('change', () => {
+                if (node.id === 'manualSegment') {
+                    document.getElementById('branchAreaField').style.display = node.value === 'branch' ? '' : 'none';
+                }
+                if (node.name === 'manualType') {
+                    document.getElementById('subproblemTabsSection').style.display = currentManualType() === 'with_subproblems' ? '' : 'none';
+                }
+                setDirty();
+            });
+        });
+
+        document.getElementById('manualSearch').addEventListener('input', (event) => {
+            const q = event.target.value.trim().toLowerCase();
+            document.querySelectorAll('[data-manual-name]').forEach((item) => {
+                item.style.display = item.dataset.manualName.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+
+        setupDragAndDrop();
+        updateCompletion();
+        undoStack.push(createHistorySnapshot());
+        lastHistorySnapshot = snapshotString(undoStack[0]);
+        updateHistoryButtons();
+        setInterval(() => saveManual({force:false}), 10000);
+    </script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+</body>
+</html>

@@ -2,7 +2,6 @@
 {% set _name = _user.name if _user.name is defined else _user.get('name', _user.get('username', 'Оператор')) %}
 {% set _dept = _user.department if _user.department is defined else _user.get('department', 'Оператор поддержки') %}
 {% set _initials = (_name or 'О')[:2].upper() %}
-
 <aside class="sidebar">
     <div class="sidebar-logo">
         <div class="logo-icon">H</div>

@@ -196,6 +196,23 @@
             color: #e0e0e0;
         }
 
+        .filter-pill {
+            padding: 8px 14px;
+            border: 1px solid #2a2a3e;
+            border-radius: 999px;
+            background: #16213e;
+            color: #aaa;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .filter-pill.active {
+            border-color: #00d4aa;
+            background: #00d4aa22;
+            color: #00d4aa;
+        }
+
         /* Scenarios Table */
         .scenarios-table {
             width: 100%;
@@ -417,7 +434,7 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('trainer_segment_menu', segment=segment) }}" class="back-link">
+    <a href="{{ url_for('trainer_segment_menu', segment=segment, branch_area=selected_branch_area) if selected_branch_area else (url_for('branch_home') if segment == 'branch' else url_for('trainer_segment_menu', segment=segment)) }}" class="back-link">
         &larr; Назад
     </a>
 
@@ -427,10 +444,10 @@
             <div class="header-buttons">
                 <a href="{{ url_for('admin_trainer_feedback', segment=segment) }}" class="btn btn-primary" style="position:relative;">💬 Обратная связь{% if unread_feedback %}<span style="position:absolute;top:-6px;right:-6px;background:#F44336;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ unread_feedback }}</span>{% endif %}</a>
                 <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
-                <a href="{{ url_for('admin_trainer_stats', segment=segment) }}" class="btn btn-primary">📊 Статистика</a>
-                <a href="{{ url_for('admin_trainer_drafts', segment=segment) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); position:relative;">✏️ Черновики{% if draft_count %}<span style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ draft_count }}</span>{% endif %}</a>
+                <a href="{{ url_for('admin_trainer_stats', segment=segment, branch_area=selected_branch_area) if selected_branch_area else url_for('admin_trainer_stats', segment=segment) }}" class="btn btn-primary">📊 Статистика</a>
+                <a href="{{ url_for('admin_trainer_drafts', segment=segment, branch_area=selected_branch_area) if selected_branch_area else url_for('admin_trainer_drafts', segment=segment) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); position:relative;">✏️ Черновики{% if draft_count %}<span style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;">{{ draft_count }}</span>{% endif %}</a>
                 {# <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a> #}
-                <a href="{{ url_for('admin_trainer_create', segment=segment) }}" class="btn btn-success">+ Создать сценарий</a>
+                <a href="{{ url_for('admin_trainer_create', segment=segment, branch_area=selected_branch_area) if selected_branch_area else url_for('admin_trainer_create', segment=segment) }}" class="btn btn-success">+ Создать сценарий</a>
             </div>
         </div>
 
@@ -463,6 +480,18 @@
         </div>
 
         <!-- Filters -->
+        {% if segment == 'branch' %}
+        <div class="filter-section">
+            <div class="filter-group">
+                <label>Ветка:</label>
+                <a class="filter-pill {% if not selected_branch_area %}active{% endif %}" href="{{ url_for('admin_trainer_segment', segment=segment) }}">Все</a>
+                {% for area_key, area_info in branch_manual_areas.items() %}
+                <a class="filter-pill {% if selected_branch_area == area_key %}active{% endif %}" href="{{ url_for('admin_trainer_segment', segment=segment, branch_area=area_key) }}">{{ area_info.name }}</a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <div class="filter-section">
             <div class="filter-group">
                 <label>Уровень:</label>
@@ -528,6 +557,8 @@
                         <span class="badge badge-level">{{ scenario.level_name }}</span>
                         {% if scenario.get('segment') == 'branch' %}
                         <span class="badge" style="background:#2196F320;color:#2196F3;margin-left:4px;">🏦 Филиалы</span>
+                            {% set row_branch_area = scenario.get('branch_area') or 'oper' %}
+                            <span class="badge" style="background:#ffc10720;color:#ffc107;margin-left:4px;">{{ branch_manual_areas.get(row_branch_area, branch_manual_areas.get('oper')).name }}</span>
                         {% else %}
                         <span class="badge" style="background:#00a65120;color:#00a651;margin-left:4px;">🎧 КЦ</span>
                         {% endif %}
@@ -587,7 +618,7 @@
             <div class="empty-state-icon">📝</div>
             <p>Сценариев пока нет</p>
             <p style="margin-top: 10px;">
-                <a href="{{ url_for('admin_trainer_create', segment=segment) }}" class="btn btn-success">Создать первый сценарий</a>
+                <a href="{{ url_for('admin_trainer_create', segment=segment, branch_area=selected_branch_area) if selected_branch_area else url_for('admin_trainer_create', segment=segment) }}" class="btn btn-success">Создать первый сценарий</a>
             </p>
         </div>
         {% endif %}
@@ -629,14 +660,15 @@
             const category = document.getElementById('filter-category').value;
             const tag = document.getElementById('filter-tag').value;
 
-            let url = '{{ url_for("admin_trainer_segment", segment=segment) }}?';
-            if (level) url += 'level=' + level + '&';
-            if (category) url += 'category=' + category + '&';
-            if (tag) url += 'tag=' + tag;
+            const params = new URLSearchParams();
+            {% if selected_branch_area %}
+            params.set('branch_area', '{{ selected_branch_area }}');
+            {% endif %}
+            if (level) params.set('level', level);
+            if (category) params.set('category', category);
+            if (tag) params.set('tag', tag);
 
-            if (url.startsWith('/')) {
-                window.location.href = url;
-            }
+            window.location.href = '{{ url_for("admin_trainer_segment", segment=segment) }}' + (params.toString() ? '?' + params.toString() : '');
         }
 
         function toggleStatusMenu(e, id) {

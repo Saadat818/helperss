@@ -10,12 +10,232 @@
         .branch-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 22px;
+        }
+
+        .branch-section-card {
+            position: relative;
+            min-height: 292px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 18px;
+            padding: 30px;
+            overflow: hidden;
+            cursor: pointer;
+            isolation: isolate;
+        }
+
+        .branch-section-card::before {
+            content: "";
+            position: absolute;
+            inset: -1px;
+            z-index: -1;
+            opacity: .55;
+            background: radial-gradient(circle at 18% 10%, var(--branch-glow, rgba(22, 163, 74, .12)), transparent 46%);
+            transition: opacity .2s ease;
+        }
+
+        .branch-section-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .branch-section-card:hover::before {
+            opacity: .95;
+        }
+
+        .branch-section-card:focus-visible {
+            outline: 3px solid var(--primary-mid);
+            outline-offset: 3px;
+        }
+
+        .branch-card-arrow {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            width: 34px;
+            height: 34px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--text-muted);
+            background: var(--card);
+            opacity: 0;
+            transform: translateX(-4px);
+            transition: opacity .2s, transform .2s, border-color .2s, color .2s;
+        }
+
+        .branch-card-arrow svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .branch-section-card:hover .branch-card-arrow,
+        .branch-section-card:focus-visible .branch-card-arrow,
+        .branch-section-card:focus-within .branch-card-arrow {
+            opacity: 1;
+            transform: translateX(0);
+            border-color: var(--primary-mid);
+            color: var(--primary);
+        }
+
+        .branch-section-card .card-icon-wrap {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+        }
+
+        .branch-section-card .card-emoji {
+            font-size: 38px;
+        }
+
+        .branch-section-card .card-body {
+            display: flex;
+            flex: 1;
+            width: 100%;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .branch-section-card .card-title {
+            font-size: clamp(28px, 2.2vw, 32px);
+            line-height: 1.12;
+        }
+
+        .branch-section-card .card-desc {
+            max-width: 560px;
+            margin-top: 12px;
+            font-size: 16px;
+            line-height: 1.55;
+        }
+
+        .branch-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            width: 100%;
+            margin-top: auto;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .branch-action {
+            min-width: 156px;
+            min-height: 46px;
+            padding-inline: 22px;
+            justify-content: center;
+            font-size: 15px;
+        }
+
+        .branch-action-primary {
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 10px 22px rgba(22, 163, 74, .18);
+        }
+
+        .branch-action-primary:hover {
+            background: var(--primary-dark);
+            color: #fff;
+        }
+
+        .branch-action-secondary {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .branch-action-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .branch-info-band {
+            margin-top: 22px;
+            padding: 22px 24px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--card);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .branch-info-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 18px;
+            align-items: flex-start;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .branch-info-title {
+            color: var(--text);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .branch-info-text {
+            max-width: 620px;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .branch-info-list {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 16px;
+            margin-top: 18px;
+        }
+
+        .branch-info-item {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .branch-info-label {
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .branch-info-desc {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.45;
         }
 
         @media (max-width: 900px) {
             .branch-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .branch-section-card {
+                min-height: 280px;
+                padding: 24px;
+            }
+
+            .branch-info-head,
+            .branch-info-list {
+                grid-template-columns: 1fr;
+            }
+
+            .branch-info-head {
+                display: grid;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .branch-actions {
+                display: grid;
+                grid-template-columns: 1fr;
+            }
+
+            .branch-action {
+                width: 100%;
             }
         }
     </style>
@@ -38,31 +258,77 @@
                 </a>
             </header>
 
-            <section class="branch-grid">
-                <a href="{{ url_for('branch_manuals') }}" class="section-card featured">
+            <section class="branch-grid" aria-label="Направления филиалов">
+                <div class="section-card featured branch-section-card" role="link" tabindex="0" data-href="{{ url_for('branch_manuals_area', branch_area='cash') }}" style="--branch-glow: rgba(8, 145, 178, .18);">
+                    <span class="branch-card-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+                    </span>
                     <div class="card-icon-wrap" style="background:var(--blue-light);color:var(--blue);">
-                        <span class="card-emoji" aria-hidden="true">📚</span>
+                        <span class="card-emoji" aria-hidden="true">💵</span>
                     </div>
                     <div class="card-body">
-                        <div class="card-title">Мануалы</div>
-                        <div class="card-desc">Частые вопросы и инструкции филиалов с фиксацией понятности.</div>
+                        <div class="card-title">Касса</div>
+                        <div class="card-desc">Материалы и практика для сотрудников, которые работают на кассовых операциях.</div>
+                        <div class="branch-actions">
+                            <a class="btn branch-action branch-action-primary" href="{{ url_for('branch_manuals_area', branch_area='cash') }}" onclick="event.stopPropagation();">Мануалы</a>
+                            <a class="btn branch-action branch-action-secondary" href="{{ url_for('branch_trainer_area', branch_area='cash') }}" onclick="event.stopPropagation();">Тренажёр</a>
+                        </div>
                     </div>
-                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                </a>
+                </div>
 
-                <a href="{{ url_for('branch_trainer') }}" class="section-card">
-                    <div class="card-icon-wrap" style="background:var(--yellow-light);color:var(--yellow);">
-                        <span class="card-emoji" aria-hidden="true">🎯</span>
+                <div class="section-card branch-section-card" role="link" tabindex="0" data-href="{{ url_for('branch_manuals_area', branch_area='oper') }}" style="--branch-glow: rgba(22, 163, 74, .18);">
+                    <span class="branch-card-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+                    </span>
+                    <div class="card-icon-wrap" style="background:var(--primary-light);color:var(--primary-dark);">
+                        <span class="card-emoji" aria-hidden="true">🧾</span>
                     </div>
                     <div class="card-body">
-                        <div class="card-title">Тренажёр</div>
-                        <div class="card-desc">Практика и тестовые сценарии отдельно для филиалов.</div>
+                        <div class="card-title">Опер. блок</div>
+                        <div class="card-desc">Материалы и практика для сотрудников операционного блока филиалов.</div>
+                        <div class="branch-actions">
+                            <a class="btn branch-action branch-action-primary" href="{{ url_for('branch_manuals_area', branch_area='oper') }}" onclick="event.stopPropagation();">Мануалы</a>
+                            <a class="btn branch-action branch-action-secondary" href="{{ url_for('branch_trainer_area', branch_area='oper') }}" onclick="event.stopPropagation();">Тренажёр</a>
+                        </div>
                     </div>
-                    <svg class="card-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                </a>
+                </div>
+            </section>
+
+            <section class="branch-info-band" aria-label="Полезная информация">
+                <div class="branch-info-head">
+                    <div class="branch-info-title">Полезная информация</div>
+                    <div class="branch-info-text">Филиальские материалы разделены по рабочим направлениям, чтобы быстрее находить нужные инструкции и практические сценарии.</div>
+                </div>
+                <div class="branch-info-list">
+                    <div class="branch-info-item">
+                        <div class="branch-info-label">Мануалы</div>
+                        <div class="branch-info-desc">Короткие инструкции и ответы по текущим рабочим вопросам филиалов.</div>
+                    </div>
+                    <div class="branch-info-item">
+                        <div class="branch-info-label">Тренажёр</div>
+                        <div class="branch-info-desc">Практические сценарии для закрепления действий в типовых ситуациях.</div>
+                    </div>
+                    <div class="branch-info-item">
+                        <div class="branch-info-label">Аналитика</div>
+                        <div class="branch-info-desc">Фиксируется, какие материалы помогли, а какие требуют доработки.</div>
+                    </div>
+                </div>
             </section>
         </div>
     </main>
 </div>
+<script>
+    document.querySelectorAll('.branch-section-card[data-href]').forEach((card) => {
+        card.addEventListener('click', (event) => {
+            if (event.target.closest('.branch-action')) return;
+            window.location.href = card.dataset.href;
+        });
+        card.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            window.location.href = card.dataset.href;
+        });
+    });
+</script>
 </body>
 </html>

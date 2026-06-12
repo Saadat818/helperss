@@ -198,6 +198,12 @@ class AdminManager:
             segment = str(data.get('segment') or 'kc').strip().lower()
             manuals[manual_id]['segment'] = segment if segment in {'kc', 'branch'} else 'kc'
 
+        if manuals[manual_id].get('segment') == 'branch':
+            branch_area = str(data.get('branch_area') or manuals[manual_id].get('branch_area') or 'oper').strip().lower()
+            manuals[manual_id]['branch_area'] = branch_area if branch_area in {'cash', 'oper'} else 'oper'
+        else:
+            manuals[manual_id].pop('branch_area', None)
+
         return self.save_manuals(manuals)
 
     def delete_manual(self, manual_id: str) -> bool:
@@ -866,6 +872,8 @@ class AdminAuth:
     def _check_admin_login():
         """Проверка что пользователь залогинен как админ"""
         if not session.get('admin_logged_in'):
+            if session.get('authenticated'):
+                return render_template_string(ACCESS_DENIED_PAGE), 403
             flash('Требуется авторизация')
             return redirect(url_for('user_login'))
         return None

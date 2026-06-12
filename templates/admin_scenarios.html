@@ -79,6 +79,7 @@
         .status-active { background: rgba(0,166,81,.15); color: var(--green); }
         .status-draft { background: rgba(242,183,5,.15); color: var(--yellow); }
         .status-archived { background: rgba(255,255,255,.08); color: var(--muted); }
+        .status-unsaved { background: rgba(33,150,243,.15); color: var(--blue); }
         .sync-badge {
             display: inline-block; margin-top: 5px; padding: 3px 7px; border-radius: 4px;
             font-size: 11px; font-weight: 700;
@@ -230,6 +231,11 @@
                             {% elif s.status == 'draft' %}✏️ Черновик
                             {% else %}📦 Архив{% endif %}
                         </span>
+                        {% if s.has_draft_changes %}
+                        <div style="margin-top:5px;">
+                            <span class="status-badge status-unsaved">Есть черновик</span>
+                        </div>
+                        {% endif %}
                     </td>
                     <td>v{{ s.version }}</td>
                     <td style="color:var(--muted);font-size:12px;">

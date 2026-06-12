@@ -3,419 +3,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Создать новый мануал</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0c0c0c;
-            background-attachment: fixed;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .header {
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #e9ecef;
-        }
-
-        h1 {
-            color: #007b7e;
-            font-size: 26px;
-            margin-bottom: 10px;
-        }
-
-        .subtitle {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .form-group {
-            margin-bottom: 25px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-        }
-
-        input[type="text"],
-        input[type="number"] {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 15px;
-            transition: all 0.3s;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: #007b7e;
-            box-shadow: 0 0 0 3px rgba(0, 123, 126, 0.1);
-        }
-
-        .helper-text {
-            font-size: 13px;
-            color: #666;
-            margin-top: 6px;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-            color: white;
-            margin-left: 10px;
-        }
-
-        .btn-secondary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 2px solid #e9ecef;
-        }
-
-        .alert {
-            padding: 12px 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .alert-danger {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-    
-        /* Admin Dark Theme */
-        :root {
-            --bg: #0c0c0c;
-            --panel: #1a1a1a;
-            --panel-2: #202020;
-            --panel-3: #141414;
-            --text: #e8e8e8;
-            --muted: #b5b5b5;
-            --border: #242424;
-            --accent: #00a651;
-            --accent-2: #009448;
-            --danger: #e94b5a;
-            --warning: #f2b705;
-        }
-
-        body {
-            background: var(--bg) !important;
-            color: var(--text);
-        }
-
-        .container {
-            background: linear-gradient(180deg, var(--panel), var(--panel-2)) !important;
-            border: 1px solid #151515;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        }
-
-        .header,
-        .form-actions {
-            border-bottom: 1px solid #2a2a2a !important;
-            border-top: 1px solid #2a2a2a !important;
-        }
-
-        h1, h2, h3, h4 {
-            color: var(--text) !important;
-        }
-
-        .subtitle,
-        .stat-label,
-        .subproblems-count,
-        .helper-text,
-        .help-text,
-        .info-text,
-        .warning-text,
-        .error-text,
-        .role-description,
-        label {
-            color: var(--muted) !important;
-        }
-
-        .stat-card,
-        .manual-card,
-        .form-section,
-        .info-box,
-        .warning-box,
-        .error-card,
-        .subproblem-card,
-        .problem-item,
-        .upload-form,
-        .modal-content,
-        .preview-container,
-        .photo-item,
-        .video-item,
-        .stats-summary,
-        .stat-item {
-            background: var(--panel-3) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 14px;
-            color: var(--text);
-        }
-
-        .warning-box {
-            border-color: rgba(242, 183, 5, 0.4) !important;
-            background: rgba(242, 183, 5, 0.08) !important;
-        }
-
-        .error-card {
-            border-color: rgba(233, 75, 90, 0.4) !important;
-            background: rgba(233, 75, 90, 0.08) !important;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="password"],
-        input[type="email"],
-        textarea,
-        select {
-            background: #111 !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-        }
-
-        input:focus,
-        textarea:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent) !important;
-            box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.15) !important;
-        }
-
-        table {
-            color: var(--text);
-        }
-
-        th {
-            background: #1f1f1f !important;
-            color: var(--text) !important;
-            border-bottom: 1px solid #2a2a2a !important;
-        }
-
-        td {
-            background: #141414 !important;
-            border-bottom: 1px solid #242424 !important;
-        }
-
-        tr:nth-child(even) td {
-            background: #171717 !important;
-        }
-
-        .btn {
-            border-radius: 12px !important;
-        }
-
-        .btn-primary,
-        .btn-success {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
-        }
-
-        .btn-primary:hover,
-        .btn-success:hover {
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
-        }
-
-        .btn-secondary,
-        .btn-logout {
-            background: linear-gradient(135deg, #4b4f55 0%, #343a40 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
-        }
-
-        .btn-danger,
-        .btn-delete {
-            background: linear-gradient(135deg, var(--danger) 0%, #c82333 100%) !important;
-            color: #fff !important;
-            box-shadow: 0 4px 15px rgba(233, 75, 90, 0.2);
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%) !important;
-            color: #1b1b1b !important;
-            box-shadow: 0 4px 15px rgba(242, 183, 5, 0.2);
-        }
-
-        .alert-success {
-            background-color: rgba(0, 166, 81, 0.12) !important;
-            color: #bfe8d1 !important;
-            border: 1px solid rgba(0, 166, 81, 0.25) !important;
-        }
-
-        .alert-danger,
-        .danger {
-            background-color: rgba(233, 75, 90, 0.12) !important;
-            color: #f3c0c6 !important;
-            border: 1px solid rgba(233, 75, 90, 0.25) !important;
-        }
-
-        .back-link {
-            background: rgba(26, 26, 26, 0.95) !important;
-            border: 1px solid #2a2a2a !important;
-            color: var(--text) !important;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        .back-link:hover {
-            border-color: var(--accent) !important;
-            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3) !important;
-        }
-
-        /* ===== СВЕТЛАЯ ТЕМА ===== */
-        body.light {
-            --bg: #dde2ea;
-            --card: #ffffff;
-            --card2: #f8f9fa;
-            --panel: #ffffff;
-            --panel-2: #f8f9fa;
-            --panel-3: #f0f2f5;
-            --text: #1a1a2e;
-            --muted: #606070;
-            --border: #b8c4d0;
-            --input-bg: #ffffff;
-        }
-
-        .theme-toggle {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            background: var(--card, #1a1a1a);
-            border: 1px solid var(--border, #333);
-            border-radius: 50%;
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 9999;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .theme-toggle:hover { transform: scale(1.12); }
-        body.light .theme-toggle { background: #fff; border-color: #b8c4d0; }
-    </style>
+    <title>Создать мануал</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_manual_editor.css') }}">
 </head>
 <body>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <div class="container">
-        <div class="header">
-            <h1>➕ Создать новый мануал</h1>
-            <p class="subtitle">Добавьте новую главную категорию проблемы</p>
-        </div>
+    {% set selected_segment = selected_segment|default('kc') %}
+    {% set selected_branch_area = selected_branch_area|default('oper') %}
+    {% set branch_manual_areas = branch_manual_areas|default({'cash': {'name': 'Касса'}, 'oper': {'name': 'Опер. блок'}}) %}
+    {% set editor_manuals = editor_manuals|default({}) %}
+    {% set perms = session.get('admin_permissions', []) %}
+    {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
+    {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
+    {% if selected_segment == 'branch' %}
+        {% set manuals_back_url = url_for('admin_manuals', segment='branch', branch_area=selected_branch_area) %}
+    {% else %}
+        {% set manuals_back_url = url_for('admin_manuals', segment='kc') %}
+    {% endif %}
 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-danger">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">☾</button>
 
-        <div style="background: #e7f3ff; border-left: 4px solid #007bff; padding: 15px; margin-bottom: 25px; border-radius: 8px;">
-            <p style="color: #004085; font-size: 14px; line-height: 1.5; margin: 0;">
-                <strong>💡 Нумерация автоматическая</strong><br>
-                <span style="font-size: 13px;">Система автоматически добавит номер к названию (например: "8. Ваше название")</span>
-            </p>
-        </div>
-
-        {% set selected_segment = selected_segment|default('kc') %}
-        {% set perms = session.get('admin_permissions', []) %}
-        {% set can_kc_manuals = 'super_admin' in perms or 'admin_manuals' in perms %}
-        {% set can_branch_manuals = can_kc_manuals or 'superadmin_branch' in perms or 'admin_branch_manuals' in perms %}
-        <form method="POST" action="{{ url_for('admin_create_manual') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-            <div class="form-group">
-                <label for="title">Название мануала *</label>
-                <input type="text" id="title" name="title" required maxlength="200" placeholder="Например: Проблемы с почтой">
-                <p class="helper-text">Краткое описание категории проблемы</p>
+    <main class="v2-editor">
+        <aside class="v2-left">
+            <div class="v2-brand">
+                <div class="manual-kicker">Helper v2</div>
+                <h1>Мануалы</h1>
             </div>
 
-            <div class="form-group">
-                <label for="segment">Раздел *</label>
-                <select id="segment" name="segment" required style="width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
+            <nav class="v2-nav">
+                {% if can_kc_manuals %}
+                    <a class="{% if selected_segment == 'kc' %}is-active{% endif %}" href="{{ url_for('admin_manuals', segment='kc') }}">Мануалы КЦ</a>
+                {% endif %}
+                {% if branch_section_enabled and can_branch_manuals %}
+                    <a class="{% if selected_segment == 'branch' %}is-active{% endif %}" href="{{ url_for('admin_manuals', segment='branch') }}">Мануалы Филиалов</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'admin_trainer' in perms %}
+                    <a href="{{ url_for('admin_trainer') }}">Тренажёр</a>
+                {% endif %}
+                {% if 'super_admin' in perms or 'trainer_viewer' in perms %}
+                    <a href="{{ url_for('admin_trainer_stats') }}">Аналитика</a>
+                {% endif %}
+            </nav>
+
+            <div class="v2-filter">
+                <div class="manual-label">Сегмент</div>
+                <div class="v2-segment-switch">
                     {% if can_kc_manuals %}
-                    <option value="kc" {% if selected_segment == 'kc' %}selected{% endif %}>Контакт-центр</option>
+                        <a class="{% if selected_segment == 'kc' %}is-active{% endif %}" href="{{ url_for('admin_create_manual', segment='kc') }}">КЦ</a>
                     {% endif %}
                     {% if branch_section_enabled and can_branch_manuals %}
-                        <option value="branch" {% if selected_segment == 'branch' %}selected{% endif %}>Филиалы</option>
+                        <a class="{% if selected_segment == 'branch' %}is-active{% endif %}" href="{{ url_for('admin_create_manual', segment='branch', branch_area=selected_branch_area) }}">Филиалы</a>
                     {% endif %}
-                </select>
-                {% if branch_section_enabled %}
-                    <p class="helper-text">Филиальные мануалы отображаются только в разделе “Филиалы”.</p>
+                </div>
+                {% if selected_segment == 'branch' %}
+                    <div class="manual-label" style="margin-top:14px;">Ветка</div>
+                    <div class="v2-segment-switch">
+                        {% for area_key, area in branch_manual_areas.items() %}
+                            <a class="{% if selected_branch_area == area_key %}is-active{% endif %}" href="{{ url_for('admin_create_manual', segment='branch', branch_area=area_key) }}">{{ area.name }}</a>
+                        {% endfor %}
+                    </div>
                 {% endif %}
             </div>
 
-            <div class="form-group">
-                <label for="manual_type">Тип мануала *</label>
-                <select id="manual_type" name="manual_type" required style="width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
-                    <option value="with_subproblems">С подпроблемами (например: Почта → Заполнилась память, Не открывается...)</option>
-                    <option value="simple">Простой (прямо фото и описания, без подпроблем)</option>
-                </select>
-                <p class="helper-text">Выберите структуру мануала</p>
+            <a class="manual-btn manual-btn-secondary v2-create" href="{{ manuals_back_url }}">К списку</a>
+
+            <div class="manual-field v2-search">
+                <label for="manualSearch">Поиск</label>
+                <input id="manualSearch" type="text" placeholder="Название мануала">
             </div>
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Создать мануал</button>
-                <a href="{{ url_for('admin_manuals', segment=selected_segment) }}" class="btn btn-secondary">Отмена</a>
+            <div class="v2-manual-list" id="manualList">
+                {% for item_id, item in editor_manuals.items() %}
+                    {% set is_container = 'subproblems' in item %}
+                    {% set item_stats = namespace(subproblems=0, steps=0, videos=0) %}
+                    {% if is_container %}
+                        {% set item_stats.subproblems = item.subproblems|length if item.subproblems else 0 %}
+                        {% for sid, sub in item.subproblems|default({})|dictsort %}
+                            {% set item_stats.steps = item_stats.steps + (sub.photos|length if sub.photos else 0) %}
+                            {% if sub.video %}{% set item_stats.videos = item_stats.videos + 1 %}{% endif %}
+                        {% endfor %}
+                    {% else %}
+                        {% set item_stats.steps = item.photos|length if item.photos else 0 %}
+                        {% if item.video %}{% set item_stats.videos = 1 %}{% endif %}
+                    {% endif %}
+                    <a class="v2-manual-item" href="{{ url_for('admin_edit_manual', manual_id=item_id) }}" data-manual-name="{{ item.title | e }}">
+                        <strong>{{ item.title | e }}</strong>
+                        <span>
+                            {% if is_container %}{{ item_stats.subproblems }} подпроблем{% else %}простой{% endif %}
+                            · {{ item_stats.steps }} шагов
+                            · {{ 'видео есть' if item_stats.videos else 'без видео' }}
+                        </span>
+                    </a>
+                {% endfor %}
             </div>
-        </form>
-    </div>
+        </aside>
+
+        <section class="v2-main">
+            <div class="v2-toolbar">
+                <nav class="manual-breadcrumb">
+                    <a href="{{ url_for('admin_dashboard') }}">Админка</a>
+                    <span>/</span>
+                    <a href="{{ manuals_back_url }}">Мануалы</a>
+                    <span>/</span>
+                    <span>Создать</span>
+                </nav>
+                <div class="manual-actions">
+                    <a class="manual-btn manual-btn-secondary" href="{{ manuals_back_url }}">К списку</a>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div class="manual-alerts">
+                        {% for message in messages %}
+                            <div class="manual-alert">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <section class="v2-section">
+                <div class="v2-section-head">
+                    <div>
+                        <div class="manual-kicker">Новый мануал</div>
+                        <h2>Основная информация</h2>
+                    </div>
+                </div>
+
+                <form class="manual-form" method="POST" action="{{ url_for('admin_create_manual') }}" style="margin-top:16px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="manual-field">
+                        <label for="title">Название мануала</label>
+                        <input id="title" name="title" type="text" required maxlength="200" placeholder="Например: Авторизация" autofocus>
+                        <div class="manual-help">Номер добавится автоматически после создания.</div>
+                    </div>
+
+                    <div class="v2-meta-grid">
+                        <div class="manual-field">
+                            <label>Тип</label>
+                            <div class="v2-radio-row">
+                                <label><input type="radio" name="manual_type" value="simple"> Простой</label>
+                                <label><input type="radio" name="manual_type" value="with_subproblems" checked> С подпроблемами</label>
+                            </div>
+                        </div>
+
+                        <div class="manual-field">
+                            <label for="segment">Сегмент</label>
+                            <select id="segment" name="segment">
+                                {% if can_kc_manuals %}
+                                    <option value="kc" {% if selected_segment == 'kc' %}selected{% endif %}>КЦ</option>
+                                {% endif %}
+                                {% if branch_section_enabled and can_branch_manuals %}
+                                    <option value="branch" {% if selected_segment == 'branch' %}selected{% endif %}>Филиалы</option>
+                                {% endif %}
+                            </select>
+                        </div>
+
+                        <div class="manual-field" id="branchAreaGroup" {% if selected_segment != 'branch' %}style="display:none;"{% endif %}>
+                            <label for="branch_area">Ветка филиалов</label>
+                            <select id="branch_area" name="branch_area">
+                                {% for area_key, area in branch_manual_areas.items() %}
+                                    <option value="{{ area_key }}" {% if selected_branch_area == area_key %}selected{% endif %}>{{ area.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="manual-actions">
+                        <button class="manual-btn manual-btn-primary" type="submit">Создать и открыть редактор</button>
+                        <a class="manual-btn manual-btn-secondary" href="{{ manuals_back_url }}">Отмена</a>
+                    </div>
+                </form>
+            </section>
+        </section>
+
+        <aside class="v2-right">
+            <div class="v2-status-card">
+                <div class="manual-kicker">Статус</div>
+                <h2>Черновик</h2>
+                <p>После создания откроется полный редактор с подпроблемами, шагами, фото и видео.</p>
+            </div>
+            <div class="v2-status-card">
+                <div class="manual-kicker">Заполненность</div>
+                <div class="v2-progress"><div style="width:25%;"></div></div>
+                <h2>25%</h2>
+                <div class="v2-checklist">
+                    <div>! Название</div>
+                    <div>! Шаги</div>
+                    <div>! Фото</div>
+                    <div>! Видео</div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        const segmentSelect = document.getElementById('segment');
+        const branchAreaGroup = document.getElementById('branchAreaGroup');
+        function syncBranchAreaVisibility() {
+            if (!segmentSelect || !branchAreaGroup) return;
+            branchAreaGroup.style.display = segmentSelect.value === 'branch' ? '' : 'none';
+        }
+        if (segmentSelect) {
+            segmentSelect.addEventListener('change', syncBranchAreaVisibility);
+            syncBranchAreaVisibility();
+        }
+        document.getElementById('manualSearch').addEventListener('input', (event) => {
+            const q = event.target.value.trim().toLowerCase();
+            document.querySelectorAll('[data-manual-name]').forEach((item) => {
+                item.style.display = item.dataset.manualName.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+    </script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>

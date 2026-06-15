@@ -1682,19 +1682,28 @@ class TrainerManager:
 
     # ==================== СТАТИСТИКА ====================
 
-    def get_step_error_heatmap(self, limit: int = 20, segment: str = None) -> List[Dict]:
-        """Получить тепловую карту ошибок по шагам сценариев (опционально — по сегменту)"""
+    def get_step_error_heatmap(self, limit: int = 20, segment: str = None, date_from: str = None, date_to: str = None) -> List[Dict]:
+        """Получить тепловую карту ошибок по шагам сценариев (опционально — по сегменту и периоду дат)"""
         cursor = self.conn.cursor()
 
         # Загружаем все результаты с answers_json
         seg_clause = "AND s.segment = ?" if segment else ""
-        params = (segment,) if segment else ()
+        params = [segment] if segment else []
+        if date_from:
+            params.append(date_from)
+        if date_to:
+            params.append(date_to)
+        date_clause = ""
+        if date_from:
+            date_clause += " AND r.completed_at >= ?"
+        if date_to:
+            date_clause += " AND r.completed_at <= ?"
         cursor.execute(f"""
             SELECT r.scenario_id, r.answers_json, s.title as scenario_title
             FROM trainer_results r
             JOIN trainer_scenarios s ON r.scenario_id = s.id
             WHERE r.answers_json IS NOT NULL AND r.answers_json != ''
-            {seg_clause}
+            {seg_clause} {date_clause}
         """, params)
 
         # Агрегируем по (scenario_id, step_num)
@@ -1750,13 +1759,25 @@ class TrainerManager:
 
         return result[:limit]
 
-    def get_statistics(self, segment: str = None) -> Dict:
-        """Получить статистику тренажера (опционально — по сегменту kc/branch)"""
+    def get_statistics(self, segment: str = None, date_from: str = None, date_to: str = None) -> Dict:
+        """Получить статистику тренажера (опционально — по сегменту kc/branch и периоду дат)"""
         cursor = self.conn.cursor()
 
         seg_clause = "AND s.segment = ?" if segment else ""
         seg_direct = "AND segment = ?" if segment else ""
         seg_p = [segment] if segment else []
+
+        # Фильтр по периоду дат (по completed_at)
+        date_conditions = []
+        date_p = []
+        if date_from:
+            date_conditions.append("r.completed_at >= ?")
+            date_p.append(date_from)
+        if date_to:
+            date_conditions.append("r.completed_at <= ?")
+            date_p.append(date_to)
+        date_clause = (" AND " + " AND ".join(date_conditions)) if date_conditions else ""
+        date_clause_r2 = (" AND " + " AND ".join(c.replace("r.completed_at", "r2.completed_at") for c in date_conditions)) if date_conditions else ""
 
         cursor.execute(
             f"SELECT COUNT(*) FROM trainer_scenarios s WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL) {seg_direct}",
@@ -1765,21 +1786,21 @@ class TrainerManager:
         total_scenarios = cursor.fetchone()[0]
 
         if segment:
-            cursor.execute("SELECT COUNT(*) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ?", [segment])
+            cursor.execute(f"SELECT COUNT(*) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ? {date_clause}", [segment] + date_p)
         else:
-            cursor.execute("SELECT COUNT(*) FROM trainer_results")
+            cursor.execute(f"SELECT COUNT(*) FROM trainer_results r WHERE 1=1 {date_clause}", date_p)
         total_completions = cursor.fetchone()[0]
 
         if segment:
-            cursor.execute("SELECT COUNT(DISTINCT r.user_id) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ?", [segment])
+            cursor.execute(f"SELECT COUNT(DISTINCT r.user_id) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ? {date_clause}", [segment] + date_p)
         else:
-            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM trainer_results")
+            cursor.execute(f"SELECT COUNT(DISTINCT r.user_id) FROM trainer_results r WHERE 1=1 {date_clause}", date_p)
         unique_users = cursor.fetchone()[0]
 
         if segment:
-            cursor.execute("SELECT AVG(r.percent) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ?", [segment])
+            cursor.execute(f"SELECT AVG(r.percent) FROM trainer_results r JOIN trainer_scenarios s ON r.scenario_id = s.id WHERE s.segment = ? {date_clause}", [segment] + date_p)
         else:
-            cursor.execute("SELECT AVG(percent) FROM trainer_results")
+            cursor.execute(f"SELECT AVG(r.percent) FROM trainer_results r WHERE 1=1 {date_clause}", date_p)
         avg_row = cursor.fetchone()
         avg_score = round(avg_row[0] or 0, 1)
 
@@ -1796,8 +1817,8 @@ class TrainerManager:
             cursor.execute(f"""
                 SELECT COUNT(*), AVG(r.percent) FROM trainer_results r
                 JOIN trainer_scenarios s ON r.scenario_id = s.id
-                WHERE s.level_id = ? {seg_clause}
-            """, p_l)
+                WHERE s.level_id = ? {seg_clause} {date_clause}
+            """, p_l + date_p)
             row = cursor.fetchone()
 
             levels_stats.append({
@@ -1810,7 +1831,7 @@ class TrainerManager:
 
         # Топ пользователей по сегменту
         if segment:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT user_id,
                        COUNT(*) as completions,
                        AVG(percent) as avg_percent,
@@ -1821,19 +1842,20 @@ class TrainerManager:
                            CASE WHEN r.id = (
                                SELECT id FROM trainer_results r2
                                WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
+                               {date_clause_r2}
                                ORDER BY completed_at DESC, id DESC LIMIT 1
                            ) THEN r.score ELSE 0 END as last_score,
                            COALESCE(r.repeat_bonus, 0) as all_bonus,
                            r.percent
                     FROM trainer_results r
                     JOIN trainer_scenarios s ON r.scenario_id = s.id
-                    WHERE s.segment = ? AND r.user_id != 'obuchenie'
+                    WHERE s.segment = ? AND r.user_id != 'obuchenie' {date_clause}
                 )
                 GROUP BY user_id
                 ORDER BY total_score DESC, completions DESC
-            """, [segment])
+            """, date_p + [segment] + date_p)
         else:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT user_id,
                        COUNT(*) as completions,
                        AVG(percent) as avg_percent,
@@ -1844,16 +1866,17 @@ class TrainerManager:
                            CASE WHEN r.id = (
                                SELECT id FROM trainer_results r2
                                WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
+                               {date_clause_r2}
                                ORDER BY completed_at DESC, id DESC LIMIT 1
                            ) THEN r.score ELSE 0 END as last_score,
                            COALESCE(r.repeat_bonus, 0) as all_bonus,
                            r.percent
                     FROM trainer_results r
-                    WHERE r.user_id != 'obuchenie'
+                    WHERE r.user_id != 'obuchenie' {date_clause}
                 )
                 GROUP BY user_id
                 ORDER BY total_score DESC, completions DESC
-            """)
+            """, date_p + date_p)
         top_users = [dict(row) for row in cursor.fetchall()]
 
         for user in top_users:
@@ -1867,6 +1890,55 @@ class TrainerManager:
             'levels': levels_stats,
             'top_users': top_users
         }
+
+    def get_completions_timeline(self, segment: str = None, date_from: str = None, date_to: str = None) -> List[Dict]:
+        """Получить количество прохождений по дням (для гистограммы)"""
+        cursor = self.conn.cursor()
+
+        seg_clause = "AND s.segment = ?" if segment else ""
+        seg_p = [segment] if segment else []
+
+        date_conditions = []
+        date_p = []
+        if date_from:
+            date_conditions.append("r.completed_at >= ?")
+            date_p.append(date_from)
+        if date_to:
+            date_conditions.append("r.completed_at <= ?")
+            date_p.append(date_to)
+        date_clause = (" AND " + " AND ".join(date_conditions)) if date_conditions else ""
+
+        if segment:
+            cursor.execute(f"""
+                SELECT DATE(r.completed_at) as date,
+                       COUNT(*) as completions,
+                       AVG(r.percent) as avg_percent
+                FROM trainer_results r
+                JOIN trainer_scenarios s ON r.scenario_id = s.id
+                WHERE 1=1 {seg_clause} {date_clause}
+                GROUP BY DATE(r.completed_at)
+                ORDER BY date ASC
+            """, seg_p + date_p)
+        else:
+            cursor.execute(f"""
+                SELECT DATE(r.completed_at) as date,
+                       COUNT(*) as completions,
+                       AVG(r.percent) as avg_percent
+                FROM trainer_results r
+                WHERE 1=1 {date_clause}
+                GROUP BY DATE(r.completed_at)
+                ORDER BY date ASC
+            """, date_p)
+
+        timeline = []
+        for row in cursor.fetchall():
+            timeline.append({
+                'date': row['date'],
+                'completions': row['completions'],
+                'avg_percent': round(row['avg_percent'] or 0, 1)
+            })
+
+        return timeline
 
     def get_user_badges(self, user_id: str) -> list:
         """Вычислить бейджи пользователя на основе его результатов"""

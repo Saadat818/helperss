@@ -3436,13 +3436,40 @@ def admin_trainer_stats():
     """Статистика тренажера"""
     segment = request.args.get('segment', 'kc')
     seg_info = TRAINER_SEGMENTS.get(segment, TRAINER_SEGMENTS['kc'])
-    stats = trainer_mgr.get_statistics(segment=segment)
-    heatmap = trainer_mgr.get_step_error_heatmap(limit=20, segment=segment)
+
+    period = request.args.get('period', 'all')
+    date_from_param = request.args.get('date_from', '').strip()
+    date_to_param = request.args.get('date_to', '').strip()
+
+    date_from = None
+    date_to = None
+
+    if date_from_param or date_to_param:
+        # Кастомный период "с ... по ..."
+        period = 'custom'
+        if date_from_param:
+            date_from = f"{date_from_param} 00:00:00"
+        if date_to_param:
+            date_to = f"{date_to_param} 23:59:59"
+    elif period != 'all':
+        try:
+            days = int(period)
+            date_from = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d 00:00:00')
+        except ValueError:
+            period = 'all'
+
+    stats = trainer_mgr.get_statistics(segment=segment, date_from=date_from, date_to=date_to)
+    heatmap = trainer_mgr.get_step_error_heatmap(limit=20, segment=segment, date_from=date_from, date_to=date_to)
+    timeline = trainer_mgr.get_completions_timeline(segment=segment, date_from=date_from, date_to=date_to)
     return render_template('admin_trainer_stats.html',
                            stats=stats,
                            heatmap=heatmap,
+                           timeline=timeline,
                            segment=segment,
-                           seg_info=seg_info)
+                           seg_info=seg_info,
+                           period=period,
+                           date_from=date_from_param,
+                           date_to=date_to_param)
 
 
 @app.route('/api/admin/trainer/user/<user_id>/results')

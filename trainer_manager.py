@@ -1968,9 +1968,57 @@ class TrainerManager:
         no_gameover_count = row[5] or 0
         levels_touched = row[6] or 0
 
+        # Суммарные баллы пользователя (как в рейтинге)
+        cursor.execute("""
+            SELECT SUM(last_score) + SUM(all_bonus) FROM (
+                SELECT r.scenario_id,
+                       CASE WHEN r.id = (
+                           SELECT id FROM trainer_results r2
+                           WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
+                           ORDER BY completed_at DESC, id DESC LIMIT 1
+                       ) THEN r.score ELSE 0 END as last_score,
+                       COALESCE(r.repeat_bonus, 0) as all_bonus
+                FROM trainer_results r
+                WHERE r.user_id = ?
+            )
+        """, (user_id,))
+        total_score = cursor.fetchone()[0] or 0
+
         # Бейджи в порядке приоритета (от крутого к простому)
         # Показываем максимум 3
         all_badges = []
+
+        if total_score >= 100000:
+            all_badges.append({
+                'code': 'kc_legend',
+                'name': 'Легенда КЦ',
+                'icon': '👑',
+                'description': 'Набрал 100 000+ баллов'
+            })
+
+        if total_score >= 10000:
+            all_badges.append({
+                'code': 'kc_champion',
+                'name': 'Чемпион КЦ',
+                'icon': '🏆',
+                'description': 'Набрал 10 000+ баллов'
+            })
+
+        if total_score >= 1000:
+            all_badges.append({
+                'code': 'pro',
+                'name': 'Профи',
+                'icon': '🥇',
+                'description': 'Набрал 1 000+ баллов'
+            })
+
+        if total_score >= 100:
+            all_badges.append({
+                'code': 'rising_star',
+                'name': 'Восходящая звезда',
+                'icon': '🌟',
+                'description': 'Набрал 100+ баллов'
+            })
 
         if perfect_count >= 1:
             all_badges.append({
@@ -1978,6 +2026,14 @@ class TrainerManager:
                 'name': 'Перфекционист',
                 'icon': '💎',
                 'description': 'Набрал 100% хотя бы в 1 сценарии'
+            })
+
+        if perfect_count >= 10:
+            all_badges.append({
+                'code': 'flawless',
+                'name': 'Безупречный',
+                'icon': '✨',
+                'description': '10+ сценариев с результатом 100%'
             })
 
         if no_gameover_count >= 5:
@@ -2010,6 +2066,14 @@ class TrainerManager:
                 'name': 'Знаток',
                 'icon': '📖',
                 'description': '3+ сценария с результатом 90%+'
+            })
+
+        if total >= 100:
+            all_badges.append({
+                'code': 'iron_man',
+                'name': 'Железный человек',
+                'icon': '🦾',
+                'description': '100+ пройденных сценариев'
             })
 
         if total >= 10:

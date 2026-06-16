@@ -728,7 +728,7 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('admin_trainer') }}" class="back-link">
+    <a href="{{ url_for('admin_trainer_segment', segment=scenario.segment or 'kc') if scenario else url_for('admin_trainer') }}" class="back-link">
         &larr; К списку сценариев
     </a>
 
@@ -1175,7 +1175,7 @@
                     🎨 Визуальный редактор
                 </a>
                 {% endif %}
-                <a href="{{ url_for('admin_trainer') }}" class="btn btn-secondary">Отмена</a>
+                <a href="{{ url_for('admin_trainer_segment', segment=scenario.segment or 'kc') if scenario else url_for('admin_trainer') }}" class="btn btn-secondary">Отмена</a>
             </div>
         </form>
 

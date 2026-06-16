@@ -339,7 +339,7 @@
 </head>
 <body>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="День / Ночь">🌙</button>
-    <a href="{{ url_for('admin_trainer') }}" class="back-link">
+    <a href="{{ url_for('admin_trainer_segment', segment=segment or 'kc') }}" class="back-link">
         &larr; К тренажеру
     </a>
 
@@ -347,8 +347,8 @@
         <div class="header">
             <h1>📋 Журнал изменений</h1>
             <div class="header-buttons">
-                <a href="{{ url_for('admin_trainer_audit_export') }}" class="btn btn-success">📥 Экспорт в Excel</a>
-                <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📊 Статистика</a>
+                <a href="{{ url_for('admin_trainer_audit_export', segment=segment) }}" class="btn btn-success">📥 Экспорт в Excel</a>
+                <a href="{{ url_for('admin_trainer_stats', segment=segment or 'kc') }}" class="btn btn-primary">📊 Статистика</a>
             </div>
         </div>
 

@@ -6167,18 +6167,52 @@ def handle_channel_messages(message):
 # ТРЕНАЖЕР ОПЕРАТОРОВ
 # ============================================
 
+TRAINER_SEGMENTS = {
+    'kc': {'name': 'Контакт Центр', 'icon': '🎧', 'color': '#00a651'},
+    'branch': {'name': 'Филиалы', 'icon': '🏦', 'color': '#2196F3'},
+}
+
+
+def get_user_trainer_segment(user_info):
+    """Определяет сегмент тренажёра по отделу пользователя из AD.
+    Возвращает 'kc', 'branch' или None (если не определено — показываем оба).
+    Настраивается через KC_DEPARTMENTS и BRANCH_DEPARTMENTS в .env (через запятую).
+    """
+    if not user_info:
+        return None
+    department = (user_info.get('department') or '').strip().lower()
+    if not department:
+        return None
+
+    kc_deps = [d.strip().lower() for d in os.getenv('KC_DEPARTMENTS', '').split(',') if d.strip()]
+    branch_deps = [d.strip().lower() for d in os.getenv('BRANCH_DEPARTMENTS', '').split(',') if d.strip()]
+
+    for dep in kc_deps:
+        if dep in department or department in dep:
+            return 'kc'
+    for dep in branch_deps:
+        if dep in department or department in dep:
+            return 'branch'
+
+    return None
+
+
 @app.route('/trainer')
 def trainer_menu():
     """Вход в тренажер КЦ без промежуточного выбора сегмента."""
     if 'user_info' not in session or not session.get('authenticated'):
         return redirect(url_for('user_login'))
-    return redirect(url_for('trainer_segment_menu', segment='kc'))
 
+    user_segment = get_user_trainer_segment(session.get('user_info'))
+    if _trainer_branch_blocked(user_segment):
+        user_segment = 'kc'
+    # Если сегмент однозначно определён — сразу редиректим
+    if user_segment:
+        return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
-TRAINER_SEGMENTS = {
-    'kc': {'name': 'Контакт Центр', 'icon': '🎧', 'color': '#00a651'},
-    'branch': {'name': 'Филиалы', 'icon': '🏦', 'color': '#2196F3'},
-}
+    return render_template('trainer_segments.html',
+                           is_admin=session.get('admin_logged_in', False),
+                           user_segment=None)
 
 
 @app.route('/trainer/<segment>')
@@ -6189,12 +6223,19 @@ def trainer_segment_menu(segment):
 
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
+
     if _trainer_branch_blocked(segment):
         flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('trainer_menu'))
     branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
     if segment == 'branch' and not branch_area:
         return redirect(url_for('branch_home'))
+
+    # Проверяем, что пользователь относится к этому сегменту
+    user_segment = get_user_trainer_segment(session.get('user_info'))
+    if user_segment and user_segment != segment:
+        flash('У вас нет доступа к этому разделу тренажёра')
+        return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
     user_id = session['user_info'].get('username', 'anonymous')
     levels = trainer_mgr.get_all_levels()
@@ -6215,12 +6256,19 @@ def trainer_level(segment, level_code):
 
     if segment not in TRAINER_SEGMENTS:
         return redirect(url_for('trainer_menu'))
+
     if _trainer_branch_blocked(segment):
         flash('Раздел «Филиалы» временно недоступен.')
         return redirect(url_for('trainer_menu'))
     branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
     if segment == 'branch' and not branch_area:
         return redirect(url_for('branch_home'))
+
+    # Проверяем, что пользователь относится к этому сегменту
+    user_segment = get_user_trainer_segment(session.get('user_info'))
+    if user_segment and user_segment != segment:
+        flash('У вас нет доступа к этому разделу тренажёра')
+        return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
     user_id = session['user_info'].get('username', 'anonymous')
     level = trainer_mgr.get_level_by_code(level_code)
@@ -6319,6 +6367,12 @@ def trainer_play(scenario_id):
         if not scenario.get('is_active'):
             flash('Сценарий недоступен')
             return redirect(url_for('trainer_segment_menu', segment=play_segment, branch_area=play_branch_area) if play_branch_area else url_for('trainer_segment_menu', segment=play_segment))
+
+        # Проверяем, что сегмент сценария совпадает с сегментом пользователя
+        user_segment = get_user_trainer_segment(session.get('user_info'))
+        if user_segment and user_segment != scenario_segment:
+            flash('У вас нет доступа к этому сценарию')
+            return redirect(url_for('trainer_segment_menu', segment=user_segment))
 
     # Check level access (skip in preview mode)
     if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code'], segment=play_segment, branch_area=play_branch_area):
@@ -6576,6 +6630,14 @@ def trainer_complete():
 
         user_id = session['user_info'].get('username', 'anonymous')
 
+        # Проверяем, что сценарий существует и доступен пользователю по сегменту
+        _sc = trainer_mgr.get_scenario(scenario_id)
+        if not _sc:
+            return jsonify({'success': False, 'error': 'Сценарий не найден'})
+        _user_seg = get_user_trainer_segment(session.get('user_info'))
+        if _user_seg and _sc.get('segment', 'kc') != _user_seg:
+            return jsonify({'success': False, 'error': 'Доступ запрещён'}), 403
+
         # Извлекаем время начала из сессии
         started_at = session.pop(f'scenario_start_{scenario_id}', None)
 
@@ -6673,7 +6735,11 @@ def trainer_results(result_id):
                         break
 
     # Сегмент берём из данных сценария
-    result_segment = scenario_data.get('segment', 'kc') if scenario_data else 'kc'
+    result_segment = (
+        scenario_data.get('segment', 'kc')
+        if scenario_data
+        else get_user_trainer_segment(session.get('user_info')) or 'kc'
+    )
     result_branch_area = (
         _branch_manual_area(scenario_data.get('branch_area') or 'oper')
         if result_segment == 'branch' and scenario_data
@@ -6965,7 +7031,8 @@ def admin_trainer_create():
                 entity_id=result['id'],
                 entity_name=data['title'],
                 changes=data,
-                ip_address=request.remote_addr
+                ip_address=request.remote_addr,
+                segment=data.get('segment', 'kc')
             )
             if is_draft:
                 flash('Черновик создан! Добавьте шаги и опубликуйте когда будет готов.')
@@ -7117,7 +7184,8 @@ def admin_trainer_edit(scenario_id):
                 entity_id=scenario_id,
                 entity_name=data['title'],
                 changes=data,
-                ip_address=request.remote_addr
+                ip_address=request.remote_addr,
+                segment=data.get('segment', 'kc')
             )
 
             # Обновляем шаги и ответы
@@ -7268,7 +7336,8 @@ def admin_trainer_delete(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario_title,
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий удален')
     else:
@@ -7321,7 +7390,8 @@ def admin_trainer_publish(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий опубликован!')
     else:
@@ -7350,7 +7420,8 @@ def admin_trainer_archive(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий перемещён в архив.')
     else:
@@ -7377,7 +7448,8 @@ def admin_trainer_restore(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=sc_segment
         )
         flash('Сценарий восстановлен из архива и снова активен.')
     else:
@@ -7402,7 +7474,8 @@ def admin_trainer_duplicate(scenario_id):
             entity_type='scenario',
             entity_id=scenario_id,
             entity_name=scenario['title'] if scenario else f'ID {scenario_id}',
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=scenario.get('segment', 'kc') if scenario else 'kc'
         )
         flash('Сценарий продублирован и сохранён в черновиках!')
         return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
@@ -7665,7 +7738,8 @@ def admin_trainer_visual_save(scenario_id):
             entity_id=scenario_id,
             entity_name=scenario['title'],
             changes={'source': 'visual_editor', 'steps_count': len(client_nodes)},
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            segment=scenario.get('segment', 'kc')
         )
 
         return jsonify({'success': True, 'message': 'Сценарий сохранен', 'id_remap': id_remap})
@@ -7808,15 +7882,58 @@ def admin_trainer_stats():
         return _trainer_segment_access_denied_response(segment)
     selected_branch_area = _trainer_branch_area_arg() if segment == 'branch' else None
     seg_info = _trainer_segment_info(segment, selected_branch_area)
-    stats = trainer_mgr.get_statistics(segment=segment, branch_area=selected_branch_area)
-    heatmap = trainer_mgr.get_step_error_heatmap(limit=20, segment=segment, branch_area=selected_branch_area)
+
+    period = request.args.get('period', 'all')
+    date_from_param = request.args.get('date_from', '').strip()
+    date_to_param = request.args.get('date_to', '').strip()
+
+    date_from = None
+    date_to = None
+
+    if date_from_param or date_to_param:
+        # Кастомный период "с ... по ..."
+        period = 'custom'
+        if date_from_param:
+            date_from = f"{date_from_param} 00:00:00"
+        if date_to_param:
+            date_to = f"{date_to_param} 23:59:59"
+    elif period != 'all':
+        try:
+            days = int(period)
+            date_from = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d 00:00:00')
+        except ValueError:
+            period = 'all'
+
+    stats = trainer_mgr.get_statistics(
+        segment=segment,
+        branch_area=selected_branch_area,
+        date_from=date_from,
+        date_to=date_to
+    )
+    heatmap = trainer_mgr.get_step_error_heatmap(
+        limit=20,
+        segment=segment,
+        branch_area=selected_branch_area,
+        date_from=date_from,
+        date_to=date_to
+    )
+    timeline = trainer_mgr.get_completions_timeline(
+        segment=segment,
+        branch_area=selected_branch_area,
+        date_from=date_from,
+        date_to=date_to
+    )
     return render_template('admin_trainer_stats.html',
                            stats=stats,
                            heatmap=heatmap,
+                           timeline=timeline,
                            segment=segment,
                            seg_info=seg_info,
                            branch_manual_areas=BRANCH_MANUAL_AREAS,
-                           selected_branch_area=selected_branch_area)
+                           selected_branch_area=selected_branch_area,
+                           period=period,
+                           date_from=date_from_param,
+                           date_to=date_to_param)
 
 
 @app.route('/api/admin/trainer/user/<user_id>/results')
@@ -7894,9 +8011,10 @@ def admin_trainer_export():
         from datetime import datetime
         import pandas as pd
 
-        stats = trainer_mgr.get_statistics()
-        users_progress = trainer_mgr.get_all_users_progress()
-        detailed_results = trainer_mgr.get_detailed_results()
+        segment = request.args.get('segment')
+        stats = trainer_mgr.get_statistics(segment=segment)
+        users_progress = trainer_mgr.get_all_users_progress(segment=segment)
+        detailed_results = trainer_mgr.get_detailed_results(segment=segment)
 
         # Создаем Excel файл
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
@@ -8176,14 +8294,21 @@ def admin_trainer_export():
 @AdminAuth.trainer_view_required
 def admin_trainer_audit():
     """Журнал изменений (аудит)"""
+    segment = request.args.get('segment', 'kc')
     page = request.args.get('page', 1, type=int)
     per_page = 50
     offset = (page - 1) * per_page
 
-    logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset)
-    stats = trainer_mgr.get_audit_stats()
+    logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset, segment=segment)
+    stats = trainer_mgr.get_audit_stats(segment=segment)
 
-    return render_template('admin_trainer_audit.html', logs=deep_escape(logs), stats=deep_escape(stats), page=page)
+    return render_template(
+        'admin_trainer_audit.html',
+        logs=deep_escape(logs),
+        stats=deep_escape(stats),
+        page=page,
+        segment=segment
+    )
 
 
 @app.route('/admin/trainer/audit/export')
@@ -8196,7 +8321,8 @@ def admin_trainer_audit_export():
         from datetime import datetime
         import pandas as pd
 
-        logs = trainer_mgr.get_audit_log(limit=10000)
+        segment = request.args.get('segment')
+        logs = trainer_mgr.get_audit_log(limit=10000, segment=segment)
 
         # Создаем Excel файл
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
@@ -9084,7 +9210,7 @@ def admin_login():
         # Тестовый режим для админа
         TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 
-        if TEST_MODE and password in ['admin', '123', 'test']:
+        if TEST_MODE and password in ['admin', '123', 'test', '1234']:
             # Определяем роли из .env
             login_key = _admin_login_key(username)
             test_permissions = _admin_env_permissions(login_key)
@@ -9093,7 +9219,6 @@ def admin_login():
             if not test_permissions:
                 flash('У вас нет прав администратора')
                 return redirect(url_for('admin_login'))
-
             session['admin_logged_in'] = True
             session['admin_username'] = login_key
             session['admin_role'] = admin_role

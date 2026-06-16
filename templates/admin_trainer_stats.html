@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Статистика тренажера - Админ-панель</title>
+    <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
     <style>
         * {
             margin: 0;
@@ -71,6 +72,63 @@
             color: white;
         }
 
+        /* Period selector */
+        .period-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .period-btn {
+            padding: 8px 16px;
+            border: 2px solid #00d4aa;
+            background: transparent;
+            color: #00d4aa;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .period-btn:hover {
+            background: #00d4aa;
+            color: #1a1a2e;
+        }
+
+        .period-btn.active {
+            background: #00d4aa;
+            color: #1a1a2e;
+        }
+
+        .custom-range-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-left: 10px;
+        }
+
+        .custom-range-form label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            color: #999;
+        }
+
+        .custom-range-form input[type="date"] {
+            background: #16213e;
+            border: 1px solid #2a2a3e;
+            color: #e0e0e0;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 14px;
+        }
+
         /* Stats Grid */
         .stats-grid {
             display: grid;
@@ -112,6 +170,19 @@
         /* Sections */
         .section {
             margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border: 1px solid #2a2a3e;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 320px;
         }
 
         .section-header {
@@ -433,7 +504,38 @@
     <div class="container">
         <div class="header">
             <h1>📊 Статистика — {{ seg_info.name if seg_info else 'Тренажер' }}</h1>
-            <a href="{{ url_for('admin_trainer_export') }}" class="btn btn-success">📥 Экспорт в Excel</a>
+            <a href="{{ url_for('admin_trainer_export', segment=segment) }}" class="btn btn-success">📥 Экспорт в Excel</a>
+        </div>
+
+        <!-- Фильтр по периоду -->
+        <div class="period-selector">
+            <a href="?segment={{ segment }}&period=7" class="period-btn {% if period == '7' %}active{% endif %}">7 дней</a>
+            <a href="?segment={{ segment }}&period=30" class="period-btn {% if period == '30' %}active{% endif %}">Месяц</a>
+            <a href="?segment={{ segment }}&period=90" class="period-btn {% if period == '90' %}active{% endif %}">3 месяца</a>
+            <a href="?segment={{ segment }}&period=180" class="period-btn {% if period == '180' %}active{% endif %}">Полгода</a>
+            <a href="?segment={{ segment }}&period=365" class="period-btn {% if period == '365' %}active{% endif %}">Год</a>
+            <a href="?segment={{ segment }}&period=all" class="period-btn {% if period == 'all' %}active{% endif %}">Всё время</a>
+
+            <form method="get" class="custom-range-form">
+                <input type="hidden" name="segment" value="{{ segment }}">
+                <label>с <input type="date" name="date_from" value="{{ date_from }}"></label>
+                <label>по <input type="date" name="date_to" value="{{ date_to }}"></label>
+                <button type="submit" class="period-btn {% if period == 'custom' %}active{% endif %}">Показать</button>
+            </form>
+        </div>
+
+        <!-- Гистограмма прохождений по дням -->
+        <div class="chart-container">
+            <h2>📊 Прохождений по дням</h2>
+            {% if timeline %}
+            <div class="chart-wrapper">
+                <canvas id="timelineChart"></canvas>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>Нет данных за выбранный период</p>
+            </div>
+            {% endif %}
         </div>
 
         {% if segment == 'branch' %}
@@ -598,6 +700,79 @@
     </div>
 
     <script>
+    // Гистограмма прохождений по дням
+    (function() {
+        const timelineData = {{ timeline | tojson }};
+
+        if (typeof Chart === 'undefined' || !timelineData.length) {
+            return;
+        }
+
+        const ctx = document.getElementById('timelineChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: timelineData.map(d => d.date),
+                datasets: [
+                    {
+                        label: 'Прохождений',
+                        data: timelineData.map(d => d.completions),
+                        backgroundColor: 'rgba(0, 212, 170, 0.6)',
+                        borderColor: '#00d4aa',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Средний балл, %',
+                        data: timelineData.map(d => d.avg_percent),
+                        type: 'line',
+                        borderColor: '#ff9800',
+                        backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: '#999' }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#999' },
+                        grid: { color: '#2a2a3e' }
+                    },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        ticks: { precision: 0, color: '#999' },
+                        grid: { color: '#2a2a3e' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        min: 0,
+                        max: 100,
+                        ticks: { color: '#999' },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    })();
+
     function showUserModal(userId) {
         const modal = document.getElementById('userModal');
         const content = document.getElementById('userModalContent');

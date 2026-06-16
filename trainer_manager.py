@@ -1950,53 +1950,43 @@ class TrainerManager:
                 'avg_percent': round(row[1] or 0, 1)
             })
 
-        # Топ пользователей — эффективный запрос через MAX(id) вместо коррелированного подзапроса
-        # Шаг 1: последний результат каждого пользователя по каждому сценарию (через MAX id)
+        # Топ пользователей — MAX(id) JOIN вместо коррелированного подзапроса O(N²)
+        date_where = ("WHERE " + " AND ".join(date_conditions)) if date_conditions else ""
         if segment:
             cursor.execute(f"""
-                SELECT user_id,
+                SELECT r.user_id,
                        COUNT(*) as completions,
-                       AVG(percent) as avg_percent,
-                       SUM(last_score) + SUM(all_bonus) as total_score
-                FROM (
-                    SELECT r.user_id,
-                           r.scenario_id,
-                           CASE WHEN r.id = (
-                               SELECT id FROM trainer_results r2
-                               WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
-                               {date_clause_r2}
-                               ORDER BY completed_at DESC, id DESC LIMIT 1
-                           ) THEN r.score ELSE 0 END as last_score,
-                           COALESCE(r.repeat_bonus, 0) as all_bonus,
-                           r.percent
-                    FROM trainer_results r
-                    JOIN trainer_scenarios s ON r.scenario_id = s.id
-                    WHERE s.segment = ? {area_clause} AND r.user_id != 'obuchenie' {date_clause}
-                )
-                GROUP BY user_id
+                       AVG(r.percent) as avg_percent,
+                       SUM(CASE WHEN r.id = best.max_id THEN r.score ELSE 0 END)
+                           + SUM(COALESCE(r.repeat_bonus, 0)) as total_score
+                FROM trainer_results r
+                JOIN trainer_scenarios s ON r.scenario_id = s.id
+                JOIN (
+                    SELECT user_id, scenario_id, MAX(id) as max_id
+                    FROM trainer_results
+                    {date_where}
+                    GROUP BY user_id, scenario_id
+                ) best ON best.user_id = r.user_id AND best.scenario_id = r.scenario_id
+                WHERE s.segment = ? {area_clause} AND r.user_id != 'obuchenie' {date_clause}
+                GROUP BY r.user_id
                 ORDER BY total_score DESC, completions DESC
             """, date_p + scope_p + date_p)
         else:
             cursor.execute(f"""
-                SELECT user_id,
+                SELECT r.user_id,
                        COUNT(*) as completions,
-                       AVG(percent) as avg_percent,
-                       SUM(last_score) + SUM(all_bonus) as total_score
-                FROM (
-                    SELECT r.user_id,
-                           r.scenario_id,
-                           CASE WHEN r.id = (
-                               SELECT id FROM trainer_results r2
-                               WHERE r2.user_id = r.user_id AND r2.scenario_id = r.scenario_id
-                               {date_clause_r2}
-                               ORDER BY completed_at DESC, id DESC LIMIT 1
-                           ) THEN r.score ELSE 0 END as last_score,
-                           COALESCE(r.repeat_bonus, 0) as all_bonus,
-                           r.percent
-                    FROM trainer_results r
-                    WHERE r.user_id != 'obuchenie' {date_clause}
-                )
-                GROUP BY user_id
+                       AVG(r.percent) as avg_percent,
+                       SUM(CASE WHEN r.id = best.max_id THEN r.score ELSE 0 END)
+                           + SUM(COALESCE(r.repeat_bonus, 0)) as total_score
+                FROM trainer_results r
+                JOIN (
+                    SELECT user_id, scenario_id, MAX(id) as max_id
+                    FROM trainer_results
+                    {date_where}
+                    GROUP BY user_id, scenario_id
+                ) best ON best.user_id = r.user_id AND best.scenario_id = r.scenario_id
+                WHERE r.user_id != 'obuchenie' {date_clause}
+                GROUP BY r.user_id
                 ORDER BY total_score DESC, completions DESC
             """, date_p + date_p)
         top_users = [dict(row) for row in cursor.fetchall()]

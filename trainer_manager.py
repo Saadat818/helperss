@@ -1951,7 +1951,7 @@ class TrainerManager:
             })
 
         # Топ пользователей — MAX(id) JOIN вместо коррелированного подзапроса O(N²)
-        date_where = ("WHERE " + " AND ".join(date_conditions)) if date_conditions else ""
+        date_where = ("WHERE " + " AND ".join(c.replace("r.completed_at", "completed_at") for c in date_conditions)) if date_conditions else ""
         if segment:
             cursor.execute(f"""
                 SELECT r.user_id,

@@ -8,6 +8,8 @@ import urllib.request
 from datetime import datetime
 from typing import Any
 
+from db_backend import connect as db_connect, is_postgres_backend
+
 
 class MyBoardManager:
     """Cache and render MyBoard schemas inside Helper.
@@ -19,12 +21,13 @@ class MyBoardManager:
 
     def __init__(self, db_path: str = "topics.db"):
         self.db_path = db_path
-        self._init_db()
+        if not is_postgres_backend():
+            self._init_db()
 
     def _connect(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn = db_connect(self.db_path, check_same_thread=False, timeout=10.0)
+        if not is_postgres_backend():
+            conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
     def _init_db(self):

@@ -45,6 +45,7 @@ load_dotenv()
 
 # Абсолютный путь к директории приложения — нужен для корректной работы на сервере
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_DB_PATH = os.path.join(BASE_DIR, "topics.db")
 
 # ============================================
 # АУДИТ-ЛОГ В ФАЙЛ (RotatingFileHandler)
@@ -78,6 +79,11 @@ from topics_manager import TopicsManager
 from stats_manager import StatsManager
 from trainer_manager import TrainerManager
 from scenario_manager import ScenarioManager
+from db_backend import (
+    backend_name as helper_db_backend_name,
+    connect as helper_db_connect,
+    is_postgres_backend as helper_db_is_postgres,
+)
 from myboard_scenarios import (
     MyBoardApiError,
     MyBoardClient,
@@ -89,10 +95,15 @@ from myboard_scenarios import (
 )
 from contacts_manager import ContactsManager
 from employee_board_manager import EmployeeBoardManager
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-except Exception:
+ANALYTICS_BACKEND_ENV = os.getenv('ANALYTICS_BACKEND', 'postgres').lower()
+if not helper_db_is_postgres() and ANALYTICS_BACKEND_ENV == 'postgres':
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+    except Exception:
+        psycopg2 = None
+        RealDictCursor = None
+else:
     psycopg2 = None
     RealDictCursor = None
 
@@ -781,8 +792,12 @@ TRUSTED_PROXY_IP = os.getenv("TRUSTED_PROXY_IP")
 TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', os.path.join(BASE_DIR, 'topics.db'))
 TICKET_NUMBER_START = int(os.getenv('TICKET_NUMBER_START', '125'))
 AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', os.path.join(BASE_DIR, 'topics.db'))
-ANALYTICS_BACKEND = os.getenv('ANALYTICS_BACKEND', 'postgres').lower()
-ANALYTICS_USE_POSTGRES = ANALYTICS_BACKEND == 'postgres' and psycopg2 is not None
+ANALYTICS_BACKEND = ANALYTICS_BACKEND_ENV
+ANALYTICS_USE_POSTGRES = (
+    not helper_db_is_postgres()
+    and ANALYTICS_BACKEND == 'postgres'
+    and psycopg2 is not None
+)
 POSTGRES_CONFIG = {
     'host': os.getenv('POSTGRES_HOST', 'localhost'),
     'port': os.getenv('POSTGRES_PORT', '5432'),
@@ -950,7 +965,9 @@ def _log_exception_safely(context: str, error: Exception | None = None):
 def _init_ticket_counter_table():
     """Инициализация таблицы для инкрементного номера заявок."""
     try:
-        with sqlite3.connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
+        if helper_db_is_postgres():
+            return
+        with helper_db_connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ticket_sequence (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -965,7 +982,7 @@ def _init_ticket_counter_table():
 def get_next_ticket_number() -> int:
     """Возвращает следующий инкрементный номер заявки."""
     with ticket_counter_lock:
-        with sqlite3.connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO ticket_sequence (created_at) VALUES (?)",
@@ -986,6 +1003,8 @@ def _pg_connect():
 def _init_audit_log_table():
     """Инициализация таблицы аудита действий пользователей и администраторов."""
     try:
+        if helper_db_is_postgres():
+            return
         if ANALYTICS_USE_POSTGRES:
             with _pg_connect() as conn:
                 with conn.cursor() as cur:
@@ -1011,7 +1030,7 @@ def _init_audit_log_table():
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_path ON audit_logs(path)")
                 conn.commit()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS audit_logs (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1040,6 +1059,8 @@ def _init_audit_log_table():
 def _init_analytics_tables():
     """Инициализация таблиц аналитики для dashboard."""
     try:
+        if helper_db_is_postgres():
+            return
         if ANALYTICS_USE_POSTGRES:
             with _pg_connect() as conn:
                 with conn.cursor() as cur:
@@ -1133,7 +1154,7 @@ def _init_analytics_tables():
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_topic_search_department ON topic_search_events(department)")
                 conn.commit()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS ticket_events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1321,7 +1342,7 @@ def write_audit_log(action: str, status_code: int, details: dict | None = None):
                         ))
                     conn.commit()
             else:
-                with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                     conn.execute("""
                         INSERT INTO audit_logs (
                             created_at, ip_address, method, path, endpoint, status_code,
@@ -1448,7 +1469,7 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
                     """, payload)
                 conn.commit()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     INSERT INTO ticket_events (
                         created_at, event_type, ticket_number, problem, problem_id, subproblem_id,
@@ -1491,7 +1512,7 @@ def _load_user_profile(username: str | None) -> dict:
                     row = cur.fetchone()
                     return dict(row) if row else {}
 
-        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("""
@@ -1526,7 +1547,7 @@ def _save_user_telegram_username(username: str | None, telegram_username: str) -
                 conn.commit()
             return True
 
-        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
             conn.execute("""
                 INSERT INTO user_profiles (username, telegram_username, created_at, updated_at)
                 VALUES (?, ?, ?, ?)
@@ -1634,7 +1655,7 @@ def _load_ticket_states(ticket_numbers: list[int] | None = None) -> dict[int, di
             {where}
             ORDER BY ticket_number ASC, created_at ASC, id ASC
         """
-        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute(query, params)
@@ -1811,7 +1832,7 @@ def _get_app_settings(keys: list[str] | None = None) -> dict:
                     result = {row['key']: row.get('value') or '' for row in cur.fetchall()}
         else:
             placeholders = ",".join("?" * len(keys))
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute(f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", keys)
@@ -1840,7 +1861,7 @@ def _set_app_settings(values: dict, updated_by: str = ''):
                     """, [key, value, now, updated_by])
             conn.commit()
     else:
-        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
             for key, value in clean_values.items():
                 conn.execute("""
                     INSERT INTO app_settings (key, value, updated_at, updated_by)
@@ -2060,7 +2081,7 @@ def _recent_overload_alert_sent(actor_username: str) -> bool:
                 cur.execute(query, [actor_username, since])
                 row = cur.fetchone()
                 return int(row['c'] if isinstance(row, dict) else row[0]) > 0
-    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+    with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
         cur = conn.cursor()
         cur.execute("""
             SELECT COUNT(*)
@@ -2188,7 +2209,7 @@ def log_topic_change(action: str, topic_id: int | None = None, channel: str = ''
                     """, payload)
                 conn.commit()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     INSERT INTO topic_changes (
                         created_at, action, topic_id, channel, full_topic,
@@ -2229,7 +2250,7 @@ def log_topic_search(query_text: str, channel: str, results_count: int):
                     """, payload)
                 conn.commit()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     INSERT INTO topic_search_events (
                         created_at, query_text, channel, results_count,
@@ -2254,16 +2275,18 @@ def extract_ticket_number_from_text(text: str) -> int | None:
     except (ValueError, TypeError):
         return None
 
-# Инициализация TopicsManager
-tm = TopicsManager(os.path.join(BASE_DIR, "topics.db"))
+# Инициализация менеджеров БД. SQLite остается дефолтом, PostgreSQL включается
+# только через HELPER_DB_BACKEND=postgres.
+print(f"[db] Helper DB backend: {helper_db_backend_name()}")
+tm = TopicsManager(APP_DB_PATH)
 
 # Инициализация TrainerManager
-trainer_mgr = TrainerManager(os.path.join(BASE_DIR, "topics.db"))
+trainer_mgr = TrainerManager(APP_DB_PATH)
 
 # Инициализация ScenarioManager (сценарии консультаций КЦ)
-scenario_mgr = ScenarioManager(os.path.join(BASE_DIR, "topics.db"))
-contacts_mgr = ContactsManager(os.path.join(BASE_DIR, "topics.db"))
-employee_board_mgr = EmployeeBoardManager(os.path.join(BASE_DIR, "topics.db"))
+scenario_mgr = ScenarioManager(APP_DB_PATH)
+contacts_mgr = ContactsManager(APP_DB_PATH)
+employee_board_mgr = EmployeeBoardManager(APP_DB_PATH)
 
 # Инициализация счётчика заявок
 _init_ticket_counter_table()
@@ -3034,7 +3057,7 @@ def _find_ticket_reject_prompt(prompt_message_id: int | None) -> dict | None:
                     """)
                     rows = [dict(row) for row in cur.fetchall()]
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -9393,7 +9416,7 @@ def _branch_manual_feedback_stats(limit: int = 50) -> dict:
                     recent = [dict(row) for row in cur.fetchall()]
         else:
             details_filter = "(details_json LIKE '%\"segment\": \"branch\"%' OR details_json LIKE '%\"segment\":\"branch\"%')"
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 placeholders = ",".join("?" * len(events))
                 rows = conn.execute(f"""
@@ -11613,7 +11636,7 @@ def _load_ticket_event_type_counts(start_at: str, end_at: str,
           {filter_sql}
         GROUP BY e.event_type
     """
-    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+    with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(query, [start_at, end_at, *filter_params])
@@ -11647,7 +11670,7 @@ def _count_cisco_tickets_created(start_at: str, end_at: str,
           AND e.is_cisco = 1
           {filter_sql}
     """
-    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+    with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(query, [start_at, end_at, *filter_params])
@@ -11808,7 +11831,7 @@ def _load_resolution_rows(start_at: str, end_at: str, problem_keys: list[str] | 
           {filter_sql}
         ORDER BY r.resolved_at DESC
     """
-    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+    with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(query, params)
@@ -11910,7 +11933,7 @@ def _load_resolution_problem_options(start_at: str, end_at: str) -> list[dict]:
         GROUP BY problem_key, problem_label
         ORDER BY count DESC, problem_label ASC
     """
-    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+    with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(query, [start_at, end_at])
@@ -12053,7 +12076,7 @@ def _load_ticket_dashboard_data(start_at: str, end_at: str):
                         departments_map[dep]['helped'] += helped_inc
                         departments_map[dep]['not_helped'] += not_helped_inc
     else:
-        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("""
@@ -12211,7 +12234,7 @@ def api_stats_manual_feedback():
                     rows = [dict(row) for row in cur.fetchall()]
         else:
             placeholders = ",".join("?" * len(feedback_events))
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute(f"""
@@ -12415,7 +12438,7 @@ def api_stats_online():
                     """, (today_start, today_end))
                     total_requests_today = int((cur.fetchone() or {}).get('total', 0))
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -12610,7 +12633,7 @@ def api_stats_users():
                     """, (start_at, end_at))
                     ticket_rows = cur.fetchall()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -12679,7 +12702,7 @@ def api_stats_users():
                         """, (start_at, end_at))
                         search_rows = cur.fetchall()
             else:
-                with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                     conn.row_factory = sqlite3.Row
                     cur = conn.cursor()
                     cur.execute("""
@@ -12767,7 +12790,7 @@ def api_stats_departments_usage():
                     """, (start_at, end_at))
                     rows = cur.fetchall()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -12806,7 +12829,7 @@ def api_stats_departments_usage():
                         """, (start_at, end_at))
                         rows = cur.fetchall()
             else:
-                with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+                with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                     conn.row_factory = sqlite3.Row
                     cur = conn.cursor()
                     cur.execute("""
@@ -12853,7 +12876,7 @@ def api_stats_staff():
                     """, (start_at, end_at))
                     rows = cur.fetchall()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -12976,7 +12999,7 @@ def api_stats_topics_summary():
                     """, (start_at, end_at))
                     row = cur.fetchone()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -13022,7 +13045,7 @@ def api_stats_topics_top():
                     """, (start_at, end_at, limit))
                     rows = [dict(r) for r in cur.fetchall()]
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -13063,7 +13086,7 @@ def api_stats_topics_channels():
                     """, (start_at, end_at))
                     rows = [dict(r) for r in cur.fetchall()]
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -13103,7 +13126,7 @@ def api_stats_topics_history():
                     """, (start_at, end_at, limit))
                     rows = [dict(r) for r in cur.fetchall()]
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -13356,7 +13379,7 @@ def admin_stats_export():
                     """)
                     pending = [dict(r) for r in cur.fetchall()]
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("SELECT event_type, COUNT(*) as c FROM ticket_events WHERE created_at BETWEEN ? AND ? GROUP BY event_type", (start_at, end_at))

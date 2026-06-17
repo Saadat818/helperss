@@ -11,6 +11,8 @@ from difflib import SequenceMatcher
 import re
 import json
 
+from db_backend import connect as db_connect, is_postgres_backend
+
 
 # Маппинг клавиш для транслитерации (русская ↔ английская раскладка)
 KEYBOARD_LAYOUT_MAP = {
@@ -114,7 +116,11 @@ class TopicsManager:
     def __init__(self, db_path: str = "topics.db"):
         self.db_path = db_path
         self.conn = None
-        self._init_db()
+        if is_postgres_backend():
+            self.conn = db_connect(self.db_path, check_same_thread=False, timeout=10.0,
+                                   isolation_level='IMMEDIATE')
+        else:
+            self._init_db()
         
     def _init_db(self):
         """Инициализация базы данных"""
@@ -123,9 +129,8 @@ class TopicsManager:
         # connection pooling instead. SQLite with check_same_thread=False can have
         # race conditions in concurrent environments.
         # TODO: Implement thread-safe connection pooling or migrate to PostgreSQL
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0,
-                                   isolation_level='IMMEDIATE')
-        self.conn.row_factory = sqlite3.Row
+        self.conn = db_connect(self.db_path, check_same_thread=False, timeout=10.0,
+                               isolation_level='IMMEDIATE')
         cursor = self.conn.cursor()
         
         # Основная таблица тематик

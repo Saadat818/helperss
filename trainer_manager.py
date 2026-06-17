@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
+from db_backend import connect as db_connect, is_postgres_backend
+
 
 class TrainerManager:
     """Управление тренажером с сценариями и прогрессом"""
@@ -17,13 +19,16 @@ class TrainerManager:
     def __init__(self, db_path: str = "topics.db"):
         self.db_path = db_path
         self.conn = None
-        self._init_db()
+        if is_postgres_backend():
+            self.conn = db_connect(self.db_path, check_same_thread=False, timeout=10.0,
+                                   isolation_level='IMMEDIATE')
+        else:
+            self._init_db()
 
     def _init_db(self):
         """Инициализация базы данных"""
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0,
-                                   isolation_level='IMMEDIATE')
-        self.conn.row_factory = sqlite3.Row
+        self.conn = db_connect(self.db_path, check_same_thread=False, timeout=10.0,
+                               isolation_level='IMMEDIATE')
         cursor = self.conn.cursor()
 
         # Уровни сложности

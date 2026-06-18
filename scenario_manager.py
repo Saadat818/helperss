@@ -214,7 +214,7 @@ class ScenarioManager:
                 SELECT s.*, c.name as category_name, c.icon as category_icon,
                     (SELECT COUNT(*) FROM cs_views v
                      WHERE v.scenario_id = s.id
-                     AND v.viewed_at >= datetime('now', '-30 days')) as views_30d,
+                     AND NULLIF(v.viewed_at, '')::timestamp >= (CURRENT_TIMESTAMP - INTERVAL '30 days')) as views_30d,
                     (SELECT COUNT(*) FROM cs_nodes n
                      WHERE n.scenario_id = s.id) as node_count
                 FROM cs_scenarios s
@@ -806,9 +806,9 @@ class ScenarioManager:
                 FROM cs_scenarios s
                 LEFT JOIN cs_categories c ON s.category_id = c.id
                 LEFT JOIN cs_views v ON v.scenario_id = s.id
-                    AND v.viewed_at >= datetime('now', '-30 days')
+                    AND NULLIF(v.viewed_at, '')::timestamp >= (CURRENT_TIMESTAMP - INTERVAL '30 days')
                 WHERE s.status = 'active'
-                GROUP BY s.id
+                GROUP BY s.id, s.title, s.description, s.tags, s.category_id, c.name, c.icon, s.title, s.description, s.tags, s.category_id, c.name, c.icon
                 ORDER BY views_30d DESC, s.title
                 LIMIT ?
             """, (limit,)).fetchall()

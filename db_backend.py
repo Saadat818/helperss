@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import threading
 from typing import Iterable
 
 
@@ -118,17 +119,36 @@ class PostgresConnection:
         if not password:
             raise RuntimeError("HELPER_PG_PASSWORD is required for PostgreSQL backend")
 
-        self._conn = psycopg2.connect(
+        self._psycopg2 = psycopg2
+        self._cursor_factory = DictCursor
+        self._password = password
+        self._local = threading.local()
+
+    def _connect_new(self):
+        return self._psycopg2.connect(
             host=os.getenv("HELPER_PG_HOST", "10.10.90.57"),
             port=int(os.getenv("HELPER_PG_PORT", "5432")),
             dbname=os.getenv("HELPER_PG_DB", "apo"),
             user=os.getenv("HELPER_PG_USER", "r_koledin"),
-            password=password,
-            cursor_factory=DictCursor,
+            password=self._password,
+            cursor_factory=self._cursor_factory,
         )
 
+    def _get_conn(self):
+        conn = getattr(self._local, "conn", None)
+        if conn is None or getattr(conn, "closed", False):
+            conn = self._connect_new()
+            self._local.conn = conn
+        return conn
+
+    def _close_current(self):
+        conn = getattr(self._local, "conn", None)
+        self._local.conn = None
+        if conn is not None and not getattr(conn, "closed", False):
+            conn.close()
+
     def cursor(self):
-        return PostgresCursor(self._conn.cursor())
+        return PostgresCursor(self._get_conn().cursor(), self)
 
     def execute(self, sql: str, params: Iterable | None = None):
         cur = self.cursor()
@@ -136,13 +156,25 @@ class PostgresConnection:
         return cur
 
     def commit(self):
-        return self._conn.commit()
+        conn = getattr(self._local, "conn", None)
+        if conn is None or getattr(conn, "closed", False):
+            return None
+        try:
+            return conn.commit()
+        finally:
+            self._close_current()
 
     def rollback(self):
-        return self._conn.rollback()
+        conn = getattr(self._local, "conn", None)
+        if conn is None or getattr(conn, "closed", False):
+            return None
+        try:
+            return conn.rollback()
+        finally:
+            self._close_current()
 
     def close(self):
-        return self._conn.close()
+        return self._close_current()
 
     def __enter__(self):
         return self
@@ -157,8 +189,9 @@ class PostgresConnection:
 
 
 class PostgresCursor:
-    def __init__(self, cursor):
+    def __init__(self, cursor, owner: PostgresConnection):
         self._cursor = cursor
+        self._owner = owner
         self.lastrowid = None
 
     def execute(self, sql: str, params: Iterable | None = None):

@@ -1017,9 +1017,9 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? {seg_clause} {area_clause} AND s.category_id = ? AND s.is_active = 1
-                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
-                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                WHERE s.level_id = ? {seg_clause} {area_clause} AND s.category_id = ? AND s.is_active = TRUE
+                  AND (s.is_draft = FALSE OR s.is_draft IS NULL)
+                  AND (s.is_archived = FALSE OR s.is_archived IS NULL)
                 ORDER BY s.order_num
             """, base_params + [category_id])
         else:
@@ -1028,9 +1028,9 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.level_id = ? {seg_clause} {area_clause} AND s.is_active = 1
-                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
-                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                WHERE s.level_id = ? {seg_clause} {area_clause} AND s.is_active = TRUE
+                  AND (s.is_draft = FALSE OR s.is_draft IS NULL)
+                  AND (s.is_archived = FALSE OR s.is_archived IS NULL)
                 ORDER BY s.order_num
             """, base_params)
         return [dict(row) for row in cursor.fetchall()]
@@ -1061,8 +1061,8 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE (s.is_draft = 0 OR s.is_draft IS NULL)
-                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                WHERE (s.is_draft = FALSE OR s.is_draft IS NULL)
+                  AND (s.is_archived = FALSE OR s.is_archived IS NULL)
                   {seg_clause}
                   {area_clause}
                 ORDER BY l.order_num, s.order_num
@@ -1073,9 +1073,9 @@ class TrainerManager:
                 FROM trainer_scenarios s
                 JOIN trainer_levels l ON s.level_id = l.id
                 LEFT JOIN trainer_categories c ON s.category_id = c.id
-                WHERE s.is_active = 1
-                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
-                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                WHERE s.is_active = TRUE
+                  AND (s.is_draft = FALSE OR s.is_draft IS NULL)
+                  AND (s.is_archived = FALSE OR s.is_archived IS NULL)
                   {seg_clause}
                   {area_clause}
                 ORDER BY l.order_num, s.order_num
@@ -1094,7 +1094,7 @@ class TrainerManager:
             FROM trainer_scenarios s
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
-            WHERE s.is_archived = 1 {seg_clause} {area_clause}
+            WHERE s.is_archived = TRUE {seg_clause} {area_clause}
             ORDER BY s.created_at DESC
         """, seg_p)
         return [dict(row) for row in cursor.fetchall()]
@@ -1102,7 +1102,7 @@ class TrainerManager:
     def get_archived_count(self) -> int:
         """Количество архивных сценариев"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_archived = 1")
+        cursor.execute("SELECT COUNT(*) FROM trainer_scenarios WHERE is_archived = TRUE")
         return cursor.fetchone()[0]
 
     def archive_scenario(self, scenario_id: int) -> Dict:
@@ -1143,7 +1143,7 @@ class TrainerManager:
             FROM trainer_scenarios s
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
-            WHERE s.is_draft = 1 {seg_clause} {area_clause}
+            WHERE s.is_draft = TRUE {seg_clause} {area_clause}
             ORDER BY s.created_at DESC
         """, seg_p)
         return [dict(row) for row in cursor.fetchall()]
@@ -1154,12 +1154,12 @@ class TrainerManager:
         area_clause, area_params = self._branch_area_sql(branch_area, alias='')
         if segment:
             cursor.execute(
-                f"SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = 1 AND segment = ? {area_clause}",
+                f"SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = TRUE AND segment = ? {area_clause}",
                 [segment] + area_params
             )
         else:
             cursor.execute(
-                f"SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = 1 {area_clause}",
+                f"SELECT COUNT(*) FROM trainer_scenarios WHERE is_draft = TRUE {area_clause}",
                 area_params
             )
         return cursor.fetchone()[0]
@@ -1258,9 +1258,9 @@ class TrainerManager:
             params_total.extend(area_params_direct)
             cursor.execute(f"""
                 SELECT COUNT(*) FROM trainer_scenarios s
-                WHERE s.level_id = ? {seg_clause_direct.replace('s.', '')} {area_clause_direct} AND s.is_active = 1
-                  AND (s.is_draft = 0 OR s.is_draft IS NULL)
-                  AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                WHERE s.level_id = ? {seg_clause_direct.replace('s.', '')} {area_clause_direct} AND s.is_active = TRUE
+                  AND (s.is_draft = FALSE OR s.is_draft IS NULL)
+                  AND (s.is_archived = FALSE OR s.is_archived IS NULL)
             """, params_total)
             total = cursor.fetchone()[0]
 
@@ -1307,19 +1307,19 @@ class TrainerManager:
         if segment:
             final_params = [user_id, segment] + area_params
             cursor.execute("""
-                SELECT AVG(MIN(r.percent, 100)) FROM trainer_results r
+                SELECT AVG(LEAST(r.percent, 100)) FROM trainer_results r
                 JOIN trainer_scenarios s ON r.scenario_id = s.id
                 WHERE r.user_id = ? AND s.segment = ? {area_clause}
             """.format(area_clause=area_clause), final_params)
         elif branch_area:
             cursor.execute(f"""
-                SELECT AVG(MIN(r.percent, 100)) FROM trainer_results r
+                SELECT AVG(LEAST(r.percent, 100)) FROM trainer_results r
                 JOIN trainer_scenarios s ON r.scenario_id = s.id
                 WHERE r.user_id = ? {area_clause}
             """, [user_id] + area_params)
         else:
             cursor.execute("""
-                SELECT AVG(MIN(percent, 100)) FROM trainer_results WHERE user_id = ?
+                SELECT AVG(LEAST(percent, 100)) FROM trainer_results WHERE user_id = ?
             """, (user_id,))
         avg_row = cursor.fetchone()
         result['average_score'] = min(100, round(avg_row[0] or 0, 1))
@@ -1512,12 +1512,12 @@ class TrainerManager:
                 data.get('description', ''),
                 data.get('estimated_time', 5),
                 data.get('total_points', 100),
-                data.get('is_active', 1),
+                bool(data.get('is_active', True)),
                 data.get('order_num', 0),
                 data.get('timer_seconds', 15),
                 data.get('initial_loyalty', 100),
                 data.get('client_info_json'),
-                data.get('is_draft', 0),
+                bool(data.get('is_draft', False)),
                 segment,
                 branch_area,
             ))
@@ -1896,7 +1896,7 @@ class TrainerManager:
         date_clause_r2 = (" AND " + " AND ".join(c.replace("r.completed_at", "r2.completed_at") for c in date_conditions)) if date_conditions else ""
 
         cursor.execute(
-            f"SELECT COUNT(*) FROM trainer_scenarios s WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL) {seg_direct} {area_direct_clause}",
+            f"SELECT COUNT(*) FROM trainer_scenarios s WHERE s.is_active = TRUE AND (s.is_draft = FALSE OR s.is_draft IS NULL) AND (s.is_archived = FALSE OR s.is_archived IS NULL) {seg_direct} {area_direct_clause}",
             direct_p
         )
         total_scenarios = cursor.fetchone()[0]
@@ -1935,7 +1935,7 @@ class TrainerManager:
             p_l_direct = [level['id']] + direct_p
             p_l = [level['id']] + scope_p
             cursor.execute(
-                f"SELECT COUNT(*) FROM trainer_scenarios s WHERE s.level_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL) {seg_direct} {area_direct_clause}",
+                f"SELECT COUNT(*) FROM trainer_scenarios s WHERE s.level_id = ? AND s.is_active = TRUE AND (s.is_draft = FALSE OR s.is_draft IS NULL) AND (s.is_archived = FALSE OR s.is_archived IS NULL) {seg_direct} {area_direct_clause}",
                 p_l_direct
             )
             scenarios = cursor.fetchone()[0]
@@ -2007,7 +2007,7 @@ class TrainerManager:
                     SUM(CASE WHEN r.timeout_count = 0 THEN 1 ELSE 0 END) as no_timeout_count,
                     SUM(CASE WHEN r.percent = 100 THEN 1 ELSE 0 END) as perfect_count,
                     SUM(CASE WHEN r.percent >= 90 THEN 1 ELSE 0 END) as excellent_count,
-                    SUM(CASE WHEN r.is_game_over = 0 THEN 1 ELSE 0 END) as no_gameover_count,
+                    SUM(CASE WHEN r.is_game_over = FALSE THEN 1 ELSE 0 END) as no_gameover_count,
                     COUNT(DISTINCT s.level_id) as levels_touched
                 FROM trainer_results r
                 JOIN trainer_scenarios s ON r.scenario_id = s.id
@@ -2097,7 +2097,7 @@ class TrainerManager:
                 SUM(CASE WHEN timeout_count = 0 THEN 1 ELSE 0 END) as no_timeout_count,
                 SUM(CASE WHEN percent = 100 THEN 1 ELSE 0 END) as perfect_count,
                 SUM(CASE WHEN percent >= 90 THEN 1 ELSE 0 END) as excellent_count,
-                SUM(CASE WHEN is_game_over = 0 THEN 1 ELSE 0 END) as no_gameover_count,
+                SUM(CASE WHEN is_game_over = FALSE THEN 1 ELSE 0 END) as no_gameover_count,
                 COUNT(DISTINCT s.level_id) as levels_touched
             FROM trainer_results r
             JOIN trainer_scenarios s ON r.scenario_id = s.id
@@ -2441,7 +2441,7 @@ class TrainerManager:
                    s.id as scenario_id, s.title as scenario_title, s.order_num
             FROM trainer_levels l
             JOIN trainer_scenarios s ON s.level_id = l.id
-            WHERE s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL)
+            WHERE s.is_active = TRUE AND (s.is_draft = FALSE OR s.is_draft IS NULL) AND (s.is_archived = FALSE OR s.is_archived IS NULL)
             ORDER BY l.id, s.order_num
         """)
         rows = cursor.fetchall()
@@ -2616,9 +2616,9 @@ class TrainerManager:
         """Получить количество непрочитанных сообщений (опционально — по сегменту)"""
         cursor = self.conn.cursor()
         if segment:
-            cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = 0 AND segment = ?", (segment,))
+            cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = FALSE AND segment = ?", (segment,))
         else:
-            cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = 0")
+            cursor.execute("SELECT COUNT(*) FROM trainer_feedback WHERE is_read = FALSE")
         return cursor.fetchone()[0]
 
     def close(self):
@@ -2733,7 +2733,7 @@ class TrainerManager:
             JOIN trainer_levels l ON s.level_id = l.id
             LEFT JOIN trainer_categories c ON s.category_id = c.id
             JOIN trainer_scenario_tags st ON s.id = st.scenario_id
-            WHERE st.tag_id = ? AND s.is_active = 1 AND (s.is_draft = 0 OR s.is_draft IS NULL) AND (s.is_archived = 0 OR s.is_archived IS NULL)
+            WHERE st.tag_id = ? AND s.is_active = TRUE AND (s.is_draft = FALSE OR s.is_draft IS NULL) AND (s.is_archived = FALSE OR s.is_archived IS NULL)
             ORDER BY l.order_num, s.order_num
         """, (tag_id,))
         return [dict(row) for row in cursor.fetchall()]

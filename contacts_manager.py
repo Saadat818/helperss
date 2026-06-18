@@ -1518,10 +1518,10 @@ class ContactsManager:
             token_conditions = []
             for token in self._search_tokens(q):
                 token_digits = self._digits_only(token)
-                condition = f"(instr({text_expr}, ?) > 0"
+                condition = f"(POSITION(? IN {text_expr}) > 0"
                 params.append(token)
                 if token_digits:
-                    condition += f" OR instr({phone_digits_expr}, ?) > 0"
+                    condition += f" OR POSITION(? IN {phone_digits_expr}) > 0"
                     params.append(token_digits)
                 condition += ")"
                 token_conditions.append(condition)

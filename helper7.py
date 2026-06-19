@@ -95,7 +95,7 @@ from myboard_scenarios import (
 from contacts_manager import ContactsManager
 from employee_board_manager import EmployeeBoardManager
 ANALYTICS_BACKEND_ENV = os.getenv('ANALYTICS_BACKEND', 'postgres').lower()
-if not helper_db_is_postgres() and ANALYTICS_BACKEND_ENV == 'postgres':
+if helper_db_is_postgres() or ANALYTICS_BACKEND_ENV == 'postgres':
     try:
         import psycopg2
         from psycopg2.extras import RealDictCursor
@@ -791,12 +791,13 @@ TRUSTED_PROXY_IP = os.getenv("TRUSTED_PROXY_IP")
 TICKET_COUNTER_DB_PATH = os.getenv('TICKET_COUNTER_DB', os.path.join(BASE_DIR, 'topics.db'))
 TICKET_NUMBER_START = int(os.getenv('TICKET_NUMBER_START', '125'))
 AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', os.path.join(BASE_DIR, 'topics.db'))
-ANALYTICS_BACKEND = ANALYTICS_BACKEND_ENV
+HELPER_DB_BACKEND = os.getenv("HELPER_DB_BACKEND", "").strip().lower()
+ANALYTICS_BACKEND = HELPER_DB_BACKEND or ANALYTICS_BACKEND_ENV
 ANALYTICS_USE_POSTGRES = (
-    not helper_db_is_postgres()
-    and ANALYTICS_BACKEND == 'postgres'
+    ANALYTICS_BACKEND == "postgres"
     and psycopg2 is not None
 )
+print(f"[db] Analytics backend: {ANALYTICS_BACKEND}, ANALYTICS_USE_POSTGRES={ANALYTICS_USE_POSTGRES}", flush=True)
 POSTGRES_CONFIG = {
     'host': os.getenv('POSTGRES_HOST', 'localhost'),
     'port': os.getenv('POSTGRES_PORT', '5432'),
@@ -964,6 +965,18 @@ def _log_exception_safely(context: str, error: Exception | None = None):
 def _init_ticket_counter_table():
     """Инициализация таблицы для инкрементного номера заявок."""
     try:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS ticket_sequence (
+                            id SERIAL PRIMARY KEY,
+                            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                conn.commit()
+            return
+
         with sqlite3.connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ticket_sequence (
@@ -978,7 +991,17 @@ def _init_ticket_counter_table():
 
 def get_next_ticket_number() -> int:
     """Возвращает следующий инкрементный номер заявки."""
+    print("[DEBUG get_next_ticket_number]", "ANALYTICS_USE_POSTGRES=", ANALYTICS_USE_POSTGRES, "POSTGRES_CONFIG=", {k: ('***' if k == 'password' else v) for k, v in POSTGRES_CONFIG.items()}, flush=True)
     with ticket_counter_lock:
+        if ANALYTICS_USE_POSTGRES:
+            with _pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("INSERT INTO ticket_sequence (created_at) VALUES (%s) RETURNING id", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),))
+                    row = cur.fetchone()
+                conn.commit()
+                seq_id = row['id'] if hasattr(row, 'keys') else row[0]
+                return TICKET_NUMBER_START + int(seq_id) - 1
+
         with sqlite3.connect(TICKET_COUNTER_DB_PATH, timeout=10.0) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -994,7 +1017,10 @@ def _pg_connect():
     """Открывает новое подключение к PostgreSQL для аналитики."""
     if not ANALYTICS_USE_POSTGRES or not psycopg2:
         return None
-    return psycopg2.connect(**POSTGRES_CONFIG, cursor_factory=RealDictCursor)
+    conn = psycopg2.connect(**POSTGRES_CONFIG, cursor_factory=RealDictCursor)
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO helper, public")
+    return conn
 
 
 def _init_audit_log_table():
@@ -1412,6 +1438,7 @@ def log_ticket_event(event_type: str, ticket_number: int | None = None, problem:
                      problem_id_override: str | None = None,
                      subproblem_id_override: str | None = None):
     """Логирует событие по заявке для аналитики."""
+    print("[DEBUG log_ticket_event]", "event_type=", event_type, "ticket_number=", ticket_number, "ANALYTICS_USE_POSTGRES=", ANALYTICS_USE_POSTGRES, flush=True)
     try:
         actor = actor_override or _current_actor()
         if has_request_context():
@@ -5401,6 +5428,9 @@ def api_my_tickets():
                 'can_resubmit': state.get('status') == 'rejected' and not state.get('resubmitted_ticket_number')
             })
         rows.sort(key=lambda item: item.get('created_at') or item.get('updated_at') or '', reverse=True)
+        for r in rows:
+            if r.get('ticket_number') == 375:
+                print('DEBUG375', r)
         return jsonify({'success': True, 'data': rows, 'total': len(rows)})
     except Exception as e:
         print(f"[api_my_tickets] Ошибка: {e}")
@@ -13173,6 +13203,9 @@ def api_stats_pending_tickets():
                     row['waiting_hours'] = 0
         rows = sorted(rows, key=lambda x: x.get('created_at') or '')
 
+        for r in rows:
+            if r.get('ticket_number') == 375:
+                print('DEBUG375', r)
         return jsonify({'success': True, 'data': rows, 'total': len(rows)})
     except Exception as e:
         print(f"[api_stats_pending_tickets] Ошибка: {e}")

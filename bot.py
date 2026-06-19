@@ -19,7 +19,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from html import escape as html_escape
 
-from db_backend import is_postgres_backend as helper_db_is_postgres
+from db_backend import connect as helper_db_connect, is_postgres_backend as helper_db_is_postgres
 
 APP_TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 BOT_TOKEN = os.getenv('TEST_BOT_TOKEN') if APP_TEST_MODE and os.getenv('TEST_BOT_TOKEN') else os.getenv('BOT_TOKEN')
@@ -52,10 +52,11 @@ SUPPORT_STAFF_IDS_STR = os.getenv('SUPPORT_STAFF_IDS', '')
 SUPPORT_STAFF_IDS = [int(x.strip()) for x in SUPPORT_STAFF_IDS_STR.split(',') if x.strip().isdigit()]
 
 # --- Аналитика: запись событий в БД ---
-ANALYTICS_BACKEND = os.getenv('ANALYTICS_BACKEND', 'sqlite')
+ANALYTICS_BACKEND = os.getenv('HELPER_DB_BACKEND') or os.getenv('ANALYTICS_BACKEND', 'sqlite')
+ANALYTICS_BACKEND = ANALYTICS_BACKEND.strip().lower()
 AUDIT_LOG_DB_PATH = os.getenv('AUDIT_LOG_DB', 'audit.log')
 
-if not helper_db_is_postgres() and ANALYTICS_BACKEND == 'postgres':
+if ANALYTICS_BACKEND == 'postgres':
     try:
         import psycopg2
         import psycopg2.extras
@@ -65,22 +66,25 @@ else:
     psycopg2 = None
 
 ANALYTICS_USE_POSTGRES = (
-    not helper_db_is_postgres()
-    and ANALYTICS_BACKEND == 'postgres'
+    ANALYTICS_BACKEND == 'postgres'
     and psycopg2 is not None
 )
 
 
 def _pg_connect():
-    return psycopg2.connect(
-        host=os.getenv('POSTGRES_HOST', 'localhost'),
-        port=int(os.getenv('POSTGRES_PORT', '5432')),
-        database=os.getenv('POSTGRES_DB', 'helper_analytics'),
-        user=os.getenv('POSTGRES_USER', 'ruslan'),
-        password=os.getenv('POSTGRES_PASSWORD', ''),
+    conn = psycopg2.connect(
+        host=os.getenv('HELPER_PG_HOST') or os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('HELPER_PG_PORT') or os.getenv('POSTGRES_PORT', '5432')),
+        database=os.getenv('HELPER_PG_DB') or os.getenv('POSTGRES_DB', 'helper_analytics'),
+        user=os.getenv('HELPER_PG_USER') or os.getenv('POSTGRES_USER', 'ruslan'),
+        password=os.getenv('HELPER_PG_PASSWORD') or os.getenv('POSTGRES_PASSWORD', ''),
         cursor_factory=psycopg2.extras.RealDictCursor,
         connect_timeout=10
     )
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO helper, public")
+    conn.commit()
+    return conn
 
 
 def _sanitize_details(details):
@@ -93,6 +97,8 @@ def _sanitize_details(details):
 
 def _ensure_ticket_events_table():
     try:
+        if helper_db_is_postgres():
+            return
         if ANALYTICS_USE_POSTGRES:
             with _pg_connect() as conn:
                 with conn.cursor() as cur:
@@ -128,7 +134,7 @@ def _ensure_ticket_events_table():
                     """)
                 conn.commit()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS ticket_events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,7 +224,7 @@ def log_ticket_event(event_type, ticket_number=None, problem='',
                     """, payload)
                 conn.commit()
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.execute("""
                     INSERT INTO ticket_events (
                         created_at, event_type, ticket_number, problem,
@@ -306,7 +312,7 @@ def _get_app_settings(keys=None):
                     cur.execute("SELECT key, value FROM app_settings WHERE key = ANY(%s)", [keys])
                     return {row['key']: row.get('value') or '' for row in cur.fetchall()}
         placeholders = ",".join("?" * len(keys))
-        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute(f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", keys)
@@ -356,7 +362,7 @@ def _get_ticket_status(ticket_number):
                     """, [ticket_number])
                     rows = [dict(row) for row in cur.fetchall()]
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -461,7 +467,7 @@ def _find_ticket_reject_prompt(prompt_message_id):
                     """)
                     rows = [dict(row) for row in cur.fetchall()]
         else:
-            with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+            with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("""
@@ -528,7 +534,7 @@ def _load_active_ticket_count(actor_username):
                 cur.execute(query)
                 rows = [dict(row) for row in cur.fetchall()]
     else:
-        with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+        with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("""
@@ -585,7 +591,7 @@ def _recent_overload_alert_sent(actor_username):
                 """, [actor_username, since])
                 row = cur.fetchone()
                 return int(row['c'] if isinstance(row, dict) else row[0]) > 0
-    with sqlite3.connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
+    with helper_db_connect(AUDIT_LOG_DB_PATH, timeout=10.0) as conn:
         cur = conn.cursor()
         cur.execute("""
             SELECT COUNT(*) FROM ticket_events

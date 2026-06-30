@@ -563,7 +563,7 @@
         {% if result.is_game_over %}
         <div class="game-over-banner">
             <div class="icon">&#128542;</div>
-            <div class="title">Клиент бросил трубку</div>
+            <div class="title">{{ 'Клиент ушёл' if segment == 'branch' else 'Клиент бросил трубку' }}</div>
             <div class="subtitle">Уровень лояльности упал до критического значения</div>
         </div>
         {% endif %}
